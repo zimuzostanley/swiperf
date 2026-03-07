@@ -1,13 +1,13 @@
 import m from 'mithril'
-import { S, filteredTraces, ensureCache, jumpTo } from '../state'
+import { activeCluster, filteredTraces, ensureCache, jumpTo } from '../state'
 import type { TraceState } from '../state'
 import type { OverviewFilter } from '../models/types'
 import { renderMiniCanvas } from './Timeline'
 import { fmt_dur } from '../utils/format'
 import { state_color, state_label } from '../utils/colors'
 
-const CARD_HEIGHT = 90 // approximate height per card in px
-const RENDER_BUFFER = 10 // extra cards above/below viewport
+const CARD_HEIGHT = 90
+const RENDER_BUFFER = 10
 
 let scrollTop = 0
 let containerHeight = 0
@@ -18,25 +18,6 @@ function toggleExpand(uuid: string) {
   else expanded.add(uuid)
 }
 
-function buildAggregateStats(traces: TraceState[]) {
-  const stateAgg: Record<string, { dur: number; count: number; color: string }> = {}
-  let totalDur = 0
-  traces.forEach(ts => {
-    // Use raw slices for aggregate — don't require cache to be built
-    if (ts.currentSeq.length > 0) {
-      ts.currentSeq.forEach(d => {
-        const sk = state_label(d)
-        if (!stateAgg[sk]) stateAgg[sk] = { dur: 0, count: 0, color: state_color(d) }
-        stateAgg[sk].dur += d.dur
-        stateAgg[sk].count += 1
-      })
-    }
-    totalDur += ts.totalDur
-  })
-  return { stateAgg, totalDur }
-}
-
-// Mini canvas that only renders when visible
 const MiniTimeline: m.Component<{ ts: TraceState }> = {
   oncreate(vnode) {
     const canvas = vnode.dom.querySelector('canvas') as HTMLCanvasElement
@@ -61,9 +42,10 @@ const FILTERS: { key: OverviewFilter; label: string }[] = [
 ]
 
 function renderOverviewCard(ts: TraceState, globalIdx: number) {
+  const cl = activeCluster()!
   const uuid = ts.trace.trace_uuid
   const isExpanded = expanded.has(uuid)
-  const verdict = S.verdicts.get(uuid)
+  const verdict = cl.verdicts.get(uuid)
 
   return m('.card.overview-card', {
     key: uuid,
@@ -86,17 +68,17 @@ function renderOverviewCard(ts: TraceState, globalIdx: number) {
         m('button.btn' + (verdict === 'like' ? '.active-like' : ''), {
           onclick: (e: Event) => {
             e.stopPropagation()
-            const cur = S.verdicts.get(uuid)
-            if (cur === 'like') S.verdicts.delete(uuid)
-            else S.verdicts.set(uuid, 'like')
+            const cur = cl.verdicts.get(uuid)
+            if (cur === 'like') cl.verdicts.delete(uuid)
+            else cl.verdicts.set(uuid, 'like')
           },
         }, '\u2714'),
         m('button.btn' + (verdict === 'dislike' ? '.active-dislike' : ''), {
           onclick: (e: Event) => {
             e.stopPropagation()
-            const cur = S.verdicts.get(uuid)
-            if (cur === 'dislike') S.verdicts.delete(uuid)
-            else S.verdicts.set(uuid, 'dislike')
+            const cur = cl.verdicts.get(uuid)
+            if (cur === 'dislike') cl.verdicts.delete(uuid)
+            else cl.verdicts.set(uuid, 'dislike')
           },
         }, '\u2718'),
         m('button.btn', {
@@ -122,7 +104,6 @@ function renderOverviewCard(ts: TraceState, globalIdx: number) {
         m('span.tt-v', String(ts.origN)),
         m('span.tt-k', 'Total dur'),
         m('span.tt-v', fmt_dur(ts.totalDur)),
-        // Extra fields
         ...(ts.trace.extra
           ? Object.entries(ts.trace.extra).flatMap(([k, v]) => [
               m('span.tt-k', k),
@@ -137,7 +118,8 @@ function renderOverviewCard(ts: TraceState, globalIdx: number) {
 
 export const Overview: m.Component = {
   view() {
-    if (S.traces.length === 0) {
+    const cl = activeCluster()
+    if (!cl || cl.traces.length === 0) {
       return m('.section', [
         m('.section-head', 'Overview'),
         m('p', { style: { color: 'var(--dim)', fontSize: '11px' } }, 'No traces loaded.'),
@@ -145,9 +127,8 @@ export const Overview: m.Component = {
     }
 
     const filtered = filteredTraces()
-    const { liked, disliked, pending } = S.counts
+    const { liked, disliked, pending } = cl.counts
 
-    // Virtual scrolling: only render visible cards
     const startIdx = Math.max(0, Math.floor(scrollTop / CARD_HEIGHT) - RENDER_BUFFER)
     const visibleCount = Math.ceil(containerHeight / CARD_HEIGHT) + RENDER_BUFFER * 2
     const endIdx = Math.min(filtered.length, startIdx + visibleCount)
@@ -155,17 +136,16 @@ export const Overview: m.Component = {
     const bottomPad = Math.max(0, (filtered.length - endIdx) * CARD_HEIGHT)
 
     return m('.section', [
-      m('.section-head', `Overview (${filtered.length}${filtered.length !== S.traces.length ? '/' + S.traces.length : ''} traces)`),
+      m('.section-head', `Overview (${filtered.length}${filtered.length !== cl.traces.length ? '/' + cl.traces.length : ''} traces)`),
 
-      // Filter bar + stats
       m('.card.overview-toolbar', [
         m('.overview-filters', FILTERS.map(f =>
-          m('button.filter-btn' + (S.overviewFilter === f.key ? '.active' : ''), {
-            onclick: () => { S.overviewFilter = f.key },
+          m('button.filter-btn' + (cl.overviewFilter === f.key ? '.active' : ''), {
+            onclick: () => { cl.overviewFilter = f.key },
           }, [
             f.label,
             m('span.filter-count',
-              f.key === 'all' ? String(S.traces.length)
+              f.key === 'all' ? String(cl.traces.length)
                 : f.key === 'liked' ? String(liked)
                 : f.key === 'disliked' ? String(disliked)
                 : String(pending)
@@ -179,7 +159,6 @@ export const Overview: m.Component = {
         ]),
       ]),
 
-      // Scrollable card list
       m('.overview-scroll', {
         onscroll: (e: Event) => {
           const el = e.target as HTMLElement
@@ -190,16 +169,11 @@ export const Overview: m.Component = {
           containerHeight = (vnode.dom as HTMLElement).clientHeight
         },
       }, [
-        // Virtual scroll spacer
         topPad > 0 ? m('div', { style: { height: topPad + 'px' } }) : null,
-
-        // Rendered cards
         filtered.slice(startIdx, endIdx).map((ts, i) => {
-          const globalIdx = S.traces.indexOf(ts)
+          const globalIdx = cl.traces.indexOf(ts)
           return renderOverviewCard(ts, globalIdx)
         }),
-
-        // Bottom spacer
         bottomPad > 0 ? m('div', { style: { height: bottomPad + 'px' } }) : null,
       ]),
     ])

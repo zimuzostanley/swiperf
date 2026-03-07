@@ -1,7 +1,7 @@
 import m from 'mithril'
-import type { Slice, MergedSlice, SortState, SummaryRow } from '../models/types'
+import type { MergedSlice, SortState, SummaryRow } from '../models/types'
 import type { TraceState } from '../state'
-import { S } from '../state'
+import { activeCluster } from '../state'
 import { state_color, state_label, name_color } from '../utils/colors'
 import { fmt_dur, fmt_pct } from '../utils/format'
 
@@ -53,8 +53,10 @@ interface TableCardAttrs {
 const TableCard: m.Component<TableCardAttrs> = {
   view(vnode) {
     const { id, title, rows, maxDur, totalDur } = vnode.attrs
-    if (!S.tableSortState[id]) S.tableSortState[id] = { col: 'dur', dir: -1 }
-    const sort = S.tableSortState[id]
+    const cl = activeCluster()
+    if (!cl) return null
+    if (!cl.tableSortState[id]) cl.tableSortState[id] = { col: 'dur', dir: -1 }
+    const sort = cl.tableSortState[id]
     const sorted = sortRows(rows, sort)
 
     const cols = [
@@ -120,20 +122,17 @@ interface SummaryAttrs {
 export const Summary: m.Component<SummaryAttrs> = {
   view(vnode) {
     const ts = vnode.attrs.ts
-    // Use raw slices (with tsRel and _merged) for full breakdown
     const data = ts.currentSeq
     const totalDur = ts.totalDur
     const { stateMap, nameMap, bfMap } = build_summary_data(data)
 
     const tables: m.Vnode<any>[] = []
 
-    // States
     const maxState = Math.max(...Object.values(stateMap).map(v => v.dur))
     const stateRows: SummaryRow[] = Object.entries(stateMap).map(([k, v]) =>
       ({ label: k, short: k, dur: v.dur, count: v.count, color: v.color, pct: v.dur }))
     tables.push(m(TableCard, { id: 'state', title: 'States', rows: stateRows, maxDur: maxState, totalDur }))
 
-    // Names
     if (Object.keys(nameMap).length) {
       const maxName = Math.max(...Object.values(nameMap).map(v => v.dur), 1)
       const nameRows: SummaryRow[] = Object.entries(nameMap).map(([k, v]) => ({
@@ -144,7 +143,6 @@ export const Summary: m.Component<SummaryAttrs> = {
       tables.push(m(TableCard, { id: 'name', title: 'Names', rows: nameRows, maxDur: maxName, totalDur }))
     }
 
-    // Blocked functions
     if (Object.keys(bfMap).length) {
       const maxBf = Math.max(...Object.values(bfMap).map(v => v.dur), 1)
       const bfRows: SummaryRow[] = Object.entries(bfMap).map(([k, v]) =>

@@ -360,4 +360,33 @@ textarea.json-area:focus { border-color: var(--accent); }
 .overview-grid {
   display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); gap: 10px;
 }
+
+/* Cluster tabs */
+.cluster-tabs {
+  display: flex; gap: 2px; margin-bottom: 16px; flex-wrap: wrap;
+  border-bottom: 1px solid var(--border); padding-bottom: 0;
+}
+.cluster-tab {
+  display: flex; align-items: center; gap: 6px; padding: 7px 14px 7px 14px;
+  font-size: 11px; font-weight: 500; color: var(--label); cursor: pointer;
+  border: 1px solid var(--border); border-bottom: none; border-radius: 6px 6px 0 0;
+  background: var(--surface2); transition: all 0.15s; position: relative; top: 1px;
+}
+.cluster-tab:hover { background: var(--surface); color: var(--text); }
+.cluster-tab.active {
+  background: var(--surface); color: var(--accent); border-color: var(--border);
+  border-bottom: 1px solid var(--surface); font-weight: 600;
+}
+.cluster-name { cursor: default; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 160px; }
+.cluster-count { font-family: var(--mono); font-size: 9px; color: var(--dim); }
+.cluster-close {
+  font-size: 14px; line-height: 1; color: var(--muted); background: none; border: none;
+  cursor: pointer; padding: 0 2px; border-radius: 3px; transition: all 0.1s;
+}
+.cluster-close:hover { color: var(--c-dislike); background: color-mix(in srgb, var(--c-dislike) 10%, transparent); }
+.cluster-rename {
+  font-family: var(--sans); font-size: 11px; font-weight: 500; color: var(--text);
+  background: var(--surface2); border: 1px solid var(--accent); border-radius: 3px;
+  padding: 1px 6px; outline: none; width: 120px;
+}
 `

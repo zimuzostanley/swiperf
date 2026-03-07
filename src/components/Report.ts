@@ -1,5 +1,5 @@
 import m from 'mithril'
-import { S, getLikedTraces, ensureCache } from '../state'
+import { activeCluster, getLikedTraces, ensureCache, jumpTo } from '../state'
 import type { TraceState } from '../state'
 import { renderMiniCanvas } from './Timeline'
 import { fmt_dur } from '../utils/format'
@@ -32,8 +32,8 @@ function downloadFile(content: string, filename: string, mime: string) {
 }
 
 function buildReportData(traces: TraceState[]) {
+  const cl = activeCluster()
   return traces.map(ts => {
-    // Compute state breakdown
     ensureCache(ts)
     const stateBreakdown: Record<string, number> = {}
     ts.currentSeq.forEach(d => {
@@ -49,7 +49,7 @@ function buildReportData(traces: TraceState[]) {
       total_dur_ms: +(ts.totalDur / 1e6).toFixed(2),
       slice_count: ts.origN,
       state_breakdown: stateBreakdown,
-      verdict: S.verdicts.get(ts.trace.trace_uuid) || 'pending',
+      verdict: cl?.verdicts.get(ts.trace.trace_uuid) || 'pending',
       ...(ts.trace.extra || {}),
     }
   })
@@ -67,7 +67,6 @@ function exportCsv() {
   const data = buildReportData(liked)
   if (data.length === 0) return
 
-  // Collect all keys (flatten state_breakdown into columns)
   const baseKeys = ['trace_uuid', 'package_name', 'startup_dur', 'total_dur_ms', 'slice_count', 'verdict']
   const stateKeys = new Set<string>()
   const extraKeys = new Set<string>()
@@ -105,7 +104,9 @@ function exportCsv() {
 }
 
 function exportAllVerdicts() {
-  const data = buildReportData(S.traces)
+  const cl = activeCluster()
+  if (!cl) return
+  const data = buildReportData(cl.traces)
   const date = new Date().toISOString().slice(0, 10)
   downloadFile(JSON.stringify(data, null, 2), `swiperf-all-verdicts-${date}.json`, 'application/json')
 }
@@ -128,8 +129,10 @@ function buildAggStats(traces: TraceState[]) {
 
 export const Report: m.Component = {
   view() {
+    const cl = activeCluster()
+    if (!cl) return null
     const liked = getLikedTraces()
-    const { liked: likedCount, disliked, pending } = S.counts
+    const { liked: likedCount, disliked, pending } = cl.counts
 
     return m('.section', [
       m('.section-head', 'Report'),
@@ -169,17 +172,15 @@ export const Report: m.Component = {
               ])
             })(),
 
-            m('.overview-grid', liked.map(ts =>
-              m('.card.overview-card.verdict-liked', { key: ts.trace.trace_uuid }, [
+            m('.overview-grid', liked.map(ts => {
+              const globalIdx = cl.traces.indexOf(ts)
+              return m('.card.overview-card.verdict-liked', { key: ts.trace.trace_uuid }, [
                 m('.overview-card-head', [
                   m('.pkg', ts.trace.package_name),
                   m('.dur', fmt_dur(ts.totalDur)),
                   ts.trace.startup_dur ? m('.dur', `startup ${fmt_dur(ts.trace.startup_dur)}`) : null,
                   m('button.btn', {
-                    onclick: () => {
-                      S.currentIndex = S.traces.indexOf(ts)
-                      S.viewMode = 'single'
-                    },
+                    onclick: () => jumpTo(globalIdx),
                     style: { padding: '2px 8px', fontSize: '10px', marginLeft: '8px' },
                   }, '\u2192'),
                 ]),
@@ -188,7 +189,7 @@ export const Report: m.Component = {
                   ts.trace.trace_uuid
                 ),
               ])
-            )),
+            })),
           ],
     ])
   },

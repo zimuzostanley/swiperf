@@ -1,5 +1,5 @@
 import m from 'mithril'
-import { S, currentTrace, navigate, setVerdict, ensureCache } from '../state'
+import { S, activeCluster, currentTrace, navigate, setVerdict, ensureCache, switchCluster, removeCluster, renameCluster } from '../state'
 import { Import } from './Import'
 import { Controls } from './Controls'
 import { Timeline } from './Timeline'
@@ -20,6 +20,9 @@ function toggleTheme() {
   applyTheme(current === 'dark' ? 'light' : 'dark')
 }
 
+let editingClusterId: string | null = null
+let editingName = ''
+
 export const App: m.Component = {
   oncreate() {
     const saved = localStorage.getItem('trace-theme') || 'light'
@@ -28,6 +31,7 @@ export const App: m.Component = {
     document.addEventListener('keydown', (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement).tagName
       if (tag === 'INPUT' || tag === 'TEXTAREA') return
+      const cl = activeCluster()
 
       switch (e.key.toLowerCase()) {
         case 'a':
@@ -47,16 +51,13 @@ export const App: m.Component = {
           setVerdict('dislike')
           break
         case '1':
-          if (S.traces.length > 1) S.viewMode = 'single'
-          m.redraw()
+          if (cl && cl.traces.length > 1) { cl.viewMode = 'single'; m.redraw() }
           break
         case '2':
-          if (S.traces.length > 1) S.viewMode = 'overview'
-          m.redraw()
+          if (cl && cl.traces.length > 1) { cl.viewMode = 'overview'; m.redraw() }
           break
         case '3':
-          if (S.traces.length > 1) S.viewMode = 'report'
-          m.redraw()
+          if (cl && cl.traces.length > 1) { cl.viewMode = 'report'; m.redraw() }
           break
       }
     })
@@ -64,6 +65,7 @@ export const App: m.Component = {
 
   view() {
     const dark = isDark()
+    const cl = activeCluster()
     const ts = currentTrace()
     if (ts) ensureCache(ts)
 
@@ -74,21 +76,21 @@ export const App: m.Component = {
           m('h1', 'SwiPerf'),
           m('p', ts
             ? `${fmt_dur(ts.totalDur)}  \u00b7  ${ts.origN} slices` +
-              (S.traces.length > 1 ? `  \u00b7  trace ${S.currentIndex + 1}/${S.traces.length}` : '')
+              (cl && cl.traces.length > 1 ? `  \u00b7  trace ${cl.currentIndex + 1}/${cl.traces.length}` : '')
             : '\u2014'),
         ]),
         m('.header-right', [
-          S.traces.length > 1 ? m('.view-tabs', [
-            m('button.view-tab' + (S.viewMode === 'single' ? '.active' : ''), {
-              onclick: () => { S.viewMode = 'single' },
+          cl && cl.traces.length > 1 ? m('.view-tabs', [
+            m('button.view-tab' + (cl.viewMode === 'single' ? '.active' : ''), {
+              onclick: () => { cl.viewMode = 'single' },
               title: 'Single trace view (1)',
             }, ['Single ', m('kbd', '1')]),
-            m('button.view-tab' + (S.viewMode === 'overview' ? '.active' : ''), {
-              onclick: () => { S.viewMode = 'overview' },
+            m('button.view-tab' + (cl.viewMode === 'overview' ? '.active' : ''), {
+              onclick: () => { cl.viewMode = 'overview' },
               title: 'Overview grid (2)',
             }, ['Overview ', m('kbd', '2')]),
-            m('button.view-tab' + (S.viewMode === 'report' ? '.active' : ''), {
-              onclick: () => { S.viewMode = 'report' },
+            m('button.view-tab' + (cl.viewMode === 'report' ? '.active' : ''), {
+              onclick: () => { cl.viewMode = 'report' },
               title: 'Report (3)',
             }, ['Report ', m('kbd', '3')]),
           ]) : null,
@@ -102,25 +104,62 @@ export const App: m.Component = {
       // Import
       m(Import),
 
+      // Cluster tabs
+      S.clusters.length > 0 ? m('.cluster-tabs', S.clusters.map(c =>
+        m('.cluster-tab' + (c.id === S.activeClusterId ? '.active' : ''), {
+          key: c.id,
+          onclick: () => switchCluster(c.id),
+        }, [
+          editingClusterId === c.id
+            ? m('input.cluster-rename', {
+                value: editingName,
+                oninput: (e: Event) => { editingName = (e.target as HTMLInputElement).value },
+                onblur: () => { renameCluster(c.id, editingName); editingClusterId = null },
+                onkeydown: (e: KeyboardEvent) => {
+                  if (e.key === 'Enter') { renameCluster(c.id, editingName); editingClusterId = null }
+                  if (e.key === 'Escape') { editingClusterId = null }
+                },
+                oncreate: (vnode: m.VnodeDOM) => (vnode.dom as HTMLInputElement).focus(),
+                onclick: (e: Event) => e.stopPropagation(),
+              })
+            : m('span.cluster-name', {
+                ondblclick: (e: Event) => {
+                  e.stopPropagation()
+                  editingClusterId = c.id
+                  editingName = c.name
+                },
+              }, [
+                c.name,
+                c.traces.length > 1 ? m('span.cluster-count', ` (${c.traces.length})`) : null,
+              ]),
+          m('button.cluster-close', {
+            onclick: (e: Event) => { e.stopPropagation(); removeCluster(c.id) },
+            title: 'Close cluster',
+          }, '\u00d7'),
+        ])
+      )) : null,
+
       // Main content
-      S.viewMode === 'overview' ? m(Overview)
-        : S.viewMode === 'report' ? m(Report)
-        : ts ? [
-            m(NavBar),
-            m('.section', [
-              m('.section-head', 'Compression'),
-              m(Controls, { ts }),
-            ]),
-            m('.section', { key: ts.trace.trace_uuid + '-tl' }, [
-              m('.section-head', 'Timeline'),
-              m(Timeline, { ts, key: ts.trace.trace_uuid }),
-            ]),
-            m('.section', { key: ts.trace.trace_uuid + '-sm' }, [
-              m('.section-head', 'Breakdown'),
-              m(Summary, { ts }),
-            ]),
-          ]
-        : null,
+      cl ? (
+        cl.viewMode === 'overview' ? m(Overview)
+          : cl.viewMode === 'report' ? m(Report)
+          : ts ? [
+              m(NavBar),
+              m('.section', [
+                m('.section-head', 'Compression'),
+                m(Controls, { ts }),
+              ]),
+              m('.section', { key: ts.trace.trace_uuid + '-tl' }, [
+                m('.section-head', 'Timeline'),
+                m(Timeline, { ts, key: ts.trace.trace_uuid }),
+              ]),
+              m('.section', { key: ts.trace.trace_uuid + '-sm' }, [
+                m('.section-head', 'Breakdown'),
+                m(Summary, { ts }),
+              ]),
+            ]
+          : null
+      ) : null,
     ])
   },
 }
