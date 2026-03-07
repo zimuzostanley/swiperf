@@ -140,7 +140,7 @@ export const Report: m.Component = {
               'No liked traces yet. Use W to like, S to dislike. Auto-advance moves to next pending.'
             )
           )
-        : [
+        : m('.report-content', [
             (() => {
               const { stateAgg, totalDur } = buildAggStats(liked)
               return m('.card', { style: { marginBottom: '14px', padding: '14px' } }, [
@@ -158,7 +158,7 @@ export const Report: m.Component = {
 
             m('.overview-grid', liked.map(ts => {
               const globalIdx = cl.traces.indexOf(ts)
-              return m('.card.overview-card.verdict-liked', { key: ts.trace.trace_uuid }, [
+              return m('.card.overview-card.verdict-liked', [
                 m('.overview-card-head', [
                   m('.pkg', ts.trace.package_name),
                   m('.dur', fmt_dur(ts.totalDur)),
@@ -174,7 +174,7 @@ export const Report: m.Component = {
                 ),
               ])
             })),
-          ],
+          ]),
     ])
   },
 }

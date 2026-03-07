@@ -154,12 +154,12 @@ export const Overview: m.Component = {
           if (!scrollState.has(cl.id)) scrollState.set(cl.id, { top: 0, height: h })
         },
       }, [
-        topPad > 0 ? m('div', { style: { height: topPad + 'px' } }) : null,
-        filtered.slice(startIdx, endIdx).map((ts, i) => {
+        m('div', { key: '__top', style: { height: topPad + 'px' } }),
+        ...filtered.slice(startIdx, endIdx).map((ts, i) => {
           const globalIdx = cl.traces.indexOf(ts)
           return renderOverviewCard(ts, globalIdx)
         }),
-        bottomPad > 0 ? m('div', { style: { height: bottomPad + 'px' } }) : null,
+        m('div', { key: '__bottom', style: { height: bottomPad + 'px' } }),
       ]),
     ])
   },

@@ -152,7 +152,7 @@ export const App: m.Component = {
               ]),
               m('.section', [
                 m('.section-head', 'Timeline'),
-                m(Timeline, { ts, key: ts.trace.trace_uuid }),
+                m(Timeline, { ts }),
               ]),
               m('.section', [
                 m('.section-head', 'Breakdown'),

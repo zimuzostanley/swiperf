@@ -28,7 +28,8 @@ function renderCanvas(canvas: HTMLCanvasElement, ts: TraceState) {
   canvas.width = Math.round(cssW * dpr)
   canvas.height = Math.round(CANVAS_H * dpr)
 
-  const ctx = canvas.getContext('2d')!
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return { hitState: [], hitName: [] }
   ctx.scale(dpr, dpr)
 
   const drawW = cssW - LABEL_W - PAD_R
@@ -136,7 +137,8 @@ export function renderMiniCanvas(canvas: HTMLCanvasElement, ts: TraceState) {
   canvas.style.height = cssH + 'px'
   canvas.width = Math.round(cssW * dpr)
   canvas.height = Math.round(cssH * dpr)
-  const ctx = canvas.getContext('2d')!
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return
   ctx.scale(dpr, dpr)
 
   const dark = isDark()
