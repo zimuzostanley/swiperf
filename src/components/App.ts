@@ -144,21 +144,21 @@ export const App: m.Component = {
       cl ? (
         cl.viewMode === 'overview' ? m(Overview)
           : cl.viewMode === 'report' ? m(Report)
-          : ts ? [
+          : ts ? m('.single-view', [
               m(NavBar),
               m('.section', [
                 m('.section-head', 'Compression'),
                 m(Controls, { ts }),
               ]),
-              m('.section', { key: ts.trace.trace_uuid + '-tl' }, [
+              m('.section', [
                 m('.section-head', 'Timeline'),
                 m(Timeline, { ts, key: ts.trace.trace_uuid }),
               ]),
-              m('.section', { key: ts.trace.trace_uuid + '-sm' }, [
+              m('.section', [
                 m('.section-head', 'Breakdown'),
                 m(Summary, { ts }),
               ]),
-            ]
+            ])
           : null
       ) : null,
     ])
