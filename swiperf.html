@@ -1,0 +1,1221 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<title>Thread Trace Viewer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Geist:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+/* ═══════════════════════════════════════════════════════════════
+   THEME TOKENS
+═══════════════════════════════════════════════════════════════ */
+:root {
+  --mono: 'IBM Plex Mono', monospace;
+  --sans: 'Geist', sans-serif;
+
+  /*
+   * Perfetto / Systrace canonical thread state colors:
+   * Perfetto / Systrace canonical thread state colors (flat):
+   *   Running            → deep green   (on CPU, actively executing)
+   *   Runnable           → blue         (ready, waiting for scheduler)
+   *   Runnable Preempted → darker blue  (was running, forcibly descheduled)
+   *   Unint. Sleep IO    → orange       (blocked waiting for I/O)
+   *   Unint. Sleep non-IO→ dark red     (blocked on kernel lock / other)
+   *   Sleeping           → near-black / light grey (voluntary interruptible sleep)
+   */
+  --c-running:        #357b34;
+  --c-runnable:       #99b93a;
+  --c-preempted:      #99b93a;
+  --c-unint-io:       #e65100;
+  --c-unint-nonio:    #a25c58;
+  --c-sleeping-dark:  #2a2a3a;
+  --c-sleeping-light: #c8ccd8;
+}
+
+[data-theme="light"] {
+  --bg:          #f5f4f0;
+  --surface:     #ffffff;
+  --surface2:    #f9f8f5;
+  --border:      #e2e0da;
+  --border2:     #d0cec7;
+  --muted:       #b0ada4;
+  --dim:         #888480;
+  --label:       #5a5754;
+  --text:        #1c1b19;
+  --bright:      #0e0d0c;
+  --accent:      #5b4fcf;
+  --accent-bg:   rgba(91,79,207,0.08);
+  --track-bg:    #eceae4;
+  --canvas-bg:   #ffffff;
+  --c-sleeping:  var(--c-sleeping-light);
+  --th-bg:       #f0ede7;
+  --row-hover:   #f7f5f0;
+  --shadow:      0 1px 3px rgba(0,0,0,0.08), 0 4px 12px rgba(0,0,0,0.04);
+}
+
+[data-theme="dark"] {
+  --bg:          #0f0f11;
+  --surface:     #17171a;
+  --surface2:    #1c1c20;
+  --border:      #252529;
+  --border2:     #2e2e34;
+  --muted:       #3a3a42;
+  --dim:         #5a5a66;
+  --label:       #8888a0;
+  --text:        #d4d4e0;
+  --bright:      #eeeef5;
+  --accent:      #7c6af5;
+  --accent-bg:   rgba(124,106,245,0.12);
+  --track-bg:    #0f0f11;
+  --canvas-bg:   #17171a;
+  --c-sleeping:  var(--c-sleeping-dark);
+  --th-bg:       #1c1c20;
+  --row-hover:   #1e1e24;
+  --shadow:      0 1px 3px rgba(0,0,0,0.4), 0 4px 16px rgba(0,0,0,0.3);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   RESET & BASE
+═══════════════════════════════════════════════════════════════ */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { font-size: 13px; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  font-weight: 400;
+  line-height: 1.5;
+  transition: background 0.2s, color 0.2s;
+  min-height: 100vh;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   LAYOUT
+═══════════════════════════════════════════════════════════════ */
+.shell {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 24px 24px 56px;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   HEADER
+═══════════════════════════════════════════════════════════════ */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+.header-left h1 {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--bright);
+  letter-spacing: -0.2px;
+}
+.header-left p {
+  font-size: 11px;
+  color: var(--dim);
+  font-family: var(--mono);
+  margin-top: 2px;
+}
+.theme-btn {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border2);
+  background: var(--surface);
+  color: var(--label);
+  font-family: var(--sans);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.theme-btn:hover { background: var(--surface2); color: var(--text); }
+.theme-icon { font-size: 11px; line-height: 1; color: var(--accent); font-weight: 700; }
+
+/* ═══════════════════════════════════════════════════════════════
+   SECTION
+═══════════════════════════════════════════════════════════════ */
+.section { margin-bottom: 20px; }
+.section-head {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.section-head::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   CARD
+═══════════════════════════════════════════════════════════════ */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  transition: background 0.2s, border-color 0.2s;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   CONTROLS
+═══════════════════════════════════════════════════════════════ */
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 12px 16px;
+}
+.ctrl-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.ctrl-label {
+  font-size: 11px;
+  color: var(--dim);
+  white-space: nowrap;
+}
+.count-num {
+  font-family: var(--mono);
+  font-size: 20px;
+  font-weight: 500;
+  color: var(--bright);
+  min-width: 32px;
+  transition: color 0.2s;
+}
+.count-sub { font-family: var(--mono); font-size: 10px; color: var(--muted); }
+
+input[type=range] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 200px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--border2);
+  outline: none;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 11px; height: 11px;
+  border-radius: 50%;
+  background: var(--accent);
+  cursor: pointer;
+  box-shadow: 0 0 0 3px var(--accent-bg);
+}
+
+.vdivider { width: 1px; height: 20px; background: var(--border); flex-shrink: 0; }
+
+.btn {
+  font-family: var(--sans);
+  font-size: 11px;
+  font-weight: 500;
+  padding: 5px 11px;
+  border-radius: 5px;
+  cursor: pointer;
+  border: 1px solid var(--border2);
+  background: var(--surface2);
+  color: var(--label);
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.btn:hover { background: var(--border2); color: var(--bright); }
+.btn.primary {
+  background: var(--accent-bg);
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 30%, transparent);
+}
+.btn.primary:hover { background: color-mix(in srgb, var(--accent) 20%, transparent); }
+
+.span-info {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--dim);
+  margin-left: auto;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   LEGEND
+═══════════════════════════════════════════════════════════════ */
+.legend { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; }
+.li { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--label); }
+.ls { width: 8px; height: 8px; border-radius: 1px; flex-shrink: 0; }
+
+/* ═══════════════════════════════════════════════════════════════
+   CANVAS
+═══════════════════════════════════════════════════════════════ */
+.canvas-wrap { padding: 14px 14px 10px; overflow: hidden; }
+canvas { display: block; width: 100%; cursor: crosshair; }
+
+/* ═══════════════════════════════════════════════════════════════
+   TOOLTIP — wide, never clips
+═══════════════════════════════════════════════════════════════ */
+.tooltip {
+  position: fixed;
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  border-radius: 7px;
+  padding: 11px 14px;
+  font-size: 11px;
+  line-height: 1;
+  pointer-events: none;
+  display: none;
+  z-index: 9999;
+  min-width: 280px;
+  max-width: 520px;
+  width: max-content;
+  box-shadow: var(--shadow), 0 8px 24px rgba(0,0,0,0.15);
+  transition: background 0.2s, border-color 0.2s;
+}
+.tt-name {
+  font-weight: 600;
+  color: var(--bright);
+  font-size: 12px;
+  margin-bottom: 8px;
+  line-height: 1.4;
+  word-break: break-all;
+  white-space: normal;
+}
+.tt-grid {
+  display: grid;
+  grid-template-columns: 80px 1fr;
+  gap: 4px 10px;
+  align-items: baseline;
+}
+.tt-k { color: var(--muted); font-size: 10px; font-family: var(--mono); }
+.tt-v { color: var(--text); font-family: var(--mono); font-size: 10px; word-break: break-all; white-space: normal; line-height: 1.5; }
+
+/* ═══════════════════════════════════════════════════════════════
+   SUMMARY TABLES
+═══════════════════════════════════════════════════════════════ */
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 14px;
+}
+.table-card { overflow: hidden; }
+.table-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 9px 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--th-bg);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.table-scroll { max-height: 260px; overflow-y: auto; }
+.table-scroll::-webkit-scrollbar { width: 4px; }
+.table-scroll::-webkit-scrollbar-track { background: transparent; }
+.table-scroll::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+table.summary { width: 100%; border-collapse: collapse; }
+table.summary thead th {
+  position: sticky;
+  top: 0;
+  background: var(--th-bg);
+  padding: 6px 14px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--dim);
+  text-align: left;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+table.summary thead th:hover { color: var(--text); }
+table.summary thead th .sort-arrow { margin-left: 4px; opacity: 0.4; }
+table.summary thead th.sorted .sort-arrow { opacity: 1; color: var(--accent); }
+table.summary thead th:not(:first-child) { text-align: right; }
+
+table.summary tbody tr { transition: background 0.1s; }
+table.summary tbody tr:hover { background: var(--row-hover); }
+table.summary tbody td {
+  padding: 7px 14px;
+  font-size: 11px;
+  color: var(--label);
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+table.summary tbody tr:last-child td { border-bottom: none; }
+table.summary tbody td:first-child {
+  color: var(--text);
+  max-width: 220px;
+  font-size: 11px;
+}
+table.summary tbody td:not(:first-child) {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--dim);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.cell-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.swatch { width: 7px; height: 7px; border-radius: 1px; flex-shrink: 0; display: inline-block; }
+.name-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 180px;
+  display: block;
+}
+.bar-wrap { margin-top: 3px; height: 2px; background: var(--border); border-radius: 1px; overflow: hidden; }
+.bar-fill  { height: 2px; border-radius: 1px; }
+
+/* ═══════════════════════════════════════════════════════════════
+   DATA IMPORT
+═══════════════════════════════════════════════════════════════ */
+.import-body { padding: 14px; }
+.import-hint { font-size: 11px; color: var(--dim); margin-bottom: 10px; }
+.import-hint code {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--label);
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+textarea.json-area {
+  width: 100%;
+  min-height: 90px;
+  max-height: 180px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--label);
+  font-family: var(--mono);
+  font-size: 10px;
+  line-height: 1.6;
+  padding: 10px 12px;
+  resize: vertical;
+  outline: none;
+  transition: border-color 0.2s;
+}
+textarea.json-area:focus { border-color: var(--accent); }
+.import-actions { display: flex; gap: 8px; margin-top: 9px; align-items: center; flex-wrap: wrap; }
+.msg-ok  { font-size: 10px; color: #4caf50; font-family: var(--mono); }
+.msg-err { font-size: 10px; color: #ef5350; font-family: var(--mono); }
+#file-input { display: none; }
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <!-- Header -->
+  <div class="header">
+    <div class="header-left">
+      <h1>Thread Trace Viewer</h1>
+      <p id="span-info">—</p>
+    </div>
+    <button class="theme-btn" id="theme-btn" onclick="toggleTheme()">
+      <span class="theme-icon" id="theme-icon">○</span>
+      <span id="theme-label">Light</span>
+    </button>
+  </div>
+
+  <!-- Import -->
+  <div class="section">
+    <div class="section-head">Data</div>
+    <div class="card import-body">
+      <p class="import-hint">
+        Paste a JSON array or import a file.
+        Expected shape: <code>[{ts, dur, name, state, depth, io_wait, blocked_function}, …]</code>
+      </p>
+      <textarea class="json-area" id="json-input" placeholder="Paste JSON here…" spellcheck="false"></textarea>
+      <div class="import-actions">
+        <button class="btn" onclick="document.getElementById('file-input').click()">Import file…</button>
+        <input type="file" id="file-input" accept=".json,.txt" onchange="loadFromFile(event)">
+        <button class="btn" onclick="copyCompressed()">Copy compressed</button>
+        <span id="json-msg"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Controls -->
+  <div class="section">
+    <div class="section-head">Compression</div>
+    <div class="card controls">
+      <div class="ctrl-group">
+        <span class="ctrl-label">Slices</span>
+        <span class="count-num" id="count-num">—</span>
+        <input type="range" id="slider" min="2" max="2" value="2" step="1" disabled>
+        <span class="count-sub" id="count-sub"></span>
+      </div>
+      <div class="vdivider"></div>
+      <div class="legend">
+        <div class="li"><div class="ls" style="background:var(--c-running)"></div>Running</div>
+        <div class="li"><div class="ls" style="background:var(--c-runnable)"></div>Runnable</div>
+        <div class="li"><div class="ls" style="background:var(--c-preempted)"></div>Runnable (Preempted)</div>
+        <div class="li"><div class="ls" style="background:var(--c-unint-nonio)"></div>Unint. Sleep (non-IO)</div>
+        <div class="li"><div class="ls" style="background:var(--c-unint-io)"></div>Unint. Sleep (IO)</div>
+        <div class="li"><div class="ls" style="background:var(--c-sleeping-dark); border:1px solid var(--border2)"></div>Sleeping</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Timeline -->
+  <div class="section">
+    <div class="section-head">Timeline</div>
+    <div class="card canvas-wrap"><canvas id="c"></canvas></div>
+  </div>
+
+  <!-- Summary -->
+  <div class="section">
+    <div class="section-head">Breakdown</div>
+    <div class="summary-grid" id="summary-grid"></div>
+  </div>
+
+</div><!-- /shell -->
+
+<div class="tooltip" id="tip"></div>
+
+<script>
+/* ═══════════════════════════════════════════════════════════════════════════
+   COMPRESSION ALGORITHM
+   ─────────────────────────────────────────────────────────────────────────
+   Each slice is treated as an atomic token: (state, io_wait, name, blocked_function).
+   We iteratively merge the cheapest adjacent pair until we reach the target count.
+
+   MERGE COST between adjacent slices a and b:
+     1. Compute token_distance(a, b) — how semantically different the two tokens are.
+     2. The "loser" is the slice with smaller dur — its token is discarded.
+     3. cost = token_distance * loser_weight
+        where loser_weight = log1p(loser.dur_ms) * (1 + has_name + has_blocked_fn)
+     4. Special case: identical tokens → cost ≈ 0 (collapse freely).
+
+   TOKEN DISTANCE rules:
+     - state differs                         → +4
+     - same Uninterruptible Sleep, io_wait differs → +2
+     - name differs (both non-null)          → +2
+     - name differs (one is null)            → +1
+     - blocked_function differs (both set)   → +1
+     - blocked_function differs (one null)   → +0.5
+
+   MERGE RESULT: winner = larger-dur slice; all its fields kept verbatim.
+   Only ts (start of a), dur (sum), and _merged (sum) change.
+
+   This is a greedy O(N²) algorithm — suitable for traces up to ~10k slices.
+   To port to another language: implement token_distance, merge_cost, merge_two,
+   then run the while-loop below. No hidden state.
+═══════════════════════════════════════════════════════════════════════════ */
+
+function token_distance(a, b) {
+  let d = 0;
+  if (a.state !== b.state) {
+    d += 4;
+  } else if (a.state === 'Uninterruptible Sleep' && a.io_wait !== b.io_wait) {
+    d += 2;
+  }
+  if (a.name !== b.name) {
+    d += (a.name === null || b.name === null) ? 1 : 2;
+  }
+  if (a.blocked_function !== b.blocked_function) {
+    d += (a.blocked_function === null || b.blocked_function === null) ? 0.5 : 1;
+  }
+  return d;
+}
+
+function merge_cost(a, b) {
+  const dist = token_distance(a, b);
+  if (dist === 0) {
+    // Identical token — almost free; tiny tie-break by combined size.
+    return 0.01 * Math.log1p((a.dur + b.dur) / 1e6);
+  }
+  const loser = a.dur <= b.dur ? a : b;
+  const loser_weight = Math.log1p(loser.dur / 1e6)
+    * (1 + (loser.name !== null ? 1 : 0) + (loser.blocked_function !== null ? 1 : 0));
+  return dist * loser_weight;
+}
+
+function merge_two(a, b) {
+  // Winner keeps every field unchanged; only positional/size fields change.
+  const winner = (a.dur >= b.dur) ? a : b;
+  return {
+    ts:               a.ts,
+    tsRel:            a.tsRel,
+    dur:              a.dur + b.dur,
+    state:            winner.state,
+    io_wait:          winner.io_wait,
+    name:             winner.name,
+    depth:            winner.depth,
+    blocked_function: winner.blocked_function,
+    _merged:          (a._merged || 1) + (b._merged || 1),
+  };
+}
+
+// Build every intermediate level upfront; cache by resulting length.
+function build_merge_cache(raw_data) {
+  const cache = new Map();
+  let seq = raw_data.map(d => ({ ...d, tsRel: d.ts - raw_data[0].ts, _merged: 1 }));
+  cache.set(seq.length, seq.map(d => ({ ...d })));
+  while (seq.length > 2) {
+    let best_i = 0, best_cost = Infinity;
+    for (let i = 0; i < seq.length - 1; i++) {
+      const c = merge_cost(seq[i], seq[i + 1]);
+      if (c < best_cost) { best_cost = c; best_i = i; }
+    }
+    seq = [
+      ...seq.slice(0, best_i),
+      merge_two(seq[best_i], seq[best_i + 1]),
+      ...seq.slice(best_i + 2),
+    ];
+    if (!cache.has(seq.length)) cache.set(seq.length, seq.map(d => ({ ...d })));
+  }
+  return cache;
+}
+
+function get_compressed(cache, orig_n, target) {
+  // Return the cached level with the smallest length >= target.
+  let best = orig_n;
+  for (const k of cache.keys()) if (k >= target && k < best) best = k;
+  return cache.get(best) ?? cache.get(2);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   COLOR HELPERS
+═══════════════════════════════════════════════════════════════════════════ */
+
+function state_color(d) {
+  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+  switch (d.state) {
+    case 'Running':              return '#357b34';
+    case 'Runnable':             return '#99b93a';
+    case 'Runnable (Preempted)': return '#99b93a';
+    case 'Uninterruptible Sleep':
+      return (d.io_wait === 1) ? '#e65100' : '#a25c58';
+    case 'Sleeping':
+      return isDark ? '#2a2a3a' : '#c8ccd8';
+    default:
+      // Null or unrecognised state — render as a neutral mid-grey so it's
+      // visually distinct from known states and never silently disappears.
+      return isDark ? '#44444e' : '#aaaaaa';
+  }
+}
+
+function state_label(d) {
+  if (!d.state) return 'Unknown';
+  if (d.state === 'Uninterruptible Sleep') {
+    if (d.io_wait === 1) return 'Unint. Sleep (IO)';
+    if (d.io_wait === 0) return 'Unint. Sleep (non-IO)';
+    return 'Unint. Sleep';
+  }
+  return d.state;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   HSLUV — minimal port of https://github.com/hsluv/hsluv (Apache 2.0)
+   Only hsluvToHex() is used; all other methods retained for completeness.
+═══════════════════════════════════════════════════════════════════════════ */
+class Hsluv {
+  constructor() {
+    this.hex='#000000';this.rgb_r=0;this.rgb_g=0;this.rgb_b=0;
+    this.xyz_x=0;this.xyz_y=0;this.xyz_z=0;
+    this.luv_l=0;this.luv_u=0;this.luv_v=0;
+    this.lch_l=0;this.lch_c=0;this.lch_h=0;
+    this.hsluv_h=0;this.hsluv_s=0;this.hsluv_l=0;
+    this.r0s=0;this.r0i=0;this.r1s=0;this.r1i=0;
+    this.g0s=0;this.g0i=0;this.g1s=0;this.g1i=0;
+    this.b0s=0;this.b0i=0;this.b1s=0;this.b1i=0;
+  }
+  static fromLinear(c){return c<=0.0031308?12.92*c:1.055*Math.pow(c,1/2.4)-0.055;}
+  static yToL(Y){return Y<=Hsluv.epsilon?Y/Hsluv.refY*Hsluv.kappa:116*Math.pow(Y/Hsluv.refY,1/3)-16;}
+  static lToY(L){return L<=8?Hsluv.refY*L/Hsluv.kappa:Hsluv.refY*Math.pow((L+16)/116,3);}
+  static rgbChannelToHex(c){const n=Math.round(c*255),d2=n%16,d1=(n-d2)/16|0;return Hsluv.hexChars[d1]+Hsluv.hexChars[d2];}
+  static distanceFromOriginAngle(s,i,a){const d=i/(Math.sin(a)-s*Math.cos(a));return d<0?Infinity:d;}
+  static distanceFromOrigin(s,i){return Math.abs(i)/Math.sqrt(s*s+1);}
+  static min6(a,b,c,d,e,f){return Math.min(a,b,c,d,e,f);}
+  rgbToHex(){this.hex='#'+Hsluv.rgbChannelToHex(this.rgb_r)+Hsluv.rgbChannelToHex(this.rgb_g)+Hsluv.rgbChannelToHex(this.rgb_b);}
+  xyzToRgb(){
+    this.rgb_r=Hsluv.fromLinear(Hsluv.m_r0*this.xyz_x+Hsluv.m_r1*this.xyz_y+Hsluv.m_r2*this.xyz_z);
+    this.rgb_g=Hsluv.fromLinear(Hsluv.m_g0*this.xyz_x+Hsluv.m_g1*this.xyz_y+Hsluv.m_g2*this.xyz_z);
+    this.rgb_b=Hsluv.fromLinear(Hsluv.m_b0*this.xyz_x+Hsluv.m_b1*this.xyz_y+Hsluv.m_b2*this.xyz_z);
+  }
+  luvToXyz(){
+    if(this.luv_l===0){this.xyz_x=this.xyz_y=this.xyz_z=0;return;}
+    const vU=this.luv_u/(13*this.luv_l)+Hsluv.refU,vV=this.luv_v/(13*this.luv_l)+Hsluv.refV;
+    this.xyz_y=Hsluv.lToY(this.luv_l);
+    this.xyz_x=-9*this.xyz_y*vU/((vU-4)*vV-vU*vV);
+    this.xyz_z=(9*this.xyz_y-15*vV*this.xyz_y-vV*this.xyz_x)/(3*vV);
+  }
+  lchToLuv(){const r=this.lch_h/180*Math.PI;this.luv_l=this.lch_l;this.luv_u=Math.cos(r)*this.lch_c;this.luv_v=Math.sin(r)*this.lch_c;}
+  calculateBoundingLines(l){
+    const sub1=Math.pow(l+16,3)/1560896,sub2=sub1>Hsluv.epsilon?sub1:l/Hsluv.kappa;
+    const s1r=sub2*(284517*Hsluv.m_r0-94839*Hsluv.m_r2),s2r=sub2*(838422*Hsluv.m_r2+769860*Hsluv.m_r1+731718*Hsluv.m_r0),s3r=sub2*(632260*Hsluv.m_r2-126452*Hsluv.m_r1);
+    const s1g=sub2*(284517*Hsluv.m_g0-94839*Hsluv.m_g2),s2g=sub2*(838422*Hsluv.m_g2+769860*Hsluv.m_g1+731718*Hsluv.m_g0),s3g=sub2*(632260*Hsluv.m_g2-126452*Hsluv.m_g1);
+    const s1b=sub2*(284517*Hsluv.m_b0-94839*Hsluv.m_b2),s2b=sub2*(838422*Hsluv.m_b2+769860*Hsluv.m_b1+731718*Hsluv.m_b0),s3b=sub2*(632260*Hsluv.m_b2-126452*Hsluv.m_b1);
+    this.r0s=s1r/s3r;this.r0i=s2r*l/s3r;this.r1s=s1r/(s3r+126452);this.r1i=(s2r-769860)*l/(s3r+126452);
+    this.g0s=s1g/s3g;this.g0i=s2g*l/s3g;this.g1s=s1g/(s3g+126452);this.g1i=(s2g-769860)*l/(s3g+126452);
+    this.b0s=s1b/s3b;this.b0i=s2b*l/s3b;this.b1s=s1b/(s3b+126452);this.b1i=(s2b-769860)*l/(s3b+126452);
+  }
+  calcMaxChromaHsluv(h){
+    const r=h/360*Math.PI*2;
+    return Hsluv.min6(
+      Hsluv.distanceFromOriginAngle(this.r0s,this.r0i,r),Hsluv.distanceFromOriginAngle(this.r1s,this.r1i,r),
+      Hsluv.distanceFromOriginAngle(this.g0s,this.g0i,r),Hsluv.distanceFromOriginAngle(this.g1s,this.g1i,r),
+      Hsluv.distanceFromOriginAngle(this.b0s,this.b0i,r),Hsluv.distanceFromOriginAngle(this.b1s,this.b1i,r)
+    );
+  }
+  hsluvToLch(){
+    if(this.hsluv_l>99.9999999){this.lch_l=100;this.lch_c=0;}
+    else if(this.hsluv_l<0.00000001){this.lch_l=0;this.lch_c=0;}
+    else{this.lch_l=this.hsluv_l;this.calculateBoundingLines(this.hsluv_l);this.lch_c=this.calcMaxChromaHsluv(this.hsluv_h)/100*this.hsluv_s;}
+    this.lch_h=this.hsluv_h;
+  }
+  hsluvToHex(){this.hsluvToLch();this.lchToLuv();this.luvToXyz();this.xyzToRgb();this.rgbToHex();}
+}
+Hsluv.hexChars='0123456789abcdef';
+Hsluv.refY=1.0;Hsluv.refU=0.19783000664283;Hsluv.refV=0.46831999493879;
+Hsluv.kappa=903.2962962;Hsluv.epsilon=0.0088564516;
+Hsluv.m_r0=3.240969941904521;Hsluv.m_r1=-1.537383177570093;Hsluv.m_r2=-0.498610760293;
+Hsluv.m_g0=-0.96924363628087;Hsluv.m_g1=1.87596750150772;Hsluv.m_g2=0.041555057407175;
+Hsluv.m_b0=0.055630079696993;Hsluv.m_b1=-0.20397695888897;Hsluv.m_b2=1.056971514242878;
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PERFETTO SLICE NAME COLORS
+   Port of colorizer.ts: materialColorScheme(name)
+   - MD_PALETTE entries are HSLuv coordinates (not plain HSL)
+   - base = desaturate(20) → s - 20
+   - hash = FNV-1a variant from hash.ts
+═══════════════════════════════════════════════════════════════════════════ */
+const MD_PALETTE_HSLUV = [
+  [4,90,58],[340,82,52],[291,64,42],[262,52,47],[231,48,48],[207,90,54],
+  [199,98,48],[187,100,42],[174,100,29],[122,39,49],[88,50,53],[66,70,54],
+  [45,100,51],[36,100,50],[14,100,57],[16,25,38],[200,18,46],[54,100,62],
+];
+
+const _name_color_cache = new Map();
+
+function perfetto_hash(s, max) {
+  let h = 0x811c9dc5 & 0xffffffff;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619) & 0xffffffff;
+  }
+  return Math.abs(h) % max;
+}
+
+function name_color(name) {
+  const seed = name.replace(/( )?\d+/g, '');
+  if (_name_color_cache.has(seed)) return _name_color_cache.get(seed);
+  const idx = perfetto_hash(seed, MD_PALETTE_HSLUV.length);
+  const [ph, ps, pl] = MD_PALETTE_HSLUV[idx];
+  const conv = new Hsluv();
+  conv.hsluv_h = ph;
+  conv.hsluv_s = Math.max(0, ps - 20); // desaturate(20)
+  conv.hsluv_l = pl;
+  conv.hsluvToHex();
+  _name_color_cache.set(seed, conv.hex);
+  return conv.hex;
+}
+
+function fmt_dur(ns) {
+  if (ns >= 1e9) return (ns / 1e9).toFixed(3) + ' s';
+  if (ns >= 1e6) return (ns / 1e6).toFixed(1) + ' ms';
+  return (ns / 1e3).toFixed(0) + ' µs';
+}
+function fmt_pct(ns, total) { return (ns / total * 100).toFixed(1) + '%'; }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   APP STATE
+═══════════════════════════════════════════════════════════════════════════ */
+
+// No default data — paste or import your JSON below.
+
+let RAW       = [];
+let CACHE     = build_merge_cache(RAW);
+let TOTAL_DUR = 0;
+let ORIG_N    = 0;
+let currentSeq = [];
+
+// sort state per table: { col: 'dur'|'count', dir: 1|-1 }
+const tableSortState = {};
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   CANVAS LAYOUT
+═══════════════════════════════════════════════════════════════════════════ */
+
+const STATE_H  = 10;
+const GAP      = 3;
+const NAME_H   = 21;
+const AXIS_H   = 20;
+const LABEL_W  = 88;
+const PAD_R    = 10;
+const PAD_T    = 8;
+const CANVAS_H = PAD_T + STATE_H + GAP + NAME_H + AXIS_H + 8;
+
+const canvas = document.getElementById('c');
+const tip    = document.getElementById('tip');
+const slider = document.getElementById('slider');
+
+let hit_state = [];
+let hit_name  = [];
+
+function render(target) {
+  currentSeq = get_compressed(CACHE, ORIG_N, target);
+  document.getElementById('count-num').textContent = currentSeq.length;
+  document.getElementById('count-sub').textContent = `/ ${ORIG_N}`;
+  document.getElementById('span-info').textContent =
+    `${fmt_dur(TOTAL_DUR)}  ·  ${ORIG_N} slices`;
+
+  const dpr  = window.devicePixelRatio || 1;
+  const cssW = canvas.parentElement.clientWidth - 28;
+  canvas.style.width  = cssW + 'px';
+  canvas.style.height = CANVAS_H + 'px';
+  canvas.width  = Math.round(cssW * dpr);
+  canvas.height = Math.round(CANVAS_H * dpr);
+
+  const ctx   = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+
+  const drawW = cssW - LABEL_W - PAD_R;
+  const scale = drawW / TOTAL_DUR;
+
+  const isDark  = document.documentElement.getAttribute('data-theme') === 'dark';
+  const C_BG    = isDark ? '#17171a' : '#ffffff';
+  const C_TRK   = isDark ? '#0f0f11' : '#f0ede8';
+  const C_SEP   = isDark ? '#17171a' : '#ffffff';
+  const C_DIV   = isDark ? '#252529' : '#e2e0da';
+  const C_LBL   = isDark ? '#3a3a42' : '#b0ada4';
+  const C_TICK  = isDark ? '#252529' : '#e2e0da';
+  const C_AXIS  = isDark ? '#3a3a42' : '#c0bdb5';
+  const C_NULL  = isDark ? '#1c1c26' : '#ede9e2';
+  const C_NULL_T= isDark ? 'rgba(90,90,102,0.55)' : 'rgba(160,157,148,0.8)';
+  const C_TEXT  = isDark ? 'rgba(255,255,255,0.75)' : 'rgba(28,27,25,0.80)';
+  const C_BADGE = isDark ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.12)';
+
+  ctx.fillStyle = C_BG;
+  ctx.fillRect(0, 0, cssW, CANVAS_H);
+
+  const stateY = PAD_T;
+  const nameY  = PAD_T + STATE_H + GAP;
+  const axisY  = nameY + NAME_H + 4;
+
+  // Track backgrounds
+  ctx.fillStyle = C_TRK;
+  ctx.fillRect(LABEL_W, stateY, drawW, STATE_H);
+  ctx.fillRect(LABEL_W, nameY,  drawW, NAME_H);
+
+  // Row labels
+  ctx.fillStyle = C_LBL;
+  ctx.font = `500 9px ${getComputedStyle(document.body).getPropertyValue('--sans').trim()}`;
+  ctx.textAlign    = 'right';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('State', LABEL_W - 8, stateY + STATE_H / 2);
+  ctx.fillText('Name',  LABEL_W - 8, nameY  + NAME_H  / 2);
+
+  // Divider
+  ctx.fillStyle = C_DIV;
+  ctx.fillRect(LABEL_W - 1, stateY, 1, STATE_H + GAP + NAME_H);
+
+  hit_state = [];
+  hit_name  = [];
+
+  currentSeq.forEach(d => {
+    const x = LABEL_W + d.tsRel * scale;
+    const w = Math.max(d.dur * scale, 0.8);
+
+    // State track
+    ctx.fillStyle = state_color(d);
+    ctx.fillRect(x, stateY, w, STATE_H);
+    ctx.fillStyle = C_SEP;
+    ctx.fillRect(x + w - 0.5, stateY, 0.5, STATE_H);
+    hit_state.push({ x, y: stateY, w, h: STATE_H, d });
+
+    // Name track
+    ctx.fillStyle = d.name ? name_color(d.name) : C_NULL;
+    ctx.fillRect(x, nameY, w, NAME_H);
+    ctx.fillStyle = C_SEP;
+    ctx.fillRect(x + w - 0.5, nameY, 0.5, NAME_H);
+
+    if (w > 12) {
+      ctx.save();
+      ctx.beginPath(); ctx.rect(x + 3, nameY + 1, w - 6, NAME_H - 2); ctx.clip();
+      ctx.font = `400 9px 'IBM Plex Mono', monospace`;
+      ctx.textBaseline = 'middle';
+      ctx.textAlign    = 'left';
+      if (d.name) {
+        ctx.fillStyle = C_TEXT;
+        let lbl = d.name.replace('com.redfin.android.core.activity.launch.deeplink.', '');
+        if (lbl.length > 55) lbl = lbl.slice(0, 53) + '…';
+        ctx.fillText(lbl, x + 4, nameY + NAME_H / 2);
+      } else {
+        ctx.fillStyle = C_NULL_T;
+        ctx.fillText('null', x + 4, nameY + NAME_H / 2);
+      }
+      if (d._merged > 1 && w > 40) {
+        ctx.fillStyle = C_BADGE;
+        ctx.textAlign    = 'right';
+        ctx.textBaseline = 'top';
+        ctx.fillText('×' + d._merged, x + w - 3, nameY + 3);
+      }
+      ctx.restore();
+    }
+    hit_name.push({ x, y: nameY, w, h: NAME_H, d });
+  });
+
+  // Axis
+  ctx.strokeStyle = C_TICK; ctx.lineWidth = 1;
+  ctx.fillStyle   = C_AXIS;
+  ctx.font        = `400 9px 'IBM Plex Mono', monospace`;
+  ctx.textAlign    = 'center';
+  ctx.textBaseline = 'alphabetic';
+  for (let i = 0; i <= 10; i++) {
+    const x = LABEL_W + (i / 10) * drawW;
+    ctx.beginPath(); ctx.moveTo(x, PAD_T); ctx.lineTo(x, axisY); ctx.stroke();
+    ctx.fillText(fmt_dur(TOTAL_DUR / 10 * i), x, axisY + 14);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   SUMMARY TABLES
+═══════════════════════════════════════════════════════════════════════════ */
+
+function build_summary_data(data) {
+  const stateMap = {}, nameMap = {}, bfMap = {};
+  data.forEach(d => {
+    // States
+    const sk = state_label(d);
+    if (!stateMap[sk]) stateMap[sk] = { dur: 0, count: 0, color: state_color(d) };
+    stateMap[sk].dur   += d.dur;
+    stateMap[sk].count += 1;
+
+    // Names
+    if (d.name) {
+      if (!nameMap[d.name]) nameMap[d.name] = { dur: 0, count: 0 };
+      nameMap[d.name].dur   += d.dur;
+      nameMap[d.name].count += 1;
+    }
+
+    // Blocked functions
+    if (d.blocked_function) {
+      if (!bfMap[d.blocked_function]) bfMap[d.blocked_function] = { dur: 0, count: 0 };
+      bfMap[d.blocked_function].dur   += d.dur;
+      bfMap[d.blocked_function].count += 1;
+    }
+  });
+  return { stateMap, nameMap, bfMap };
+}
+
+function make_table_card(id, title, rows, max_dur) {
+  // rows: [{label, dur, count, color?}]
+  const card = document.createElement('div');
+  card.className = 'card table-card';
+
+  card.innerHTML = `
+    <div class="table-card-head">
+      <span>${title}</span>
+    </div>
+    <div class="table-scroll">
+      <table class="summary" id="tbl-${id}">
+        <thead>
+          <tr>
+            <th data-col="label" data-id="${id}">
+              Name <span class="sort-arrow">↕</span>
+            </th>
+            <th data-col="dur" data-id="${id}" class="sorted">
+              Duration <span class="sort-arrow">↓</span>
+            </th>
+            <th data-col="pct" data-id="${id}">
+              % <span class="sort-arrow">↕</span>
+            </th>
+            <th data-col="count" data-id="${id}">
+              Count <span class="sort-arrow">↕</span>
+            </th>
+          </tr>
+        </thead>
+        <tbody id="tbody-${id}"></tbody>
+      </table>
+    </div>`;
+
+  // Init sort state
+  if (!tableSortState[id]) tableSortState[id] = { col: 'dur', dir: -1 };
+
+  // Click handlers for headers
+  card.querySelectorAll('thead th').forEach(th => {
+    th.addEventListener('click', () => {
+      const col = th.dataset.col;
+      const tid = th.dataset.id;
+      const s   = tableSortState[tid];
+      if (s.col === col) { s.dir *= -1; }
+      else              { s.col = col; s.dir = col === 'label' ? 1 : -1; }
+      refresh_table(tid, rows, max_dur);
+    });
+  });
+
+  return card;
+}
+
+function refresh_table(id, rows, max_dur) {
+  const s = tableSortState[id];
+  const sorted = [...rows].sort((a, b) => {
+    let va = a[s.col], vb = b[s.col];
+    if (s.col === 'label') { va = va.toLowerCase(); vb = vb.toLowerCase(); }
+    if (va < vb) return -1 * s.dir;
+    if (va > vb) return  1 * s.dir;
+    return 0;
+  });
+
+  // Update header arrows
+  const tbl = document.getElementById('tbl-' + id);
+  if (!tbl) return;
+  tbl.querySelectorAll('thead th').forEach(th => {
+    const col = th.dataset.col;
+    const arrow = th.querySelector('.sort-arrow');
+    th.classList.toggle('sorted', col === s.col);
+    if (col === s.col) arrow.textContent = s.dir === -1 ? '↓' : '↑';
+    else arrow.textContent = '↕';
+  });
+
+  const tbody = document.getElementById('tbody-' + id);
+  tbody.innerHTML = '';
+  sorted.forEach(row => {
+    const barW = (row.dur / max_dur * 100).toFixed(1);
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>
+        <div class="cell-label">
+          ${row.color ? `<span class="swatch" style="background:${row.color}"></span>` : ''}
+          <div>
+            <span class="name-text" title="${row.label}">${row.short || row.label}</span>
+            <div class="bar-wrap"><div class="bar-fill" style="width:${barW}%;background:${row.color||'var(--accent)'}"></div></div>
+          </div>
+        </div>
+      </td>
+      <td>${fmt_dur(row.dur)}</td>
+      <td>${fmt_pct(row.dur, TOTAL_DUR)}</td>
+      <td>${row.count}</td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+function render_summary(data) {
+  const grid = document.getElementById('summary-grid');
+  grid.innerHTML = '';
+
+  const { stateMap, nameMap, bfMap } = build_summary_data(data);
+  const max_state = Math.max(...Object.values(stateMap).map(v => v.dur));
+  const max_name  = Math.max(...Object.values(nameMap).map(v => v.dur), 1);
+  const max_bf    = Math.max(...Object.values(bfMap).map(v => v.dur), 1);
+
+  // States
+  const stateRows = Object.entries(stateMap).map(([k, v]) =>
+    ({ label: k, short: k, dur: v.dur, count: v.count, color: v.color, pct: v.dur }));
+  const stateCard = make_table_card('state', 'States', stateRows, max_state);
+  grid.appendChild(stateCard);
+  refresh_table('state', stateRows, max_state);
+
+  // Names
+  if (Object.keys(nameMap).length) {
+    const nameRows = Object.entries(nameMap).map(([k, v]) => ({
+      label: k,
+      short: k.replace('com.redfin.android.core.activity.launch.deeplink.', ''),
+      dur: v.dur, count: v.count,
+      color: name_color(k), pct: v.dur,
+    }));
+    const nameCard = make_table_card('name', 'Names', nameRows, max_name);
+    grid.appendChild(nameCard);
+    refresh_table('name', nameRows, max_name);
+  }
+
+  // Blocked functions
+  if (Object.keys(bfMap).length) {
+    const bfRows = Object.entries(bfMap).map(([k, v]) =>
+      ({ label: k, short: k, dur: v.dur, count: v.count, color: '#c62828', pct: v.dur }));
+    const bfCard = make_table_card('bf', 'Blocked functions', bfRows, max_bf);
+    grid.appendChild(bfCard);
+    refresh_table('bf', bfRows, max_bf);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   DATASET INIT
+═══════════════════════════════════════════════════════════════════════════ */
+
+function init_dataset(data) {
+  RAW       = data;
+  CACHE     = build_merge_cache(RAW);
+  TOTAL_DUR = RAW.reduce((m, d) => Math.max(m, (d.ts - RAW[0].ts) + d.dur), 0);
+  ORIG_N    = RAW.length;
+  slider.min      = 2;
+  slider.max      = ORIG_N;
+  slider.value    = Math.min(10, ORIG_N);
+  slider.disabled = false;
+  render_summary(RAW);
+  render(+slider.value);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   TOOLTIP
+═══════════════════════════════════════════════════════════════════════════ */
+
+canvas.addEventListener('mousemove', e => {
+  const rect = canvas.getBoundingClientRect();
+  const mx   = e.clientX - rect.left;
+  const my   = e.clientY - rect.top;
+  const all  = [...hit_state, ...hit_name];
+  const hit  = all.slice().reverse().find(r =>
+    mx >= r.x && mx <= r.x + r.w && my >= r.y && my <= r.y + r.h);
+
+  if (!hit) { tip.style.display = 'none'; return; }
+
+  const d = hit.d;
+  const rows = [
+    ['state',   state_label(d), state_color(d)],
+    ['io_wait', d.io_wait !== null ? String(d.io_wait) : '—', null],
+    ['blocked', d.blocked_function ?? '—', null],
+    ['dur',     fmt_dur(d.dur) + '  (' + fmt_pct(d.dur, TOTAL_DUR) + ')', null],
+    ['start',   '+' + fmt_dur(d.tsRel), null],
+    ['depth',   d.depth !== null ? String(d.depth) : '—', null],
+    ['×merged', String(d._merged), null],
+  ];
+
+  const name_display = (d.name ?? 'null')
+    .replace('com.redfin.android.core.activity.launch.deeplink.', '');
+
+  tip.innerHTML =
+    `<div class="tt-name">${name_display}</div>` +
+    `<div class="tt-grid">` +
+    rows.map(([k, v, col]) =>
+      `<span class="tt-k">${k}</span>` +
+      `<span class="tt-v"${col ? ` style="color:${col}"` : ''}>${v}</span>`
+    ).join('') +
+    `</div>`;
+
+  tip.style.display = 'block';
+
+  // Position: never overflow viewport
+  const TW = tip.offsetWidth  || 300;
+  const TH = tip.offsetHeight || 160;
+  const VW = window.innerWidth;
+  const VH = window.innerHeight;
+  let tx = e.clientX + 16;
+  let ty = e.clientY - 8;
+  if (tx + TW > VW - 8) tx = e.clientX - TW - 12;
+  if (ty + TH > VH - 8) ty = VH - TH - 8;
+  tip.style.left = tx + 'px';
+  tip.style.top  = ty + 'px';
+});
+canvas.addEventListener('mouseleave', () => { tip.style.display = 'none'; });
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   THEME
+═══════════════════════════════════════════════════════════════════════════ */
+
+function apply_theme(theme) {
+  document.documentElement.setAttribute('data-theme', theme);
+  document.getElementById('theme-icon').textContent  = theme === 'dark' ? '●' : '○';
+  document.getElementById('theme-label').textContent = theme === 'dark' ? 'Dark' : 'Light';
+  localStorage.setItem('trace-theme', theme);
+  // Re-render canvas & summary colors
+  if (ORIG_N) {
+    render_summary(RAW);
+    render(+slider.value);
+  }
+}
+
+function toggleTheme() {
+  const current = document.documentElement.getAttribute('data-theme');
+  apply_theme(current === 'dark' ? 'light' : 'dark');
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   IMPORT
+═══════════════════════════════════════════════════════════════════════════ */
+
+function try_load_json(text) {
+  const msg = document.getElementById('json-msg');
+  try {
+    const data = JSON.parse(text);
+    if (!Array.isArray(data) || !data.length)
+      throw new Error('Expected a non-empty array');
+    if (data[0].ts === undefined || data[0].dur === undefined || data[0].state === undefined)
+      throw new Error('Items must have ts, dur, state fields');
+    init_dataset(data);
+    msg.className   = 'msg-ok';
+    msg.textContent = `✓ Loaded ${data.length} slices`;
+    document.getElementById('json-input').value = '';
+  } catch (err) {
+    msg.className   = 'msg-err';
+    msg.textContent = '✗ ' + err.message;
+  }
+}
+
+// Auto-load textarea: instantly on paste, debounced on manual input
+let _textarea_debounce = null;
+const jsonInput = document.getElementById('json-input');
+jsonInput.addEventListener('paste', () => {
+  // paste event fires before value updates, so defer one tick
+  clearTimeout(_textarea_debounce);
+  _textarea_debounce = setTimeout(() => {
+    const txt = jsonInput.value.trim();
+    if (txt) try_load_json(txt);
+  }, 50);
+});
+jsonInput.addEventListener('input', () => {
+  clearTimeout(_textarea_debounce);
+  _textarea_debounce = setTimeout(() => {
+    const txt = jsonInput.value.trim();
+    if (txt) try_load_json(txt);
+  }, 600);
+});
+function loadFromFile(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => try_load_json(ev.target.result);
+  reader.readAsText(file);
+  e.target.value = ''; // allow re-import of same file
+}
+function copyCompressed() {
+  const clean = currentSeq.map(({ ts, dur, name, state, depth, io_wait, blocked_function, _merged }) =>
+    ({ ts, dur, name, state, depth, io_wait, blocked_function, _merged }));
+  navigator.clipboard.writeText(JSON.stringify(clean, null, 2));
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   EVENTS & BOOT
+═══════════════════════════════════════════════════════════════════════════ */
+
+slider.addEventListener('input', () => render(+slider.value));
+window.addEventListener('resize', () => render(+slider.value));
+
+// Restore saved theme (default: light)
+const saved_theme = localStorage.getItem('trace-theme') || 'light';
+apply_theme(saved_theme);
+
+// Load default data
+// No data loaded — waiting for user to paste or import JSON.
+</script>
+</body>
+</html>

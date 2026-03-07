@@ -1,0 +1,19 @@
+{
+  "name": "swiperf",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build"
+  },
+  "dependencies": {
+    "mithril": "^2.2.8"
+  },
+  "devDependencies": {
+    "@types/mithril": "^2.2.7",
+    "typescript": "^5.4.0",
+    "vite": "^5.4.0",
+    "vite-plugin-singlefile": "^2.0.3"
+  }
+}
