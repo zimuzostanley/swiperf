@@ -123,6 +123,7 @@ export const App: m.Component = {
                 onclick: (e: Event) => e.stopPropagation(),
               })
             : m('span.cluster-name', {
+                title: 'Double-click to rename',
                 ondblclick: (e: Event) => {
                   e.stopPropagation()
                   editingClusterId = c.id

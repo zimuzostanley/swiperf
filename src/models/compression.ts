@@ -68,7 +68,8 @@ export function build_merge_cache(raw_data: Slice[]): Map<number, MergedSlice[]>
 }
 
 export function get_compressed(cache: Map<number, MergedSlice[]>, orig_n: number, target: number): MergedSlice[] {
+  const t = Math.max(2, target)
   let best = orig_n
-  for (const k of cache.keys()) if (k >= target && k < best) best = k
+  for (const k of cache.keys()) if (k >= t && k < best) best = k
   return cache.get(best) ?? cache.get(2) ?? []
 }

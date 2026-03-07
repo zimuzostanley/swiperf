@@ -22,7 +22,7 @@ export interface TraceEntry {
   extra?: Record<string, unknown>
 }
 
-export type Verdict = 'like' | 'dislike' | null
+export type Verdict = 'like' | 'dislike'
 
 export type ViewMode = 'single' | 'overview' | 'report'
 

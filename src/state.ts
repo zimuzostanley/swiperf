@@ -52,7 +52,7 @@ export function currentTrace(): TraceState | null {
   return cl ? cl.traces[cl.currentIndex] ?? null : null
 }
 
-function recomputeCounts(cl: Cluster) {
+export function recomputeCounts(cl: Cluster) {
   let liked = 0, disliked = 0
   for (const v of cl.verdicts.values()) {
     if (v === 'like') liked++; else if (v === 'dislike') disliked++
@@ -65,7 +65,7 @@ export function initTraceLazy(trace: TraceEntry): TraceState {
   const totalDur = slices.length > 0
     ? slices.reduce((mx, d) => Math.max(mx, (d.ts - slices[0].ts) + d.dur), 0) : 0
   return { trace, cache: null, totalDur, origN: slices.length,
-    sliderValue: Math.min(10, slices.length), currentSeq: [] }
+    sliderValue: slices.length, currentSeq: [] }
 }
 
 export function ensureCache(ts: TraceState) {
@@ -114,7 +114,7 @@ export function switchCluster(id: string) {
 
 export function renameCluster(id: string, name: string) {
   const cl = S.clusters.find(c => c.id === id)
-  if (cl) cl.name = name
+  if (cl && name.trim()) cl.name = name.trim()
   m.redraw()
 }
 

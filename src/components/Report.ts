@@ -1,25 +1,9 @@
 import m from 'mithril'
 import { activeCluster, getLikedTraces, ensureCache, jumpTo } from '../state'
 import type { TraceState } from '../state'
-import { renderMiniCanvas } from './Timeline'
+import { MiniTimeline } from './MiniTimeline'
 import { fmt_dur } from '../utils/format'
 import { state_color, state_label } from '../utils/colors'
-
-const MiniTimeline: m.Component<{ ts: TraceState }> = {
-  oncreate(vnode) {
-    const canvas = vnode.dom.querySelector('canvas') as HTMLCanvasElement
-    ensureCache(vnode.attrs.ts)
-    if (canvas) renderMiniCanvas(canvas, vnode.attrs.ts)
-  },
-  onupdate(vnode) {
-    const canvas = vnode.dom.querySelector('canvas') as HTMLCanvasElement
-    ensureCache(vnode.attrs.ts)
-    if (canvas) renderMiniCanvas(canvas, vnode.attrs.ts)
-  },
-  view() {
-    return m('.overview-mini-canvas', m('canvas'))
-  },
-}
 
 function downloadFile(content: string, filename: string, mime: string) {
   const blob = new Blob([content], { type: mime })

@@ -167,8 +167,10 @@ export const Timeline: m.Component<TimelineAttrs> = {
 
     ;(vnode as any)._hits = hits
     ;(vnode as any)._canvas = canvas
+    ;(vnode as any)._ts = ts
     ;(vnode as any)._resizeHandler = () => {
-      hits = renderCanvas(canvas, ts)
+      const curTs = (vnode as any)._ts as TraceState
+      hits = renderCanvas(canvas, curTs)
       ;(vnode as any)._hits = hits
     }
     window.addEventListener('resize', (vnode as any)._resizeHandler)
@@ -196,15 +198,16 @@ export const Timeline: m.Component<TimelineAttrs> = {
         ['\u00d7merged', String(d._merged), null],
       ]
 
-      const name_display = (d.name ?? 'null')
-        .replace('com.redfin.android.core.activity.launch.deeplink.', '')
+      const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+      const name_display = esc((d.name ?? 'null')
+        .replace('com.redfin.android.core.activity.launch.deeplink.', ''))
 
       tip.innerHTML =
         `<div class="tt-name">${name_display}</div>` +
         `<div class="tt-grid">` +
         rows.map(([k, v, col]) =>
-          `<span class="tt-k">${k}</span>` +
-          `<span class="tt-v"${col ? ` style="color:${col}"` : ''}>${v}</span>`
+          `<span class="tt-k">${esc(String(k))}</span>` +
+          `<span class="tt-v"${col ? ` style="color:${esc(String(col))}"` : ''}>${esc(String(v))}</span>`
         ).join('') +
         `</div>`
 
@@ -226,6 +229,7 @@ export const Timeline: m.Component<TimelineAttrs> = {
 
   onupdate(vnode) {
     const canvas = (vnode as any)._canvas as HTMLCanvasElement
+    ;(vnode as any)._ts = vnode.attrs.ts
     if (canvas) {
       const hits = renderCanvas(canvas, vnode.attrs.ts)
       ;(vnode as any)._hits = hits

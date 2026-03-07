@@ -1,37 +1,19 @@
 import m from 'mithril'
-import { activeCluster, filteredTraces, ensureCache, jumpTo } from '../state'
+import { activeCluster, filteredTraces, jumpTo, recomputeCounts } from '../state'
 import type { TraceState } from '../state'
 import type { OverviewFilter } from '../models/types'
-import { renderMiniCanvas } from './Timeline'
+import { MiniTimeline } from './MiniTimeline'
 import { fmt_dur } from '../utils/format'
-import { state_color, state_label } from '../utils/colors'
 
 const CARD_HEIGHT = 90
 const RENDER_BUFFER = 10
 
-let scrollTop = 0
-let containerHeight = 0
+const scrollState = new Map<string, { top: number; height: number }>()
 const expanded = new Set<string>()
 
 function toggleExpand(uuid: string) {
   if (expanded.has(uuid)) expanded.delete(uuid)
   else expanded.add(uuid)
-}
-
-const MiniTimeline: m.Component<{ ts: TraceState }> = {
-  oncreate(vnode) {
-    const canvas = vnode.dom.querySelector('canvas') as HTMLCanvasElement
-    ensureCache(vnode.attrs.ts)
-    if (canvas) renderMiniCanvas(canvas, vnode.attrs.ts)
-  },
-  onupdate(vnode) {
-    const canvas = vnode.dom.querySelector('canvas') as HTMLCanvasElement
-    ensureCache(vnode.attrs.ts)
-    if (canvas) renderMiniCanvas(canvas, vnode.attrs.ts)
-  },
-  view() {
-    return m('.overview-mini-canvas', m('canvas'))
-  },
 }
 
 const FILTERS: { key: OverviewFilter; label: string }[] = [
@@ -71,6 +53,7 @@ function renderOverviewCard(ts: TraceState, globalIdx: number) {
             const cur = cl.verdicts.get(uuid)
             if (cur === 'like') cl.verdicts.delete(uuid)
             else cl.verdicts.set(uuid, 'like')
+            recomputeCounts(cl)
           },
         }, '\u2714'),
         m('button.btn' + (verdict === 'dislike' ? '.active-dislike' : ''), {
@@ -79,6 +62,7 @@ function renderOverviewCard(ts: TraceState, globalIdx: number) {
             const cur = cl.verdicts.get(uuid)
             if (cur === 'dislike') cl.verdicts.delete(uuid)
             else cl.verdicts.set(uuid, 'dislike')
+            recomputeCounts(cl)
           },
         }, '\u2718'),
         m('button.btn', {
@@ -128,9 +112,10 @@ export const Overview: m.Component = {
 
     const filtered = filteredTraces()
     const { liked, disliked, pending } = cl.counts
+    const ss = scrollState.get(cl.id) || { top: 0, height: 0 }
 
-    const startIdx = Math.max(0, Math.floor(scrollTop / CARD_HEIGHT) - RENDER_BUFFER)
-    const visibleCount = Math.ceil(containerHeight / CARD_HEIGHT) + RENDER_BUFFER * 2
+    const startIdx = Math.max(0, Math.floor(ss.top / CARD_HEIGHT) - RENDER_BUFFER)
+    const visibleCount = Math.ceil(ss.height / CARD_HEIGHT) + RENDER_BUFFER * 2
     const endIdx = Math.min(filtered.length, startIdx + visibleCount)
     const topPad = startIdx * CARD_HEIGHT
     const bottomPad = Math.max(0, (filtered.length - endIdx) * CARD_HEIGHT)
@@ -162,11 +147,11 @@ export const Overview: m.Component = {
       m('.overview-scroll', {
         onscroll: (e: Event) => {
           const el = e.target as HTMLElement
-          scrollTop = el.scrollTop
-          containerHeight = el.clientHeight
+          scrollState.set(cl.id, { top: el.scrollTop, height: el.clientHeight })
         },
         oncreate: (vnode: m.VnodeDOM) => {
-          containerHeight = (vnode.dom as HTMLElement).clientHeight
+          const h = (vnode.dom as HTMLElement).clientHeight
+          if (!scrollState.has(cl.id)) scrollState.set(cl.id, { top: 0, height: h })
         },
       }, [
         topPad > 0 ? m('div', { style: { height: topPad + 'px' } }) : null,

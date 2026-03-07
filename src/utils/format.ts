@@ -5,5 +5,6 @@ export function fmt_dur(ns: number): string {
 }
 
 export function fmt_pct(ns: number, total: number): string {
+  if (total === 0) return '0.0%'
   return (ns / total * 100).toFixed(1) + '%'
 }

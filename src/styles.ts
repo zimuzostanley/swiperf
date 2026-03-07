@@ -377,7 +377,7 @@ textarea.json-area:focus { border-color: var(--accent); }
   background: var(--surface); color: var(--accent); border-color: var(--border);
   border-bottom: 1px solid var(--surface); font-weight: 600;
 }
-.cluster-name { cursor: default; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 160px; }
+.cluster-name { cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 160px; }
 .cluster-count { font-family: var(--mono); font-size: 9px; color: var(--dim); }
 .cluster-close {
   font-size: 14px; line-height: 1; color: var(--muted); background: none; border: none;
