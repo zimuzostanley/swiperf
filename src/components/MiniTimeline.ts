@@ -4,32 +4,33 @@ import { ensureCache } from '../state'
 import { renderMiniCanvas, showTooltip, hideTooltip } from './Timeline'
 import type { HitRect } from './Timeline'
 
+// Store hit rects per canvas element — survives across Mithril lifecycle hooks
+const canvasHits = new WeakMap<HTMLCanvasElement, { hits: HitRect[]; totalDur: number }>()
+
+function doRender(dom: Element, ts: TraceState) {
+  const canvas = dom.querySelector('canvas') as HTMLCanvasElement
+  if (!canvas) return
+  ensureCache(ts)
+  const hits = renderMiniCanvas(canvas, ts)
+  canvasHits.set(canvas, { hits, totalDur: ts.totalDur })
+}
+
 export const MiniTimeline: m.Component<{ ts: TraceState }> = {
   oncreate(vnode) {
-    const canvas = vnode.dom.querySelector('canvas') as HTMLCanvasElement
-    ensureCache(vnode.attrs.ts)
-    let hits: HitRect[] = []
-    if (canvas) hits = renderMiniCanvas(canvas, vnode.attrs.ts) || []
-    ;(vnode.dom as any)._hits = hits
-    ;(vnode.dom as any)._totalDur = vnode.attrs.ts.totalDur
+    doRender(vnode.dom, vnode.attrs.ts)
 
-    if (canvas) {
-      canvas.addEventListener('mousemove', (e: MouseEvent) => {
-        const h = (vnode.dom as any)?._hits || []
-        const td = (vnode.dom as any)?._totalDur || 0
-        showTooltip(e, h, td)
-      })
-      canvas.addEventListener('mouseleave', hideTooltip)
-    }
+    const canvas = vnode.dom.querySelector('canvas') as HTMLCanvasElement
+    if (!canvas) return
+
+    canvas.addEventListener('mousemove', (e: MouseEvent) => {
+      const data = canvasHits.get(e.target as HTMLCanvasElement)
+      if (!data) return
+      showTooltip(e, data.hits, data.totalDur)
+    })
+    canvas.addEventListener('mouseleave', hideTooltip)
   },
   onupdate(vnode) {
-    const canvas = vnode.dom.querySelector('canvas') as HTMLCanvasElement
-    ensureCache(vnode.attrs.ts)
-    if (canvas) {
-      const hits = renderMiniCanvas(canvas, vnode.attrs.ts) || []
-      ;(vnode.dom as any)._hits = hits
-      ;(vnode.dom as any)._totalDur = vnode.attrs.ts.totalDur
-    }
+    doRender(vnode.dom, vnode.attrs.ts)
   },
   view() {
     return m('.overview-mini-canvas', m('canvas'))
