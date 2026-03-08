@@ -4,7 +4,7 @@
  */
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
 import m from 'mithril'
-import { S, addCluster, activeCluster, navigate, setVerdict, switchCluster } from './state'
+import { S, addCluster, activeCluster, navigate, setVerdict, switchCluster, updateSlider, currentTrace, ensureCache } from './state'
 import { App } from './components/App'
 import type { TraceEntry } from './models/types'
 
@@ -186,5 +186,48 @@ describe('smoke test — full app mount with dummy data', () => {
       cl.viewMode = mode
       expect(() => m.redraw.sync()).not.toThrow()
     }
+  })
+
+  it('slider update changes currentSeq and re-renders without errors', () => {
+    addCluster('Slider', [makeTrace('s1', 10)])
+    mount()
+    const ts = currentTrace()!
+    ensureCache(ts)
+    const origLen = ts.currentSeq.length
+
+    // Move slider to compress
+    updateSlider(ts, 3)
+    expect(ts.currentSeq.length).toBeLessThanOrEqual(3)
+    expect(ts.currentSeq.length).toBeLessThan(origLen)
+    expect(() => m.redraw.sync()).not.toThrow()
+
+    // Move slider back to full
+    updateSlider(ts, 10)
+    expect(ts.currentSeq.length).toBe(origLen)
+    expect(() => m.redraw.sync()).not.toThrow()
+  })
+
+  it('theme toggle re-renders without errors', () => {
+    addCluster('Theme', [makeTrace('th1', 8)])
+    mount()
+    // Start in light
+    document.documentElement.setAttribute('data-theme', 'light')
+    expect(() => m.redraw.sync()).not.toThrow()
+    // Toggle to dark
+    document.documentElement.setAttribute('data-theme', 'dark')
+    expect(() => m.redraw.sync()).not.toThrow()
+    // Toggle back
+    document.documentElement.setAttribute('data-theme', 'light')
+    expect(() => m.redraw.sync()).not.toThrow()
+  })
+
+  it('single-trace cluster shows verdict buttons', () => {
+    addCluster('Single', [makeTrace('solo-1')])
+    mount()
+    // Verdict buttons should be present even for single trace
+    const verdictBtns = document.querySelectorAll('.verdict-btn')
+    expect(verdictBtns.length).toBeGreaterThanOrEqual(2)
+    // Nav bar should not show navigation arrows for single trace
+    expect(document.querySelector('.nav-group')).toBeFalsy()
   })
 })

@@ -17,6 +17,10 @@ interface HitRect {
   x: number; y: number; w: number; h: number; d: MergedSlice
 }
 
+// Module-level state — only one full Timeline is visible at a time
+let _currentHits: { hitState: HitRect[]; hitName: HitRect[] } = { hitState: [], hitName: [] }
+let _currentTotalDur = 0
+
 function renderCanvas(canvas: HTMLCanvasElement, ts: TraceState) {
   const seq = ts.currentSeq
   const totalDur = ts.totalDur
@@ -29,7 +33,7 @@ function renderCanvas(canvas: HTMLCanvasElement, ts: TraceState) {
   canvas.height = Math.round(CANVAS_H * dpr)
 
   const ctx = canvas.getContext('2d')
-  if (!ctx) return { hitState: [], hitName: [] }
+  if (!ctx) return
   ctx.scale(dpr, dpr)
 
   const drawW = cssW - LABEL_W - PAD_R
@@ -124,7 +128,9 @@ function renderCanvas(canvas: HTMLCanvasElement, ts: TraceState) {
     ctx.fillText(fmt_dur(totalDur / 10 * i), x, axisY + 14)
   }
 
-  return { hitState, hitName }
+  // Update module-level state for tooltip and resize
+  _currentHits = { hitState, hitName }
+  _currentTotalDur = totalDur
 }
 
 export function renderMiniCanvas(canvas: HTMLCanvasElement, ts: TraceState) {
@@ -156,45 +162,43 @@ export function renderMiniCanvas(canvas: HTMLCanvasElement, ts: TraceState) {
   })
 }
 
+function doRender(dom: Element, ts: TraceState) {
+  const canvas = dom.querySelector('canvas') as HTMLCanvasElement
+  if (canvas) renderCanvas(canvas, ts)
+}
+
 interface TimelineAttrs {
   ts: TraceState
 }
 
 export const Timeline: m.Component<TimelineAttrs> = {
   oncreate(vnode) {
+    doRender(vnode.dom, vnode.attrs.ts)
+
     const canvas = vnode.dom.querySelector('canvas') as HTMLCanvasElement
     const tip = document.getElementById('tip')!
-    const ts = vnode.attrs.ts
-    let hits = renderCanvas(canvas, ts)
 
-    ;(vnode as any)._hits = hits
-    ;(vnode as any)._canvas = canvas
-    ;(vnode as any)._ts = ts
-    ;(vnode as any)._resizeHandler = () => {
-      const curTs = (vnode as any)._ts as TraceState
-      hits = renderCanvas(canvas, curTs)
-      ;(vnode as any)._hits = hits
-    }
-    window.addEventListener('resize', (vnode as any)._resizeHandler)
+    const resizeHandler = () => doRender(vnode.dom, vnode.attrs.ts)
+    window.addEventListener('resize', resizeHandler)
+    // Store on DOM element so onremove can clean up
+    ;(vnode.dom as any)._resizeHandler = resizeHandler
 
     canvas.addEventListener('mousemove', (e: MouseEvent) => {
       const rect = canvas.getBoundingClientRect()
       const mx = e.clientX - rect.left
       const my = e.clientY - rect.top
-      const hits = (vnode as any)._hits as { hitState: HitRect[]; hitName: HitRect[] }
-      const all = [...hits.hitState, ...hits.hitName]
+      const all = [..._currentHits.hitState, ..._currentHits.hitName]
       const hit = all.slice().reverse().find(r =>
         mx >= r.x && mx <= r.x + r.w && my >= r.y && my <= r.y + r.h)
 
       if (!hit) { tip.style.display = 'none'; return }
 
       const d = hit.d
-      const totalDur = vnode.attrs.ts.totalDur
       const rows = [
         ['state', state_label(d), state_color(d)],
         ['io_wait', d.io_wait !== null ? String(d.io_wait) : '\u2014', null],
         ['blocked', d.blocked_function ?? '\u2014', null],
-        ['dur', fmt_dur(d.dur) + '  (' + fmt_pct(d.dur, totalDur) + ')', null],
+        ['dur', fmt_dur(d.dur) + '  (' + fmt_pct(d.dur, _currentTotalDur) + ')', null],
         ['start', '+' + fmt_dur(d.tsRel), null],
         ['depth', d.depth !== null ? String(d.depth) : '\u2014', null],
         ['\u00d7merged', String(d._merged), null],
@@ -230,16 +234,12 @@ export const Timeline: m.Component<TimelineAttrs> = {
   },
 
   onupdate(vnode) {
-    const canvas = (vnode as any)._canvas as HTMLCanvasElement
-    ;(vnode as any)._ts = vnode.attrs.ts
-    if (canvas) {
-      const hits = renderCanvas(canvas, vnode.attrs.ts)
-      ;(vnode as any)._hits = hits
-    }
+    doRender(vnode.dom, vnode.attrs.ts)
   },
 
   onremove(vnode) {
-    window.removeEventListener('resize', (vnode as any)._resizeHandler)
+    const handler = (vnode.dom as any)?._resizeHandler
+    if (handler) window.removeEventListener('resize', handler)
   },
 
   view() {

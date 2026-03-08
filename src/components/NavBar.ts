@@ -5,10 +5,11 @@ import { fmt_dur } from '../utils/format'
 export const NavBar: m.Component = {
   view() {
     const cl = activeCluster()
-    if (!cl || cl.traces.length <= 1) return null
+    if (!cl) return null
     const ts = currentTrace()
     if (!ts) return null
 
+    const multiTrace = cl.traces.length > 1
     const verdict = cl.verdicts.get(ts.trace.trace_uuid) ?? null
     const { liked, disliked, pending } = cl.counts
     const total = cl.traces.length
@@ -16,13 +17,15 @@ export const NavBar: m.Component = {
     const pct = total > 0 ? (triaged / total * 100) : 0
 
     return m('.card', { style: { marginBottom: '14px' } }, [
-      m('.progress-bar-wrap', [
+      // Progress bar — only for multi-trace
+      multiTrace ? m('.progress-bar-wrap', [
         m('.progress-bar-fill', { style: { width: pct.toFixed(1) + '%' } }),
         m('.progress-bar-text', `${triaged}/${total} triaged (${pct.toFixed(0)}%)`),
-      ]),
+      ]) : null,
 
       m('.nav-bar', [
-        m('.nav-group', [
+        // Navigation — only for multi-trace
+        multiTrace ? m('.nav-group', [
           m('button.btn', {
             onclick: () => navigate(-1),
             disabled: cl.currentIndex === 0,
@@ -34,10 +37,11 @@ export const NavBar: m.Component = {
             disabled: cl.currentIndex === total - 1,
             title: 'Next (D)',
           }, ['Next ', m('kbd', 'D')]),
-        ]),
+        ]) : null,
 
-        m('.vdivider'),
+        multiTrace ? m('.vdivider') : null,
 
+        // Trace info
         m('.nav-info', [
           m('span.nav-pkg', ts.trace.package_name),
           m('span.nav-dur', fmt_dur(ts.totalDur)),
@@ -48,6 +52,7 @@ export const NavBar: m.Component = {
 
         m('.vdivider'),
 
+        // Verdict buttons — always shown
         m('.nav-verdict', [
           m('button.verdict-btn' + (verdict === 'like' ? '.active-like' : ''), {
             onclick: () => setVerdict('like'),
@@ -59,21 +64,21 @@ export const NavBar: m.Component = {
           }, [m('kbd', 'S'), ' Nope']),
         ]),
 
-        m('.vdivider'),
-
-        m('.nav-stats', [
+        // Stats — only for multi-trace
+        multiTrace ? m('.vdivider') : null,
+        multiTrace ? m('.nav-stats', [
           m('span.stat-pill.stat-liked', `${liked}`),
           m('span.stat-pill.stat-disliked', `${disliked}`),
           m('span.stat-pill.stat-pending', `${pending}`),
-        ]),
+        ]) : null,
 
-        m('label.auto-advance', [
+        multiTrace ? m('label.auto-advance', [
           m('input[type=checkbox]', {
             checked: cl.autoAdvance,
             onchange: (e: Event) => { cl.autoAdvance = (e.target as HTMLInputElement).checked },
           }),
           'Auto-advance',
-        ]),
+        ]) : null,
       ]),
     ])
   },
