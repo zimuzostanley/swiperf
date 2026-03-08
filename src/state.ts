@@ -21,6 +21,9 @@ export interface Cluster {
   overviewFilter: OverviewFilter
   counts: VerdictCounts
   tableSortState: Record<string, SortState>
+  splitView: boolean
+  splitFilters: [OverviewFilter, OverviewFilter]
+  splitRatio: number
 }
 
 function makeCluster(name: string, traces: TraceState[]): Cluster {
@@ -29,6 +32,9 @@ function makeCluster(name: string, traces: TraceState[]): Cluster {
     verdicts: new Map(), overviewFilter: 'all',
     counts: { positive: 0, negative: 0, pending: traces.length },
     tableSortState: {},
+    splitView: false,
+    splitFilters: ['pending', 'positive'],
+    splitRatio: 0.5,
   }
 }
 
@@ -75,7 +81,6 @@ export function updateSlider(ts: TraceState, value: number) {
 export function addCluster(name: string, entries: TraceEntry[]) {
   const states = entries.map(initTraceLazy)
   const cl = makeCluster(name, states)
-  // Eagerly cache first trace
   if (states.length > 0) ensureCache(states[0])
   S.clusters.push(cl)
   S.activeClusterId = cl.id
@@ -116,14 +121,19 @@ export function setVerdict(cl: Cluster, uuid: string, verdict: Verdict) {
   m.redraw()
 }
 
+export function filterTraces(cl: Cluster, filter: OverviewFilter): TraceState[] {
+  switch (filter) {
+    case 'positive': return cl.traces.filter(ts => cl.verdicts.get(ts.trace.trace_uuid) === 'like')
+    case 'negative': return cl.traces.filter(ts => cl.verdicts.get(ts.trace.trace_uuid) === 'dislike')
+    case 'pending': return cl.traces.filter(ts => !cl.verdicts.has(ts.trace.trace_uuid))
+    default: return cl.traces
+  }
+}
+
 export function filteredTraces(): TraceState[] {
   const cl = activeCluster()
   if (!cl) return []
-  switch (cl.overviewFilter) {
-    case 'positive': return cl.traces.filter(ts => cl.verdicts.get(ts.trace.trace_uuid) === 'like')
-    case 'negative': return cl.traces.filter(ts => cl.verdicts.get(ts.trace.trace_uuid) === 'dislike')
-    default: return cl.traces
-  }
+  return filterTraces(cl, cl.overviewFilter)
 }
 
 export function getPositiveTraces(): TraceState[] {

@@ -12,6 +12,7 @@ function applyTheme(theme: string) {
 function toggleTheme() {
   const current = document.documentElement.getAttribute('data-theme')
   applyTheme(current === 'dark' ? 'light' : 'dark')
+  m.redraw()
 }
 
 let editingClusterId: string | null = null

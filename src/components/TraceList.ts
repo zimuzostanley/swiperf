@@ -1,5 +1,5 @@
 import m from 'mithril'
-import { activeCluster, filteredTraces, ensureCache, setVerdict, updateSlider, recomputeCounts, getPositiveTraces, getNegativeTraces } from '../state'
+import { activeCluster, filteredTraces, filterTraces, ensureCache, setVerdict, updateSlider, recomputeCounts, getPositiveTraces, getNegativeTraces } from '../state'
 import type { TraceState, Cluster } from '../state'
 import type { OverviewFilter } from '../models/types'
 import { MiniTimeline } from './MiniTimeline'
@@ -13,10 +13,11 @@ function toggleExpand(uuid: string) {
   else expanded.add(uuid)
 }
 
-const FILTERS: { id: OverviewFilter; label: string }[] = [
+const ALL_FILTERS: { id: OverviewFilter; label: string }[] = [
   { id: 'all', label: 'All' },
   { id: 'positive', label: 'Positive' },
   { id: 'negative', label: 'Negative' },
+  { id: 'pending', label: 'Pending' },
 ]
 
 function downloadFile(content: string, filename: string, mime: string) {
@@ -29,19 +30,21 @@ function downloadFile(content: string, filename: string, mime: string) {
   URL.revokeObjectURL(url)
 }
 
+function traceExportRow(ts: TraceState) {
+  const row: Record<string, unknown> = {
+    trace_uuid: ts.trace.trace_uuid,
+    package_name: ts.trace.package_name,
+    startup_dur: ts.trace.startup_dur,
+  }
+  if (ts.trace.extra) Object.assign(row, ts.trace.extra)
+  return row
+}
+
 function exportVerdicts() {
   const cl = activeCluster()
   if (!cl) return
-  const pos = getPositiveTraces().map(ts => ({
-    trace_uuid: ts.trace.trace_uuid,
-    package_name: ts.trace.package_name,
-    startup_dur: ts.trace.startup_dur,
-  }))
-  const neg = getNegativeTraces().map(ts => ({
-    trace_uuid: ts.trace.trace_uuid,
-    package_name: ts.trace.package_name,
-    startup_dur: ts.trace.startup_dur,
-  }))
+  const pos = getPositiveTraces().map(traceExportRow)
+  const neg = getNegativeTraces().map(traceExportRow)
   const data = { positive: pos, negative: neg }
   const date = new Date().toISOString().slice(0, 10)
   downloadFile(JSON.stringify(data, null, 2), `swiperf-verdicts-${date}.json`, 'application/json')
@@ -66,50 +69,72 @@ function renderSlider(ts: TraceState) {
   ])
 }
 
+// Fields to surface as metadata chips in card header (order matters)
+const META_CHIP_FIELDS = ['device_name', 'device', 'device_model', 'build_id', 'build_version', 'upload_date', 'upload_time', 'test_environment']
+
+function getMetaChips(ts: TraceState): [string, string][] {
+  const chips: [string, string][] = []
+  chips.push(['dur', fmt_dur(ts.totalDur)])
+  if (ts.trace.startup_dur) chips.push(['startup', fmt_dur(ts.trace.startup_dur)])
+  if (ts.trace.extra) {
+    // Show known important fields first, then any remaining extra fields
+    const shown = new Set<string>()
+    for (const field of META_CHIP_FIELDS) {
+      if (ts.trace.extra[field] != null) {
+        chips.push([field.replace(/_/g, ' '), String(ts.trace.extra[field])])
+        shown.add(field)
+      }
+    }
+    for (const [k, v] of Object.entries(ts.trace.extra)) {
+      if (!shown.has(k) && v != null && String(v).length < 60) {
+        chips.push([k.replace(/_/g, ' '), String(v)])
+      }
+    }
+  }
+  return chips
+}
+
 function renderTraceCard(cl: Cluster, ts: TraceState, idx: number) {
   const uuid = ts.trace.trace_uuid
   const isExpanded = expanded.has(uuid)
   const verdict = cl.verdicts.get(uuid)
   ensureCache(ts)
+  const chips = getMetaChips(ts)
 
   return m('.card.trace-card', {
     class: verdict === 'like' ? 'verdict-positive' : verdict === 'dislike' ? 'verdict-negative' : '',
   }, [
-    // Header row — always visible
     m('.trace-card-header', {
       onclick: () => toggleExpand(uuid),
     }, [
-      m('span.collapse-arrow' + (isExpanded ? '.open' : ''), '\u25b6'),
-      m('span.trace-idx', `#${idx + 1}`),
-      m('span.trace-pkg', ts.trace.package_name),
-      m('span.trace-dur', fmt_dur(ts.totalDur)),
-      ts.trace.startup_dur
-        ? m('span.trace-startup', `startup ${fmt_dur(ts.trace.startup_dur)}`)
-        : null,
-      verdict
-        ? m('span.verdict-badge', {
-            class: verdict === 'like' ? 'badge-positive' : 'badge-negative',
-          }, verdict === 'like' ? '+' : '\u2212')
-        : null,
-      m('span.trace-actions', [
-        m('button.verdict-btn-sm' + (verdict === 'like' ? '.active-positive' : ''), {
-          onclick: (e: Event) => { e.stopPropagation(); setVerdict(cl, uuid, 'like') },
-          title: 'Positive',
-        }, '+'),
-        m('button.verdict-btn-sm' + (verdict === 'dislike' ? '.active-negative' : ''), {
-          onclick: (e: Event) => { e.stopPropagation(); setVerdict(cl, uuid, 'dislike') },
-          title: 'Negative',
-        }, '\u2212'),
+      m('.trace-header-top', [
+        m('span.collapse-arrow' + (isExpanded ? '.open' : ''), '\u25b6'),
+        m('span.trace-idx', `#${idx + 1}`),
+        m('span.trace-pkg', ts.trace.package_name),
+        m('span.trace-actions', [
+          m('button.verdict-btn-sm' + (verdict === 'like' ? '.active-positive' : ''), {
+            onclick: (e: Event) => { e.stopPropagation(); setVerdict(cl, uuid, 'like') },
+            title: 'Positive',
+          }, '+'),
+          m('button.verdict-btn-sm' + (verdict === 'dislike' ? '.active-negative' : ''), {
+            onclick: (e: Event) => { e.stopPropagation(); setVerdict(cl, uuid, 'dislike') },
+            title: 'Negative',
+          }, '\u2212'),
+        ]),
       ]),
+      m('.trace-header-meta', chips.map(([label, val]) =>
+        m('span.meta-chip', [
+          m('span.meta-chip-label', label),
+          m('span.meta-chip-value', val),
+        ])
+      )),
     ]),
 
-    // Mini timeline + slider — always visible
     m('.trace-card-body', [
       m(MiniTimeline, { ts }),
       renderSlider(ts),
     ]),
 
-    // Expanded detail — full timeline + breakdown
     isExpanded ? m('.trace-card-detail', [
       m('.detail-section', [
         m('.detail-label', 'Breakdown'),
@@ -140,6 +165,63 @@ function renderTraceCard(cl: Cluster, ts: TraceState, idx: number) {
   ])
 }
 
+function filterCount(cl: Cluster, filter: OverviewFilter): number {
+  switch (filter) {
+    case 'positive': return cl.counts.positive
+    case 'negative': return cl.counts.negative
+    case 'pending': return cl.counts.pending
+    default: return cl.traces.length
+  }
+}
+
+function renderFilterBar(cl: Cluster, activeFilter: OverviewFilter, onSelect: (f: OverviewFilter) => void) {
+  return m('.list-filters', ALL_FILTERS.map(f =>
+    m('button.filter-btn' + (activeFilter === f.id ? '.active' : ''), {
+      onclick: () => onSelect(f.id),
+    }, [
+      f.label,
+      m('span.filter-count', String(filterCount(cl, f.id))),
+    ])
+  ))
+}
+
+function renderCardList(cl: Cluster, traces: TraceState[]) {
+  return m('.trace-list', traces.map(ts => {
+    const globalIdx = cl.traces.indexOf(ts)
+    return renderTraceCard(cl, ts, globalIdx)
+  }))
+}
+
+// Split view divider drag state
+let _dragging = false
+let _dragClusterId: string | null = null
+
+function onDividerDown(e: MouseEvent, cl: Cluster) {
+  e.preventDefault()
+  _dragging = true
+  _dragClusterId = cl.id
+
+  const onMove = (ev: MouseEvent) => {
+    if (!_dragging) return
+    const container = (e.target as HTMLElement).parentElement as HTMLElement
+    if (!container) return
+    const rect = container.getBoundingClientRect()
+    const ratio = Math.max(0.15, Math.min(0.85, (ev.clientX - rect.left) / rect.width))
+    cl.splitRatio = ratio
+    m.redraw()
+  }
+
+  const onUp = () => {
+    _dragging = false
+    _dragClusterId = null
+    document.removeEventListener('mousemove', onMove)
+    document.removeEventListener('mouseup', onUp)
+  }
+
+  document.addEventListener('mousemove', onMove)
+  document.addEventListener('mouseup', onUp)
+}
+
 export const TraceList: m.Component = {
   view() {
     const cl = activeCluster()
@@ -150,44 +232,73 @@ export const TraceList: m.Component = {
       ])
     }
 
-    const filtered = filteredTraces()
     const { positive, negative, pending } = cl.counts
 
-    return m('.section', [
-      m('.section-head', `Traces (${filtered.length}${filtered.length !== cl.traces.length ? '/' + cl.traces.length : ''})`),
+    // Toolbar
+    const toolbar = m('.card.list-toolbar', [
+      cl.splitView
+        ? m('.list-filters-label', 'Split View')
+        : renderFilterBar(cl, cl.overviewFilter, f => { cl.overviewFilter = f }),
+      m('.list-stats', [
+        m('span.stat-pill.stat-positive', `${positive} +`),
+        m('span.stat-pill.stat-negative', `${negative} \u2212`),
+        m('span.stat-pill.stat-pending', `${pending} ?`),
+      ]),
+      m('.list-actions', [
+        m('button.btn' + (cl.splitView ? '.active-split' : ''), {
+          onclick: () => { cl.splitView = !cl.splitView },
+          title: 'Toggle split view',
+        }, cl.splitView ? 'Single' : 'Split'),
+        m('button.btn.primary', {
+          onclick: exportVerdicts,
+          disabled: positive === 0 && negative === 0,
+        }, 'Export'),
+      ]),
+    ])
 
-      // Toolbar: filter tabs + stats + export
-      m('.card.list-toolbar', [
-        m('.list-filters', FILTERS.map(f =>
-          m('button.filter-btn' + (cl.overviewFilter === f.id ? '.active' : ''), {
-            onclick: () => { cl.overviewFilter = f.id },
-          }, [
-            f.label,
-            m('span.filter-count',
-              f.id === 'all' ? String(cl.traces.length)
-                : f.id === 'positive' ? String(positive)
-                : String(negative)
-            ),
-          ])
-        )),
-        m('.list-stats', [
-          m('span.stat-pill.stat-positive', `${positive} positive`),
-          m('span.stat-pill.stat-negative', `${negative} negative`),
-          m('span.stat-pill.stat-pending', `${pending} pending`),
+    if (!cl.splitView) {
+      // Normal single-panel view
+      const filtered = filteredTraces()
+      return m('.section', [
+        m('.section-head', `Traces (${filtered.length}${filtered.length !== cl.traces.length ? '/' + cl.traces.length : ''})`),
+        toolbar,
+        renderCardList(cl, filtered),
+      ])
+    }
+
+    // Split view
+    const leftTraces = filterTraces(cl, cl.splitFilters[0])
+    const rightTraces = filterTraces(cl, cl.splitFilters[1])
+    const ratio = cl.splitRatio
+
+    return m('.section', [
+      m('.section-head', 'Traces (split view)'),
+      toolbar,
+      m('.split-container', {
+        style: { cursor: _dragging ? 'col-resize' : '' },
+      }, [
+        m('.split-panel', {
+          style: { width: (ratio * 100).toFixed(1) + '%' },
+        }, [
+          m('.split-panel-header', [
+            renderFilterBar(cl, cl.splitFilters[0], f => { cl.splitFilters[0] = f }),
+            m('span.split-count', `${leftTraces.length}`),
+          ]),
+          m('.split-panel-body', renderCardList(cl, leftTraces)),
         ]),
-        m('.list-actions', [
-          m('button.btn.primary', {
-            onclick: exportVerdicts,
-            disabled: positive === 0 && negative === 0,
-          }, 'Export verdicts'),
+        m('.split-divider', {
+          onmousedown: (e: MouseEvent) => onDividerDown(e, cl),
+        }),
+        m('.split-panel', {
+          style: { width: ((1 - ratio) * 100).toFixed(1) + '%' },
+        }, [
+          m('.split-panel-header', [
+            renderFilterBar(cl, cl.splitFilters[1], f => { cl.splitFilters[1] = f }),
+            m('span.split-count', `${rightTraces.length}`),
+          ]),
+          m('.split-panel-body', renderCardList(cl, rightTraces)),
         ]),
       ]),
-
-      // Trace cards
-      m('.trace-list', filtered.map((ts, i) => {
-        const globalIdx = cl.traces.indexOf(ts)
-        return renderTraceCard(cl, ts, globalIdx)
-      })),
     ])
   },
 }

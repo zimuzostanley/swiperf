@@ -245,23 +245,28 @@ textarea.json-area:focus { border-color: var(--accent); }
 .trace-card.verdict-negative { border-color: var(--c-negative); }
 
 .trace-card-header {
-  display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 8px 14px;
+  display: flex; flex-direction: column; gap: 4px; cursor: pointer; padding: 8px 14px;
   border-bottom: 1px solid var(--border); user-select: none;
 }
 .trace-card-header:hover { background: var(--row-hover); }
+.trace-header-top {
+  display: flex; align-items: center; gap: 8px;
+}
 .collapse-arrow { font-size: 10px; color: var(--muted); transition: transform 0.15s; }
 .collapse-arrow.open { transform: rotate(90deg); }
 .trace-idx { font-family: var(--mono); font-size: 10px; color: var(--dim); min-width: 28px; }
-.trace-pkg { font-size: 11px; font-weight: 500; color: var(--bright); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 200px; }
-.trace-dur { font-family: var(--mono); font-size: 10px; color: var(--dim); }
-.trace-startup { font-family: var(--mono); font-size: 10px; color: var(--muted); }
-.verdict-badge {
-  font-size: 11px; font-weight: 700; width: 18px; height: 18px; border-radius: 50%;
-  display: inline-flex; align-items: center; justify-content: center; line-height: 1;
+.trace-pkg { font-size: 11px; font-weight: 500; color: var(--bright); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.trace-actions { margin-left: auto; display: flex; gap: 4px; flex-shrink: 0; }
+
+/* Metadata chips row */
+.trace-header-meta {
+  display: flex; flex-wrap: wrap; gap: 4px 8px; padding-left: 36px;
 }
-.badge-positive { background: var(--c-positive); color: #fff; }
-.badge-negative { background: var(--c-negative); color: #fff; }
-.trace-actions { margin-left: auto; display: flex; gap: 4px; }
+.meta-chip {
+  display: inline-flex; align-items: center; gap: 4px; font-size: 10px; line-height: 1;
+}
+.meta-chip-label { color: var(--muted); font-family: var(--mono); font-size: 9px; }
+.meta-chip-value { color: var(--dim); font-family: var(--mono); }
 
 .trace-card-body { padding: 6px 14px 10px; }
 
@@ -327,5 +332,55 @@ input[type=range]::-webkit-slider-thumb {
   font-family: var(--sans); font-size: 11px; font-weight: 500; color: var(--text);
   background: var(--surface2); border: 1px solid var(--accent); border-radius: 3px;
   padding: 1px 6px; outline: none; width: 120px;
+}
+
+/* Split view button */
+.btn.active-split { background: var(--accent-bg); color: var(--accent); border-color: color-mix(in srgb, var(--accent) 30%, transparent); }
+
+/* Split view label in toolbar */
+.list-filters-label {
+  font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--accent); padding: 4px 0;
+}
+
+/* Split container */
+.split-container {
+  display: flex; width: 100%; min-height: 400px;
+  max-height: calc(100vh - 220px);
+}
+.split-panel {
+  display: flex; flex-direction: column; min-width: 0; overflow: hidden;
+}
+.split-panel-header {
+  display: flex; align-items: center; gap: 8px; padding: 6px 8px;
+  border-bottom: 1px solid var(--border); background: var(--surface);
+  border-radius: 8px 8px 0 0; border: 1px solid var(--border);
+  border-bottom: none; flex-wrap: wrap;
+}
+.split-panel-header .list-filters { gap: 2px; }
+.split-panel-header .filter-btn { padding: 2px 8px; font-size: 10px; }
+.split-panel-header .filter-count { font-size: 8px; padding: 0 3px; min-width: 14px; }
+.split-count {
+  font-family: var(--mono); font-size: 9px; color: var(--dim);
+  margin-left: auto; white-space: nowrap;
+}
+.split-panel-body {
+  flex: 1; overflow-y: auto; padding: 8px;
+  border: 1px solid var(--border); border-radius: 0 0 8px 8px;
+  background: var(--bg);
+}
+.split-panel-body::-webkit-scrollbar { width: 4px; }
+.split-panel-body::-webkit-scrollbar-track { background: transparent; }
+.split-panel-body::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+.split-divider {
+  width: 6px; cursor: col-resize; background: var(--border);
+  flex-shrink: 0; position: relative; margin: 0 1px;
+  transition: background 0.15s;
+}
+.split-divider:hover { background: var(--accent); }
+.split-divider::after {
+  content: ''; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  width: 2px; height: 32px; background: var(--muted); border-radius: 1px;
 }
 `

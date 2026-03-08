@@ -24,7 +24,7 @@ export interface TraceEntry {
 
 export type Verdict = 'like' | 'dislike'
 
-export type OverviewFilter = 'all' | 'positive' | 'negative'
+export type OverviewFilter = 'all' | 'positive' | 'negative' | 'pending'
 
 export interface SortState {
   col: string

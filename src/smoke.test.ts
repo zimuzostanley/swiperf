@@ -180,7 +180,7 @@ describe('smoke test — full app mount with dummy data', () => {
   it('trace list toolbar shows filter buttons and stats', () => {
     addCluster('Test', [makeTrace('t1'), makeTrace('t2')])
     mount()
-    expect(document.querySelectorAll('.filter-btn').length).toBe(3)
+    expect(document.querySelectorAll('.filter-btn').length).toBe(4)
     expect(document.querySelector('.stat-positive')).toBeTruthy()
     expect(document.querySelector('.stat-negative')).toBeTruthy()
     expect(document.querySelector('.stat-pending')).toBeTruthy()
@@ -226,5 +226,46 @@ describe('smoke test — full app mount with dummy data', () => {
     // Back to all
     cl.overviewFilter = 'all'
     expect(() => m.redraw.sync()).not.toThrow()
+  })
+
+  it('split view toggles and renders two panels', () => {
+    addCluster('Split', [makeTrace('s1'), makeTrace('s2'), makeTrace('s3')])
+    mount()
+    const cl = activeCluster()!
+
+    // Toggle split view on
+    cl.splitView = true
+    expect(() => m.redraw.sync()).not.toThrow()
+    expect(document.querySelector('.split-container')).toBeTruthy()
+    expect(document.querySelectorAll('.split-panel').length).toBe(2)
+
+    // Each panel has its own filter bar
+    expect(document.querySelectorAll('.split-panel-header').length).toBe(2)
+
+    // Set verdicts and change split filters
+    setVerdict(cl, 's1', 'like')
+    setVerdict(cl, 's2', 'dislike')
+    expect(() => m.redraw.sync()).not.toThrow()
+    cl.splitFilters = ['positive', 'negative']
+    expect(() => m.redraw.sync()).not.toThrow()
+
+    // Toggle split view off
+    cl.splitView = false
+    expect(() => m.redraw.sync()).not.toThrow()
+    expect(document.querySelector('.split-container')).toBeFalsy()
+  })
+
+  it('split view resize updates ratio', () => {
+    addCluster('Resize', [makeTrace('r1')])
+    mount()
+    const cl = activeCluster()!
+    cl.splitView = true
+    cl.splitRatio = 0.3
+    expect(() => m.redraw.sync()).not.toThrow()
+    const panels = document.querySelectorAll('.split-panel')
+    expect(panels.length).toBe(2)
+    // First panel should reflect the ratio
+    const style = (panels[0] as HTMLElement).style.width
+    expect(style).toContain('30')
   })
 })
