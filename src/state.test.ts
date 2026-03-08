@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import m from 'mithril'
-import { S, addCluster, activeCluster, currentTrace, navigate, setVerdict, removeCluster, switchCluster, filteredTraces, getLikedTraces, recomputeCounts, renameCluster, jumpTo } from './state'
+import { S, addCluster, activeCluster, setVerdict, removeCluster, switchCluster, filteredTraces, getPositiveTraces, getNegativeTraces, recomputeCounts, renameCluster } from './state'
 
 // Mithril's redraw requires mount() — stub it for unit tests
 vi.spyOn(m, 'redraw').mockImplementation(() => {})
@@ -79,55 +79,26 @@ describe('cluster management', () => {
   })
 })
 
-describe('navigation', () => {
-  beforeEach(resetState)
-
-  it('navigate moves currentIndex within bounds', () => {
-    addCluster('test', [makeTrace('a'), makeTrace('b'), makeTrace('c')])
-    const cl = activeCluster()!
-    expect(cl.currentIndex).toBe(0)
-    navigate(1)
-    expect(cl.currentIndex).toBe(1)
-    navigate(1)
-    expect(cl.currentIndex).toBe(2)
-    navigate(1) // should clamp
-    expect(cl.currentIndex).toBe(2)
-    navigate(-1)
-    expect(cl.currentIndex).toBe(1)
-    navigate(-10) // should clamp to 0
-    expect(cl.currentIndex).toBe(0)
-  })
-
-  it('jumpTo sets index and switches to single view', () => {
-    addCluster('test', [makeTrace('a'), makeTrace('b')])
-    const cl = activeCluster()!
-    cl.viewMode = 'overview'
-    jumpTo(1)
-    expect(cl.currentIndex).toBe(1)
-    expect(cl.viewMode).toBe('single')
-  })
-
-  it('jumpTo ignores out-of-range index', () => {
-    addCluster('test', [makeTrace('a')])
-    jumpTo(5)
-    expect(activeCluster()!.currentIndex).toBe(0)
-    jumpTo(-1)
-    expect(activeCluster()!.currentIndex).toBe(0)
-  })
-})
-
 describe('verdicts', () => {
   beforeEach(resetState)
 
-  it('setVerdict toggles on second call', () => {
+  it('setVerdict sets and toggles verdict', () => {
     addCluster('test', [makeTrace('a'), makeTrace('b')])
     const cl = activeCluster()!
-    setVerdict('like')
+    setVerdict(cl, 'a', 'like')
     expect(cl.verdicts.get('a')).toBe('like')
     // calling same verdict again should remove it
-    cl.currentIndex = 0 // reset (auto-advance may have moved it)
-    setVerdict('like')
+    setVerdict(cl, 'a', 'like')
     expect(cl.verdicts.has('a')).toBe(false)
+  })
+
+  it('setVerdict switches from positive to negative', () => {
+    addCluster('test', [makeTrace('a')])
+    const cl = activeCluster()!
+    setVerdict(cl, 'a', 'like')
+    expect(cl.verdicts.get('a')).toBe('like')
+    setVerdict(cl, 'a', 'dislike')
+    expect(cl.verdicts.get('a')).toBe('dislike')
   })
 
   it('recomputeCounts reflects verdicts correctly', () => {
@@ -136,17 +107,9 @@ describe('verdicts', () => {
     cl.verdicts.set('a', 'like')
     cl.verdicts.set('b', 'dislike')
     recomputeCounts(cl)
-    expect(cl.counts.liked).toBe(1)
-    expect(cl.counts.disliked).toBe(1)
+    expect(cl.counts.positive).toBe(1)
+    expect(cl.counts.negative).toBe(1)
     expect(cl.counts.pending).toBe(1)
-  })
-
-  it('auto-advance moves to next pending trace', () => {
-    addCluster('test', [makeTrace('a'), makeTrace('b'), makeTrace('c')])
-    const cl = activeCluster()!
-    cl.autoAdvance = true
-    setVerdict('like') // likes 'a', should auto-advance to 'b'
-    expect(cl.currentIndex).toBe(1)
   })
 })
 
@@ -160,52 +123,48 @@ describe('filteredTraces', () => {
     expect(filteredTraces().length).toBe(2)
   })
 
-  it('returns only liked traces for filter "liked"', () => {
+  it('returns only positive traces for filter "positive"', () => {
     addCluster('test', [makeTrace('a'), makeTrace('b')])
     const cl = activeCluster()!
     cl.verdicts.set('a', 'like')
-    cl.overviewFilter = 'liked'
+    cl.overviewFilter = 'positive'
     expect(filteredTraces().length).toBe(1)
     expect(filteredTraces()[0].trace.trace_uuid).toBe('a')
   })
 
-  it('returns pending traces correctly', () => {
-    addCluster('test', [makeTrace('a'), makeTrace('b'), makeTrace('c')])
+  it('returns only negative traces for filter "negative"', () => {
+    addCluster('test', [makeTrace('a'), makeTrace('b')])
     const cl = activeCluster()!
-    cl.verdicts.set('a', 'like')
-    cl.overviewFilter = 'pending'
-    expect(filteredTraces().length).toBe(2)
+    cl.verdicts.set('b', 'dislike')
+    cl.overviewFilter = 'negative'
+    expect(filteredTraces().length).toBe(1)
+    expect(filteredTraces()[0].trace.trace_uuid).toBe('b')
   })
 })
 
-describe('getLikedTraces', () => {
+describe('getPositiveTraces / getNegativeTraces', () => {
   beforeEach(resetState)
 
-  it('returns only liked traces', () => {
+  it('returns only positive traces', () => {
     addCluster('test', [makeTrace('a'), makeTrace('b'), makeTrace('c')])
     const cl = activeCluster()!
     cl.verdicts.set('a', 'like')
     cl.verdicts.set('b', 'dislike')
-    const liked = getLikedTraces()
-    expect(liked.length).toBe(1)
-    expect(liked[0].trace.trace_uuid).toBe('a')
+    expect(getPositiveTraces().length).toBe(1)
+    expect(getPositiveTraces()[0].trace.trace_uuid).toBe('a')
+  })
+
+  it('returns only negative traces', () => {
+    addCluster('test', [makeTrace('a'), makeTrace('b'), makeTrace('c')])
+    const cl = activeCluster()!
+    cl.verdicts.set('a', 'like')
+    cl.verdicts.set('b', 'dislike')
+    expect(getNegativeTraces().length).toBe(1)
+    expect(getNegativeTraces()[0].trace.trace_uuid).toBe('b')
   })
 
   it('returns empty array when no cluster active', () => {
-    expect(getLikedTraces()).toEqual([])
-  })
-})
-
-describe('currentTrace', () => {
-  beforeEach(resetState)
-
-  it('returns null when no cluster', () => {
-    expect(currentTrace()).toBeNull()
-  })
-
-  it('returns the trace at currentIndex', () => {
-    addCluster('test', [makeTrace('a'), makeTrace('b')])
-    const ts = currentTrace()!
-    expect(ts.trace.trace_uuid).toBe('a')
+    expect(getPositiveTraces()).toEqual([])
+    expect(getNegativeTraces()).toEqual([])
   })
 })

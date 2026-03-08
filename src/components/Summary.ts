@@ -60,10 +60,10 @@ const TableCard: m.Component<TableCardAttrs> = {
     const sorted = sortRows(rows, sort)
 
     const cols = [
-      { key: 'label', label: 'Name' },
-      { key: 'dur', label: 'Duration' },
-      { key: 'pct', label: '%' },
-      { key: 'count', label: 'Count' },
+      { col: 'label', label: 'Name' },
+      { col: 'dur', label: 'Duration' },
+      { col: 'pct', label: '%' },
+      { col: 'count', label: 'Count' },
     ]
 
     function onHeaderClick(col: string) {
@@ -78,11 +78,11 @@ const TableCard: m.Component<TableCardAttrs> = {
           m('thead',
             m('tr', cols.map(c =>
               m('th', {
-                class: sort.col === c.key ? 'sorted' : '',
-                onclick: () => onHeaderClick(c.key),
+                class: sort.col === c.col ? 'sorted' : '',
+                onclick: () => onHeaderClick(c.col),
               }, [
                 c.label, ' ',
-                m('span.sort-arrow', sort.col === c.key ? (sort.dir === -1 ? '\u2193' : '\u2191') : '\u2195'),
+                m('span.sort-arrow', sort.col === c.col ? (sort.dir === -1 ? '\u2193' : '\u2191') : '\u2195'),
               ])
             ))
           ),

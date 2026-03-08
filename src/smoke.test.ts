@@ -1,10 +1,10 @@
 /**
  * Smoke test: mounts the full App with Mithril and dummy data,
- * exercises every view mode, and catches vnode key errors.
+ * exercises the trace list view, and catches vnode key errors.
  */
-import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import m from 'mithril'
-import { S, addCluster, activeCluster, navigate, setVerdict, switchCluster, updateSlider, currentTrace, ensureCache } from './state'
+import { S, addCluster, activeCluster, setVerdict, switchCluster, updateSlider, ensureCache, filteredTraces } from './state'
 import { App } from './components/App'
 import type { TraceEntry } from './models/types'
 
@@ -38,13 +38,11 @@ describe('smoke test — full app mount with dummy data', () => {
   beforeEach(() => {
     resetState()
     document.documentElement.setAttribute('data-theme', 'light')
-    // Ensure #app exists
     if (!document.getElementById('app')) {
       const div = document.createElement('div')
       div.id = 'app'
       document.body.appendChild(div)
     }
-    // Ensure #tip exists (Timeline needs it)
     if (!document.getElementById('tip')) {
       const tip = document.createElement('div')
       tip.id = 'tip'
@@ -66,76 +64,66 @@ describe('smoke test — full app mount with dummy data', () => {
   it('renders single trace without errors', () => {
     addCluster('Test', [makeTrace('single-1')])
     expect(() => mount()).not.toThrow()
-    // Should show timeline section
-    expect(document.querySelector('.single-view')).toBeTruthy()
-    // Cluster tab should appear
+    expect(document.querySelector('.trace-list')).toBeTruthy()
     expect(document.querySelector('.cluster-tab')).toBeTruthy()
   })
 
-  it('renders multiple traces in single view without errors', () => {
+  it('renders multiple traces in trace list without errors', () => {
     addCluster('Multi', [makeTrace('t1'), makeTrace('t2'), makeTrace('t3')])
     expect(() => mount()).not.toThrow()
-    // Nav bar should show for multi-trace
-    expect(document.querySelector('.nav-bar')).toBeTruthy()
-    // Navigate forward
-    navigate(1)
-    expect(() => m.redraw.sync()).not.toThrow()
-    navigate(1)
-    expect(() => m.redraw.sync()).not.toThrow()
+    // Should show trace cards
+    const cards = document.querySelectorAll('.trace-card')
+    expect(cards.length).toBe(3)
   })
 
-  it('switches to overview mode without errors', () => {
+  it('verdict buttons work on trace cards', () => {
     addCluster('Multi', [makeTrace('t1'), makeTrace('t2'), makeTrace('t3')])
     mount()
     const cl = activeCluster()!
-    cl.viewMode = 'overview'
+    // Mark t1 as positive
+    setVerdict(cl, 't1', 'like')
     expect(() => m.redraw.sync()).not.toThrow()
-    expect(document.querySelector('.overview-scroll')).toBeTruthy()
+    expect(cl.counts.positive).toBe(1)
+    // Mark t2 as negative
+    setVerdict(cl, 't2', 'dislike')
+    expect(() => m.redraw.sync()).not.toThrow()
+    expect(cl.counts.negative).toBe(1)
+    expect(cl.counts.pending).toBe(1)
   })
 
-  it('switches to report mode without errors', () => {
+  it('filter tabs work', () => {
     addCluster('Multi', [makeTrace('t1'), makeTrace('t2'), makeTrace('t3')])
     mount()
     const cl = activeCluster()!
-    cl.viewMode = 'report'
-    expect(() => m.redraw.sync()).not.toThrow()
-    expect(document.querySelector('.report-header')).toBeTruthy()
-  })
+    setVerdict(cl, 't1', 'like')
+    setVerdict(cl, 't2', 'dislike')
 
-  it('report with liked traces renders without errors', () => {
-    addCluster('Multi', [makeTrace('t1'), makeTrace('t2'), makeTrace('t3')])
-    mount()
-    setVerdict('like') // likes t1
-    const cl = activeCluster()!
-    cl.viewMode = 'report'
+    // Filter to positive
+    cl.overviewFilter = 'positive'
+    expect(filteredTraces().length).toBe(1)
     expect(() => m.redraw.sync()).not.toThrow()
-    expect(document.querySelector('.report-content')).toBeTruthy()
-  })
 
-  it('verdict toggle and navigation cycle works', () => {
-    addCluster('Multi', [makeTrace('t1'), makeTrace('t2'), makeTrace('t3')])
-    mount()
-    // Like first trace (auto-advances)
-    setVerdict('like')
+    // Filter to negative
+    cl.overviewFilter = 'negative'
+    expect(filteredTraces().length).toBe(1)
     expect(() => m.redraw.sync()).not.toThrow()
-    // Dislike second trace
-    setVerdict('dislike')
-    expect(() => m.redraw.sync()).not.toThrow()
-    // Switch to overview
-    const cl = activeCluster()!
-    cl.viewMode = 'overview'
-    expect(() => m.redraw.sync()).not.toThrow()
-    // Filter to liked
-    cl.overviewFilter = 'liked'
-    expect(() => m.redraw.sync()).not.toThrow()
-    // Filter to disliked
-    cl.overviewFilter = 'disliked'
-    expect(() => m.redraw.sync()).not.toThrow()
-    // Filter to pending
-    cl.overviewFilter = 'pending'
-    expect(() => m.redraw.sync()).not.toThrow()
+
     // Back to all
     cl.overviewFilter = 'all'
+    expect(filteredTraces().length).toBe(3)
+    expect(() => m.redraw.sync()).not.toThrow()
+  })
+
+  it('toggle verdict on/off works', () => {
+    addCluster('Test', [makeTrace('t1')])
+    mount()
+    const cl = activeCluster()!
+    // Set positive
+    setVerdict(cl, 't1', 'like')
+    expect(cl.verdicts.get('t1')).toBe('like')
+    // Toggle off (same verdict again)
+    setVerdict(cl, 't1', 'like')
+    expect(cl.verdicts.has('t1')).toBe(false)
     expect(() => m.redraw.sync()).not.toThrow()
   })
 
@@ -145,63 +133,29 @@ describe('smoke test — full app mount with dummy data', () => {
     addCluster('Cluster B', [makeTrace('b1'), makeTrace('b2'), makeTrace('b3')])
     const idB = S.clusters[1].id
     mount()
-    // Should be on cluster B
     expect(activeCluster()!.name).toBe('Cluster B')
     expect(document.querySelectorAll('.cluster-tab').length).toBe(2)
 
-    // Switch to A
     switchCluster(idA)
     expect(() => m.redraw.sync()).not.toThrow()
     expect(activeCluster()!.name).toBe('Cluster A')
 
-    // Switch back to B
     switchCluster(idB)
     expect(() => m.redraw.sync()).not.toThrow()
-
-    // Set B to overview
-    activeCluster()!.viewMode = 'overview'
-    expect(() => m.redraw.sync()).not.toThrow()
-
-    // Switch to A while B is in overview — A should still be single
-    switchCluster(idA)
-    expect(() => m.redraw.sync()).not.toThrow()
-    expect(document.querySelector('.single-view')).toBeTruthy()
-
-    // Switch back to B — should still be in overview
-    switchCluster(idB)
-    expect(() => m.redraw.sync()).not.toThrow()
-    expect(document.querySelector('.overview-scroll')).toBeTruthy()
   })
 
-  it('all view mode transitions work without key errors', () => {
-    addCluster('Test', [makeTrace('t1'), makeTrace('t2')])
-    mount()
-    const cl = activeCluster()!
-
-    // single -> overview -> report -> single -> report -> overview -> single
-    const transitions: Array<'single' | 'overview' | 'report'> = [
-      'overview', 'report', 'single', 'report', 'overview', 'single'
-    ]
-    for (const mode of transitions) {
-      cl.viewMode = mode
-      expect(() => m.redraw.sync()).not.toThrow()
-    }
-  })
-
-  it('slider update changes currentSeq and re-renders without errors', () => {
+  it('slider update changes currentSeq and re-renders', () => {
     addCluster('Slider', [makeTrace('s1', 10)])
     mount()
-    const ts = currentTrace()!
+    const ts = activeCluster()!.traces[0]
     ensureCache(ts)
     const origLen = ts.currentSeq.length
 
-    // Move slider to compress
     updateSlider(ts, 3)
     expect(ts.currentSeq.length).toBeLessThanOrEqual(3)
     expect(ts.currentSeq.length).toBeLessThan(origLen)
     expect(() => m.redraw.sync()).not.toThrow()
 
-    // Move slider back to full
     updateSlider(ts, 10)
     expect(ts.currentSeq.length).toBe(origLen)
     expect(() => m.redraw.sync()).not.toThrow()
@@ -210,13 +164,8 @@ describe('smoke test — full app mount with dummy data', () => {
   it('theme toggle re-renders without errors', () => {
     addCluster('Theme', [makeTrace('th1', 8)])
     mount()
-    // Start in light
-    document.documentElement.setAttribute('data-theme', 'light')
-    expect(() => m.redraw.sync()).not.toThrow()
-    // Toggle to dark
     document.documentElement.setAttribute('data-theme', 'dark')
     expect(() => m.redraw.sync()).not.toThrow()
-    // Toggle back
     document.documentElement.setAttribute('data-theme', 'light')
     expect(() => m.redraw.sync()).not.toThrow()
   })
@@ -224,10 +173,58 @@ describe('smoke test — full app mount with dummy data', () => {
   it('single-trace cluster shows verdict buttons', () => {
     addCluster('Single', [makeTrace('solo-1')])
     mount()
-    // Verdict buttons should be present even for single trace
-    const verdictBtns = document.querySelectorAll('.verdict-btn')
+    const verdictBtns = document.querySelectorAll('.verdict-btn-sm')
     expect(verdictBtns.length).toBeGreaterThanOrEqual(2)
-    // Nav bar should not show navigation arrows for single trace
-    expect(document.querySelector('.nav-group')).toBeFalsy()
+  })
+
+  it('trace list toolbar shows filter buttons and stats', () => {
+    addCluster('Test', [makeTrace('t1'), makeTrace('t2')])
+    mount()
+    expect(document.querySelectorAll('.filter-btn').length).toBe(3)
+    expect(document.querySelector('.stat-positive')).toBeTruthy()
+    expect(document.querySelector('.stat-negative')).toBeTruthy()
+    expect(document.querySelector('.stat-pending')).toBeTruthy()
+  })
+
+  it('expanding a trace card shows detail without key errors', () => {
+    addCluster('Expand', [makeTrace('e1', 6), makeTrace('e2', 4)])
+    mount()
+    // Click the first card header to expand
+    const header = document.querySelector('.trace-card-header') as HTMLElement
+    expect(header).toBeTruthy()
+    header.click()
+    expect(() => m.redraw.sync()).not.toThrow()
+    // Detail should now be visible
+    expect(document.querySelector('.trace-card-detail')).toBeTruthy()
+    // Collapse it
+    header.click()
+    expect(() => m.redraw.sync()).not.toThrow()
+    expect(document.querySelector('.trace-card-detail')).toBeFalsy()
+  })
+
+  it('expanding multiple cards and toggling verdicts works', () => {
+    addCluster('Multi', [makeTrace('m1'), makeTrace('m2'), makeTrace('m3')])
+    mount()
+    const cl = activeCluster()!
+    // Expand first two cards
+    const headers = document.querySelectorAll('.trace-card-header')
+    ;(headers[0] as HTMLElement).click()
+    expect(() => m.redraw.sync()).not.toThrow()
+    ;(headers[1] as HTMLElement).click()
+    expect(() => m.redraw.sync()).not.toThrow()
+    // Set verdicts while expanded
+    setVerdict(cl, 'm1', 'like')
+    expect(() => m.redraw.sync()).not.toThrow()
+    setVerdict(cl, 'm2', 'dislike')
+    expect(() => m.redraw.sync()).not.toThrow()
+    // Switch filter to positive
+    cl.overviewFilter = 'positive'
+    expect(() => m.redraw.sync()).not.toThrow()
+    // Switch to negative
+    cl.overviewFilter = 'negative'
+    expect(() => m.redraw.sync()).not.toThrow()
+    // Back to all
+    cl.overviewFilter = 'all'
+    expect(() => m.redraw.sync()).not.toThrow()
   })
 })

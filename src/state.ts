@@ -1,5 +1,5 @@
 import m from 'mithril'
-import type { TraceEntry, Slice, MergedSlice, Verdict, ViewMode, OverviewFilter, SortState } from './models/types'
+import type { TraceEntry, Slice, MergedSlice, Verdict, OverviewFilter, SortState } from './models/types'
 import { build_merge_cache, get_compressed } from './models/compression'
 
 export interface TraceState {
@@ -11,27 +11,24 @@ export interface TraceState {
   currentSeq: MergedSlice[]
 }
 
-interface VerdictCounts { liked: number; disliked: number; pending: number }
+interface VerdictCounts { positive: number; negative: number; pending: number }
 
 export interface Cluster {
   id: string
   name: string
   traces: TraceState[]
-  currentIndex: number
   verdicts: Map<string, Verdict>
-  viewMode: ViewMode
   overviewFilter: OverviewFilter
   counts: VerdictCounts
-  autoAdvance: boolean
   tableSortState: Record<string, SortState>
 }
 
 function makeCluster(name: string, traces: TraceState[]): Cluster {
   return {
-    id: crypto.randomUUID(), name, traces, currentIndex: 0,
-    verdicts: new Map(), viewMode: 'single', overviewFilter: 'all',
-    counts: { liked: 0, disliked: 0, pending: traces.length },
-    autoAdvance: true, tableSortState: {},
+    id: crypto.randomUUID(), name, traces,
+    verdicts: new Map(), overviewFilter: 'all',
+    counts: { positive: 0, negative: 0, pending: traces.length },
+    tableSortState: {},
   }
 }
 
@@ -47,17 +44,12 @@ export function activeCluster(): Cluster | null {
   return S.clusters.find(c => c.id === S.activeClusterId) ?? null
 }
 
-export function currentTrace(): TraceState | null {
-  const cl = activeCluster()
-  return cl ? cl.traces[cl.currentIndex] ?? null : null
-}
-
 export function recomputeCounts(cl: Cluster) {
-  let liked = 0, disliked = 0
+  let positive = 0, negative = 0
   for (const v of cl.verdicts.values()) {
-    if (v === 'like') liked++; else if (v === 'dislike') disliked++
+    if (v === 'like') positive++; else if (v === 'dislike') negative++
   }
-  cl.counts = { liked, disliked, pending: cl.traces.length - liked - disliked }
+  cl.counts = { positive, negative, pending: cl.traces.length - positive - negative }
 }
 
 export function initTraceLazy(trace: TraceEntry): TraceState {
@@ -83,6 +75,7 @@ export function updateSlider(ts: TraceState, value: number) {
 export function addCluster(name: string, entries: TraceEntry[]) {
   const states = entries.map(initTraceLazy)
   const cl = makeCluster(name, states)
+  // Eagerly cache first trace
   if (states.length > 0) ensureCache(states[0])
   S.clusters.push(cl)
   S.activeClusterId = cl.id
@@ -107,8 +100,6 @@ export function removeCluster(id: string) {
 
 export function switchCluster(id: string) {
   S.activeClusterId = id
-  const cl = activeCluster()
-  if (cl && cl.traces.length > 0) ensureCache(cl.traces[cl.currentIndex])
   m.redraw()
 }
 
@@ -118,48 +109,9 @@ export function renameCluster(id: string, name: string) {
   m.redraw()
 }
 
-export function navigate(delta: number) {
-  const cl = activeCluster()
-  if (!cl || cl.traces.length === 0) return
-  cl.currentIndex = Math.max(0, Math.min(cl.traces.length - 1, cl.currentIndex + delta))
-  ensureCache(cl.traces[cl.currentIndex])
-  m.redraw()
-}
-
-export function jumpTo(index: number) {
-  const cl = activeCluster()
-  if (!cl || index < 0 || index >= cl.traces.length) return
-  cl.currentIndex = index
-  cl.viewMode = 'single'
-  ensureCache(cl.traces[cl.currentIndex])
-  m.redraw()
-}
-
-function findNextPending(cl: Cluster, from: number): number {
-  for (let i = from + 1; i < cl.traces.length; i++)
-    if (!cl.verdicts.has(cl.traces[i].trace.trace_uuid)) return i
-  for (let i = 0; i <= from; i++)
-    if (!cl.verdicts.has(cl.traces[i].trace.trace_uuid)) return i
-  return -1
-}
-
-export function setVerdict(verdict: Verdict) {
-  const cl = activeCluster()
-  if (!cl) return
-  const t = cl.traces[cl.currentIndex]
-  if (!t) return
-  const uuid = t.trace.trace_uuid
+export function setVerdict(cl: Cluster, uuid: string, verdict: Verdict) {
   if (cl.verdicts.get(uuid) === verdict) { cl.verdicts.delete(uuid) }
-  else {
-    cl.verdicts.set(uuid, verdict)
-    if (cl.autoAdvance && cl.traces.length > 1) {
-      const next = findNextPending(cl, cl.currentIndex)
-      if (next >= 0 && next !== cl.currentIndex) {
-        cl.currentIndex = next
-        ensureCache(cl.traces[cl.currentIndex])
-      }
-    }
-  }
+  else { cl.verdicts.set(uuid, verdict) }
   recomputeCounts(cl)
   m.redraw()
 }
@@ -168,15 +120,20 @@ export function filteredTraces(): TraceState[] {
   const cl = activeCluster()
   if (!cl) return []
   switch (cl.overviewFilter) {
-    case 'liked': return cl.traces.filter(ts => cl.verdicts.get(ts.trace.trace_uuid) === 'like')
-    case 'disliked': return cl.traces.filter(ts => cl.verdicts.get(ts.trace.trace_uuid) === 'dislike')
-    case 'pending': return cl.traces.filter(ts => !cl.verdicts.has(ts.trace.trace_uuid))
+    case 'positive': return cl.traces.filter(ts => cl.verdicts.get(ts.trace.trace_uuid) === 'like')
+    case 'negative': return cl.traces.filter(ts => cl.verdicts.get(ts.trace.trace_uuid) === 'dislike')
     default: return cl.traces
   }
 }
 
-export function getLikedTraces(): TraceState[] {
+export function getPositiveTraces(): TraceState[] {
   const cl = activeCluster()
   if (!cl) return []
   return cl.traces.filter(ts => cl.verdicts.get(ts.trace.trace_uuid) === 'like')
+}
+
+export function getNegativeTraces(): TraceState[] {
+  const cl = activeCluster()
+  if (!cl) return []
+  return cl.traces.filter(ts => cl.verdicts.get(ts.trace.trace_uuid) === 'dislike')
 }

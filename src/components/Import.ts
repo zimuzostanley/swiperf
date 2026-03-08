@@ -194,7 +194,7 @@ function loadDirectory(e: Event) {
 
 function copyCompressed() {
   const cl = activeCluster(); if (!cl) return
-  const ts = cl.traces[cl.currentIndex]; if (!ts) return
+  const ts = cl.traces[0]; if (!ts) return
   const clean = ts.currentSeq.map(({ ts, dur, name, state, depth, io_wait, blocked_function, _merged }) =>
     ({ ts, dur, name, state, depth, io_wait, blocked_function, _merged }))
   navigator.clipboard.writeText(JSON.stringify(clean, null, 2))
