@@ -1725,7 +1725,7 @@ function getFieldValues(cl, field) {
   }
   return [...vals].sort();
 }
-const FILTERABLE_FIELDS = ["package_name", "startup_type", "device_name", "unique_session_name"];
+const FILTERABLE_FIELDS = ["startup_type", "package_name", "device_name", "unique_session_name"];
 function getFilterableFields(cl) {
   return FILTERABLE_FIELDS.filter((field) => {
     const vals = /* @__PURE__ */ new Set();
