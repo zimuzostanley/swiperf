@@ -164,22 +164,65 @@ function tryLoadJson(text: string, clusterName: string) {
   } catch (err: any) { S.importMsg = { text: err.message, ok: false }; m.redraw() }
 }
 
-function parseDelimitedLine(line: string, delimiter: string): string[] {
-  const fields: string[] = []; let current = ''; let inQ = false
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i]
-    if (ch === '"') { inQ = !inQ; continue }
-    if (ch === delimiter && !inQ) { fields.push(current); current = ''; continue }
-    current += ch
+// Split delimited text into rows, respecting quoted fields that may contain
+// newlines, delimiters, and escaped quotes (doubled "").
+export function parseDelimitedRows(text: string, delimiter: string): string[][] {
+  const rows: string[][] = []
+  let fields: string[] = []
+  let current = ''
+  let inQ = false
+  let i = 0
+  while (i < text.length) {
+    const ch = text[i]
+    if (inQ) {
+      if (ch === '"') {
+        if (i + 1 < text.length && text[i + 1] === '"') {
+          // Escaped quote ""
+          current += '"'
+          i += 2
+          continue
+        }
+        // End of quoted field
+        inQ = false
+        i++
+        continue
+      }
+      current += ch
+      i++
+    } else {
+      if (ch === '"' && current === '') {
+        // Start of quoted field
+        inQ = true
+        i++
+      } else if (ch === delimiter) {
+        fields.push(current)
+        current = ''
+        i++
+      } else if (ch === '\n' || ch === '\r') {
+        fields.push(current)
+        current = ''
+        if (ch === '\r' && i + 1 < text.length && text[i + 1] === '\n') i++
+        // Skip empty rows
+        if (fields.some(f => f.trim() !== '')) rows.push(fields)
+        fields = []
+        i++
+      } else {
+        current += ch
+        i++
+      }
+    }
   }
-  fields.push(current); return fields
+  // Last row
+  fields.push(current)
+  if (fields.some(f => f.trim() !== '')) rows.push(fields)
+  return rows
 }
 
 function tryLoadDelimited(text: string, delimiter: string, clusterName: string) {
   try {
-    const lines = text.trim().split('\n')
-    if (lines.length < 2) throw new Error('Need header + data rows')
-    const headers = parseDelimitedLine(lines[0], delimiter)
+    const rows = parseDelimitedRows(text, delimiter)
+    if (rows.length < 2) throw new Error('Need header + data rows')
+    const headers = rows[0]
     const cfg = DEFAULT_COLUMN_CONFIG
     const findCol = (aliases: string[]): number =>
       headers.findIndex(h => aliases.some(a => h.toLowerCase().trim() === a.toLowerCase()))
@@ -190,8 +233,8 @@ function tryLoadDelimited(text: string, delimiter: string, clusterName: string) 
     const durIsMs = durIdx >= 0 && MS_ALIASES.has(headers[durIdx].toLowerCase().trim())
     if (slicesIdx < 0) throw new Error(`Need a column matching: ${cfg.slices.aliases.join(', ')}`)
     const traces: TraceEntry[] = []; let parseErrors = 0
-    for (let i = 1; i < lines.length; i++) {
-      const cols = parseDelimitedLine(lines[i], delimiter)
+    for (let i = 1; i < rows.length; i++) {
+      const cols = rows[i]
       if (!cols[slicesIdx]?.trim()) continue
       let raw = cols[slicesIdx].trim()
       if (!raw.startsWith('[') && !raw.startsWith('{')) { try { raw = atob(raw) } catch {} }

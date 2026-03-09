@@ -49,47 +49,92 @@ describe('field alias resolution', () => {
   })
 })
 
-describe('delimited line parsing', () => {
-  // Replicates parseDelimitedLine from Import.ts
-  function parseDelimitedLine(line: string, delimiter: string): string[] {
-    const fields: string[] = []; let current = ''; let inQ = false
-    for (let i = 0; i < line.length; i++) {
-      const ch = line[i]
-      if (ch === '"') { inQ = !inQ; continue }
-      if (ch === delimiter && !inQ) { fields.push(current); current = ''; continue }
-      current += ch
-    }
-    fields.push(current); return fields
-  }
-
+describe('delimited row parsing', () => {
   it('parses simple TSV', () => {
-    expect(parseDelimitedLine('a\tb\tc', '\t')).toEqual(['a', 'b', 'c'])
+    const rows = parseDelimitedRows('a\tb\tc', '\t')
+    expect(rows).toEqual([['a', 'b', 'c']])
   })
 
   it('parses simple CSV', () => {
-    expect(parseDelimitedLine('a,b,c', ',')).toEqual(['a', 'b', 'c'])
+    const rows = parseDelimitedRows('a,b,c', ',')
+    expect(rows).toEqual([['a', 'b', 'c']])
   })
 
   it('handles quoted fields with delimiter inside', () => {
-    expect(parseDelimitedLine('"a,b",c', ',')).toEqual(['a,b', 'c'])
+    const rows = parseDelimitedRows('"a,b",c', ',')
+    expect(rows).toEqual([['a,b', 'c']])
   })
 
   it('handles quoted fields with tab inside', () => {
-    expect(parseDelimitedLine('"a\tb"\tc', '\t')).toEqual(['a\tb', 'c'])
+    const rows = parseDelimitedRows('"a\tb"\tc', '\t')
+    expect(rows).toEqual([['a\tb', 'c']])
   })
 
   it('handles empty fields', () => {
-    expect(parseDelimitedLine('a,,c', ',')).toEqual(['a', '', 'c'])
+    const rows = parseDelimitedRows('a,,c', ',')
+    expect(rows).toEqual([['a', '', 'c']])
   })
 
   it('handles single field', () => {
-    expect(parseDelimitedLine('abc', ',')).toEqual(['abc'])
+    const rows = parseDelimitedRows('abc', ',')
+    expect(rows).toEqual([['abc']])
+  })
+
+  it('handles escaped quotes (doubled "")', () => {
+    const rows = parseDelimitedRows('a\t"he said ""hello"""\tb', '\t')
+    expect(rows).toEqual([['a', 'he said "hello"', 'b']])
+  })
+
+  it('handles newlines inside quoted fields', () => {
+    const rows = parseDelimitedRows('a\t"line1\nline2"\tb\nc\td\te', '\t')
+    expect(rows).toEqual([
+      ['a', 'line1\nline2', 'b'],
+      ['c', 'd', 'e'],
+    ])
+  })
+
+  it('handles multiple rows', () => {
+    const rows = parseDelimitedRows('h1\th2\nh3\th4', '\t')
+    expect(rows).toEqual([['h1', 'h2'], ['h3', 'h4']])
+  })
+
+  it('handles CRLF line endings', () => {
+    const rows = parseDelimitedRows('a\tb\r\nc\td', '\t')
+    expect(rows).toEqual([['a', 'b'], ['c', 'd']])
+  })
+
+  it('skips empty rows', () => {
+    const rows = parseDelimitedRows('a\tb\n\nc\td', '\t')
+    expect(rows).toEqual([['a', 'b'], ['c', 'd']])
+  })
+
+  it('handles JSON inside quoted TSV field with escaped quotes', () => {
+    // This is how spreadsheets/tools export JSON in TSV: wrap in quotes, double internal quotes
+    const json = '[{"ts":100,"dur":50,"state":"Running"}]'
+    const quoted = json.replace(/"/g, '""')
+    const tsv = `uuid\tslices\nuuid-1\t"${quoted}"`
+    const rows = parseDelimitedRows(tsv, '\t')
+    expect(rows).toHaveLength(2)
+    expect(rows[1][1]).toBe(json)
+    expect(JSON.parse(rows[1][1])).toEqual([{ts:100,dur:50,state:"Running"}])
+  })
+
+  it('handles complex JSON with nested quotes in TSV', () => {
+    const pkg = '{"package_name":"com.foo","debuggable":false}'
+    const slices = '[{"ts":100,"dur":50,"name":null,"state":"Sleeping","depth":null,"io_wait":null,"blocked_function":null}]'
+    const quotedPkg = pkg.replace(/"/g, '""')
+    const quotedSlices = slices.replace(/"/g, '""')
+    const tsv = `trace_uuid\tpackage\tquantized_sequence\nuuid-1\t"${quotedPkg}"\t"${quotedSlices}"`
+    const rows = parseDelimitedRows(tsv, '\t')
+    expect(rows).toHaveLength(2)
+    expect(JSON.parse(rows[1][1])).toEqual(JSON.parse(pkg))
+    expect(JSON.parse(rows[1][2])).toEqual(JSON.parse(slices))
   })
 })
 
 // ── Integration tests using exported functions ──
 
-import { normalizeTrace, normalizeSlice, resolvePackageName, arrayOfArraysToObjects, handleTextInput, repairJson } from './Import'
+import { normalizeTrace, normalizeSlice, resolvePackageName, arrayOfArraysToObjects, handleTextInput, repairJson, parseDelimitedRows } from './Import'
 
 const SAMPLE_SLICES = [
   {"ts":1412782513363902,"dur":37000000.0,"name":null,"state":"Sleeping","depth":null,"io_wait":null,"blocked_function":null},
@@ -258,5 +303,165 @@ describe('JSON array-of-arrays import', () => {
     expect(S.clusters[0].traces).toHaveLength(2)
     expect(S.clusters[0].traces[0].trace.package_name).toBe('com.app1')
     expect(S.clusters[0].traces[1].trace.package_name).toBe('com.app2')
+  })
+})
+
+describe('TSV import', () => {
+  beforeEach(() => {
+    S.clusters = []
+    S.activeClusterId = null
+    S.importMsg = null
+  })
+
+  // Helper: build a TSV string with proper quoting
+  function tsvQuote(val: string): string {
+    if (val.includes('"') || val.includes('\t') || val.includes('\n')) {
+      return '"' + val.replace(/"/g, '""') + '"'
+    }
+    return val
+  }
+  function buildTsv(headers: string[], ...rows: string[][]): string {
+    return [headers.join('\t'), ...rows.map(r => r.map(tsvQuote).join('\t'))].join('\n')
+  }
+
+  it('imports basic TSV with unquoted JSON slices', () => {
+    const slicesJson = JSON.stringify(SAMPLE_SLICES)
+    const tsv = `trace_uuid\tprocess_name\tquantized_sequence\nuuid-1\tcom.test.app\t${slicesJson}`
+    handleTextInput(tsv, 'TSV')
+    expect(S.importMsg?.ok).toBe(true)
+    expect(S.clusters).toHaveLength(1)
+    expect(S.clusters[0].traces).toHaveLength(1)
+    expect(S.clusters[0].traces[0].trace.trace_uuid).toBe('uuid-1')
+    expect(S.clusters[0].traces[0].trace.package_name).toBe('com.test.app')
+    expect(S.clusters[0].traces[0].trace.slices).toHaveLength(3)
+  })
+
+  it('imports TSV with quoted JSON slices (escaped double quotes)', () => {
+    const slicesJson = JSON.stringify(SAMPLE_SLICES)
+    const tsv = buildTsv(
+      ['trace_uuid', 'process_name', 'quantized_sequence'],
+      ['uuid-1', 'com.test.app', slicesJson],
+    )
+    handleTextInput(tsv, 'TSV')
+    expect(S.importMsg?.ok).toBe(true)
+    expect(S.clusters).toHaveLength(1)
+    expect(S.clusters[0].traces[0].trace.slices).toHaveLength(3)
+    expect(S.clusters[0].traces[0].trace.slices[0].state).toBe('Sleeping')
+  })
+
+  it('imports TSV with JSON-encoded package column', () => {
+    const pkg = '{"package_name":"com.facebook.katana","apk_version_code":"468818445"}'
+    const tsv = buildTsv(
+      ['trace_uuid', 'package', 'quantized_sequence'],
+      ['uuid-1', pkg, JSON.stringify(SAMPLE_SLICES)],
+    )
+    handleTextInput(tsv, 'TSV')
+    expect(S.importMsg?.ok).toBe(true)
+    expect(S.clusters[0].traces[0].trace.package_name).toBe('com.facebook.katana')
+  })
+
+  it('imports TSV with all metadata columns', () => {
+    const tsv = buildTsv(
+      ['trace_address', 'device_name', 'build_id', 'upload_date', 'trace_uuid', 'process_name', 'package', 'startup_id', 'startup_type', 'quantized_sequence'],
+      ['/some/path', 'blue', 'UP1A', '2026-03-04', 'uuid-1', 'com.test',
+       '{"package_name":"com.test"}', '15', 'hot', JSON.stringify(SAMPLE_SLICES)],
+    )
+    handleTextInput(tsv, 'TSV')
+    expect(S.importMsg?.ok).toBe(true)
+    const t = S.clusters[0].traces[0]
+    expect(t.trace.trace_uuid).toBe('uuid-1')
+    expect(t.trace.package_name).toBe('com.test')
+    expect(t.trace.extra?.device_name).toBe('blue')
+    expect(t.trace.extra?.startup_type).toBe('hot')
+    expect(t.trace.extra?.startup_id).toBe('15')
+  })
+
+  it('imports TSV with multiple rows', () => {
+    const tsv = buildTsv(
+      ['trace_uuid', 'process_name', 'quantized_sequence'],
+      ['uuid-1', 'com.app1', JSON.stringify(SAMPLE_SLICES)],
+      ['uuid-2', 'com.app2', JSON.stringify(SAMPLE_SLICES)],
+      ['uuid-3', 'com.app3', JSON.stringify(SAMPLE_SLICES)],
+    )
+    handleTextInput(tsv, 'TSV')
+    expect(S.importMsg?.ok).toBe(true)
+    expect(S.clusters[0].traces).toHaveLength(3)
+  })
+
+  it('imports TSV with startup_dur_ms column (converts to ns)', () => {
+    const tsv = buildTsv(
+      ['trace_uuid', 'process_name', 'startup_dur_ms', 'quantized_sequence'],
+      ['uuid-1', 'com.test', '1500', JSON.stringify(SAMPLE_SLICES)],
+    )
+    handleTextInput(tsv, 'TSV')
+    expect(S.importMsg?.ok).toBe(true)
+    expect(S.clusters[0].traces[0].trace.startup_dur).toBe(1500 * 1e6)
+  })
+
+  it('handles TSV with CRLF line endings', () => {
+    const slicesJson = JSON.stringify(SAMPLE_SLICES)
+    const tsv = `trace_uuid\tprocess_name\tquantized_sequence\r\nuuid-1\tcom.test\t${slicesJson}`
+    handleTextInput(tsv, 'TSV')
+    expect(S.importMsg?.ok).toBe(true)
+    expect(S.clusters).toHaveLength(1)
+  })
+
+  it('imports same data as TSV and JSON with identical results', () => {
+    const slicesJson = JSON.stringify(SAMPLE_SLICES)
+
+    // JSON import
+    const jsonData = [
+      ['trace_uuid', 'process_name', 'device_name', 'quantized_sequence'],
+      ['uuid-1', 'com.test', 'pixel', slicesJson],
+    ]
+    handleTextInput(JSON.stringify(jsonData), 'JSON')
+    const jsonTrace = S.clusters[0].traces[0]
+
+    // TSV import
+    const tsv = buildTsv(
+      ['trace_uuid', 'process_name', 'device_name', 'quantized_sequence'],
+      ['uuid-1', 'com.test', 'pixel', slicesJson],
+    )
+    handleTextInput(tsv, 'TSV')
+    const tsvTrace = S.clusters[1].traces[0]
+
+    expect(tsvTrace.trace.trace_uuid).toBe(jsonTrace.trace.trace_uuid)
+    expect(tsvTrace.trace.package_name).toBe(jsonTrace.trace.package_name)
+    expect(tsvTrace.trace.slices).toEqual(jsonTrace.trace.slices)
+    expect(tsvTrace.trace.extra?.device_name).toBe(jsonTrace.trace.extra?.device_name)
+  })
+
+  it('handles TSV where JSON field has newlines inside quoted value', () => {
+    // Some tools may format JSON with newlines inside a quoted TSV field
+    const slices = '[\n{"ts":100,"dur":50,"state":"Running"}\n]'
+    const tsv = `trace_uuid\tquantized_sequence\nuuid-1\t"${slices.replace(/"/g, '""')}"`
+    handleTextInput(tsv, 'TSV')
+    expect(S.importMsg?.ok).toBe(true)
+    expect(S.clusters[0].traces[0].trace.slices).toHaveLength(1)
+  })
+
+  it('skips rows with empty slices column gracefully', () => {
+    const tsv = buildTsv(
+      ['trace_uuid', 'process_name', 'quantized_sequence'],
+      ['uuid-1', 'com.app1', JSON.stringify(SAMPLE_SLICES)],
+      ['uuid-2', 'com.app2', ''],
+      ['uuid-3', 'com.app3', JSON.stringify(SAMPLE_SLICES)],
+    )
+    handleTextInput(tsv, 'TSV')
+    expect(S.importMsg?.ok).toBe(true)
+    expect(S.clusters[0].traces).toHaveLength(2)
+  })
+
+  it('handles TSV with truncated JSON slices (auto-repair)', () => {
+    const slicesJson = JSON.stringify(SAMPLE_SLICES)
+    // Remove trailing ] — repairJson should close it
+    const truncated = slicesJson.slice(0, -1)
+    const tsv = buildTsv(
+      ['trace_uuid', 'process_name', 'quantized_sequence'],
+      ['uuid-1', 'com.test', truncated],
+    )
+    handleTextInput(tsv, 'TSV')
+    expect(S.importMsg?.ok).toBe(true)
+    expect(S.clusters[0].traces).toHaveLength(1)
   })
 })
