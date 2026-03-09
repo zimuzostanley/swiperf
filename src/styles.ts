@@ -2,11 +2,11 @@ export const CSS = `
 :root {
   --mono: 'IBM Plex Mono', monospace;
   --sans: 'Geist', sans-serif;
-  --c-running:        #357b34;
-  --c-runnable:       #99b93a;
-  --c-preempted:      #99b93a;
-  --c-unint-io:       #e65100;
-  --c-unint-nonio:    #a25c58;
+  --c-running:        #317d31;
+  --c-runnable:       #99ba36;
+  --c-preempted:      #99ba36;
+  --c-unint-io:       #ff9900;
+  --c-unint-nonio:    #a25b57;
   --c-sleeping-dark:  #2a2a3a;
   --c-sleeping-light: #c8ccd8;
   --c-positive:       #2e7d32;

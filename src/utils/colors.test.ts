@@ -1,10 +1,27 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { state_color, state_label, name_color } from './colors'
+import { state_color, state_label, name_color, perfetto_hash } from './colors'
 
 // Mock document for isDark() — default to light theme
 beforeEach(() => {
   if (typeof document === 'undefined') return
   document.documentElement.setAttribute('data-theme', 'light')
+})
+
+describe('perfetto_hash', () => {
+  it('matches Perfetto FNV-1a with 28-bit init', () => {
+    // Verified against Perfetto's hash.ts implementation
+    // Init: 0x811c9dc5 & 0xfffffff = 0x011c9dc5
+    expect(perfetto_hash('doWork', 18)).toBe(14)
+    expect(perfetto_hash('bindApplication', 18)).toBe(2)
+    expect(perfetto_hash('activityStart', 18)).toBe(0)
+    expect(perfetto_hash('inflate', 18)).toBe(4)
+    expect(perfetto_hash('draw', 18)).toBe(8)
+    expect(perfetto_hash('choreographer', 18)).toBe(12)
+  })
+
+  it('is deterministic', () => {
+    expect(perfetto_hash('test', 100)).toBe(perfetto_hash('test', 100))
+  })
 })
 
 describe('state_label', () => {
@@ -26,15 +43,28 @@ describe('state_label', () => {
 })
 
 describe('state_color', () => {
-  it('returns correct colors for known states', () => {
-    expect(state_color({ state: 'Running', io_wait: null })).toBe('#357b34')
-    expect(state_color({ state: 'Runnable', io_wait: null })).toBe('#99b93a')
-    expect(state_color({ state: 'Runnable (Preempted)', io_wait: null })).toBe('#99b93a')
+  it('matches Perfetto HSL values for thread states', () => {
+    // Running = HSL(120, 44, 34) = #317d31
+    expect(state_color({ state: 'Running', io_wait: null })).toBe('#317d31')
+    // Runnable = HSL(75, 55, 47) = #99ba36
+    expect(state_color({ state: 'Runnable', io_wait: null })).toBe('#99ba36')
+    expect(state_color({ state: 'Runnable (Preempted)', io_wait: null })).toBe('#99ba36')
   })
 
-  it('distinguishes IO wait for uninterruptible sleep', () => {
-    expect(state_color({ state: 'Uninterruptible Sleep', io_wait: 1 })).toBe('#e65100')
-    expect(state_color({ state: 'Uninterruptible Sleep', io_wait: 0 })).toBe('#a25c58')
+  it('matches Perfetto for uninterruptible sleep', () => {
+    // IO wait = HSL(36, 100, 50) = #ff9900 (ORANGE)
+    expect(state_color({ state: 'Uninterruptible Sleep', io_wait: 1 })).toBe('#ff9900')
+    // non-IO = HSL(3, 30, 49) = #a25b57 (DESAT_RED)
+    expect(state_color({ state: 'Uninterruptible Sleep', io_wait: 0 })).toBe('#a25b57')
+  })
+
+  it('returns white for Sleeping in light mode', () => {
+    expect(state_color({ state: 'Sleeping', io_wait: null })).toBe('#ffffff')
+  })
+
+  it('handles Created, Dead, Unknown states', () => {
+    // Created = HSL(0, 0, 70) = #b3b3b3
+    expect(state_color({ state: 'Created', io_wait: null })).toBe('#b3b3b3')
   })
 })
 
@@ -54,11 +84,17 @@ describe('name_color', () => {
   })
 
   it('different names can produce different colors', () => {
-    // Not guaranteed but highly likely for distinct names
     const a = name_color('alpha')
     const b = name_color('zeta')
-    // Just check they're both valid hex
     expect(a).toMatch(/^#[0-9a-f]{6}$/)
     expect(b).toMatch(/^#[0-9a-f]{6}$/)
+  })
+
+  it('uses Perfetto hash to pick from MD palette', () => {
+    // 'draw' hashes to index 8 in Perfetto → MD_PALETTE[8] = HSL(174, 80, 29)
+    const c = name_color('draw')
+    expect(c).toMatch(/^#[0-9a-f]{6}$/)
+    // Verify it's the same on repeated calls (cache)
+    expect(name_color('draw')).toBe(c)
   })
 })

@@ -1,6 +1,9 @@
 import type { MergedSlice } from '../models/types'
 
-// HSLuv minimal port (Apache 2.0)
+// ── HSLuv minimal port (Apache 2.0) ──
+// Used for the procedural hue-based palette, NOT for the MD palette or
+// thread states (those use standard HSL, matching Perfetto exactly).
+
 class Hsluv {
   hex = '#000000'
   rgb_r = 0; rgb_g = 0; rgb_b = 0
@@ -77,54 +80,104 @@ class Hsluv {
   hsluvToHex() { this.hsluvToLch(); this.lchToLuv(); this.luvToXyz(); this.xyzToRgb(); this.rgbToHex() }
 }
 
-const MD_PALETTE_HSLUV: [number, number, number][] = [
+// ── Standard HSL → hex (matches Perfetto's hslToRgb exactly) ──
+
+function hslToHex(h: number, s: number, l: number): string {
+  s /= 100; l /= 100
+  const c = (1 - Math.abs(2 * l - 1)) * s
+  const x = c * (1 - Math.abs(((h / 60) % 2) - 1))
+  const m = l - c / 2
+  let r = 0, g = 0, b = 0
+  if (h < 60) { r = c; g = x }
+  else if (h < 120) { r = x; g = c }
+  else if (h < 180) { g = c; b = x }
+  else if (h < 240) { g = x; b = c }
+  else if (h < 300) { r = x; b = c }
+  else { r = c; b = x }
+  const ri = Math.round((r + m) * 255)
+  const gi = Math.round((g + m) * 255)
+  const bi = Math.round((b + m) * 255)
+  return '#' + [ri, gi, bi].map(v => v.toString(16).padStart(2, '0')).join('')
+}
+
+// ── FNV-1a hash — exact Perfetto implementation ──
+// Note: Perfetto uses 0xfffffff (28-bit mask) for the initial value,
+// NOT 0xffffffff. This produces different results from standard FNV-1a.
+
+export function perfetto_hash(s: string, max: number): number {
+  let h = 0x811c9dc5 & 0xfffffff
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i)
+    h = (h * 16777619) & 0xffffffff
+  }
+  return Math.abs(h) % max
+}
+
+// ── Material Design palette — standard HSL, desaturated by 20 ──
+// Matches Perfetto's MD_PALETTE_RAW.map(c => c.desaturate(20))
+
+const MD_PALETTE_HSL: [number, number, number][] = [
   [4, 90, 58], [340, 82, 52], [291, 64, 42], [262, 52, 47], [231, 48, 48], [207, 90, 54],
   [199, 98, 48], [187, 100, 42], [174, 100, 29], [122, 39, 49], [88, 50, 53], [66, 70, 54],
   [45, 100, 51], [36, 100, 50], [14, 100, 57], [16, 25, 38], [200, 18, 46], [54, 100, 62],
 ]
 
+// Pre-computed: MD_PALETTE_HSL with saturation reduced by 20 → hex
+const MD_PALETTE_HEX: string[] = MD_PALETTE_HSL.map(
+  ([h, s, l]) => hslToHex(h, Math.max(0, s - 20), l),
+)
+
 const _name_color_cache = new Map<string, string>()
 
-function perfetto_hash(s: string, max: number): number {
-  let h = 0x811c9dc5 & 0xffffffff
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i)
-    h = Math.imul(h, 16777619) & 0xffffffff
-  }
-  return Math.abs(h) % max
-}
-
+/**
+ * Assign a color to a slice/function name using Perfetto's exact algorithm:
+ * 1. Strip trailing digits from name
+ * 2. FNV-1a hash with Perfetto's init value → index into 18-color MD palette
+ * 3. MD palette values are standard HSL, desaturated by 20
+ */
 export function name_color(name: string): string {
   const seed = name.replace(/( )?\d+/g, '')
   if (_name_color_cache.has(seed)) return _name_color_cache.get(seed)!
-  const idx = perfetto_hash(seed, MD_PALETTE_HSLUV.length)
-  const [ph, ps, pl] = MD_PALETTE_HSLUV[idx]
-  const conv = new Hsluv()
-  conv.hsluv_h = ph
-  conv.hsluv_s = Math.max(0, ps - 20)
-  conv.hsluv_l = pl
-  conv.hsluvToHex()
-  _name_color_cache.set(seed, conv.hex)
-  return conv.hex
+  const idx = perfetto_hash(seed, MD_PALETTE_HEX.length)
+  const hex = MD_PALETTE_HEX[idx]
+  _name_color_cache.set(seed, hex)
+  return hex
 }
 
 export function isDark(): boolean {
   return document.documentElement.getAttribute('data-theme') === 'dark'
 }
 
+// ── Thread state colors — standard HSL, matches Perfetto exactly ──
+// Source: perfetto/ui/src/plugins/dev.perfetto.Sched/common.ts
+
+const STATE_RUNNING      = hslToHex(120, 44, 34)  // DARK_GREEN
+const STATE_RUNNABLE     = hslToHex(75, 55, 47)   // LIME_GREEN
+const STATE_IO_WAIT      = hslToHex(36, 100, 50)  // ORANGE
+const STATE_NONIO        = hslToHex(3, 30, 49)    // DESAT_RED
+const STATE_CREATED      = hslToHex(0, 0, 70)     // LIGHT_GRAY
+const STATE_UNKNOWN      = hslToHex(44, 63, 91)   // OFF_WHITE_YELLOW
+const STATE_DEAD         = hslToHex(0, 0, 62)     // GRAY
+const STATE_INDIGO       = hslToHex(231, 48, 48)  // INDIGO (default)
+
 export function state_color(d: { state: string | null; io_wait: number | null }): string {
-  const dark = isDark()
-  switch (d.state) {
-    case 'Running': return '#357b34'
-    case 'Runnable': return '#99b93a'
-    case 'Runnable (Preempted)': return '#99b93a'
-    case 'Uninterruptible Sleep':
-      return (d.io_wait === 1) ? '#e65100' : '#a25c58'
-    case 'Sleeping':
-      return dark ? '#2a2a3a' : '#c8ccd8'
-    default:
-      return dark ? '#44444e' : '#aaaaaa'
+  const s = d.state
+  if (!s) return isDark() ? '#44444e' : STATE_UNKNOWN
+  if (s === 'Created') return STATE_CREATED
+  if (s === 'Running') return STATE_RUNNING
+  if (s.startsWith('Runnable')) return STATE_RUNNABLE
+  if (s.includes('Uninterruptible Sleep')) {
+    // Perfetto uses combined strings like 'Uninterruptible Sleep (non-IO)';
+    // swiperf stores io_wait as a separate field
+    if (s.includes('non-IO') || d.io_wait === 0) return STATE_NONIO
+    return STATE_IO_WAIT
   }
+  if (s.includes('Dead')) return STATE_DEAD
+  if (s.includes('Sleeping') || s.includes('Idle')) {
+    return isDark() ? '#2a2a3a' : '#ffffff'
+  }
+  if (s.includes('Unknown')) return STATE_UNKNOWN
+  return STATE_INDIGO
 }
 
 export function state_label(d: { state: string | null; io_wait: number | null }): string {
