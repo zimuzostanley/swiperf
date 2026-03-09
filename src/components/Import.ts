@@ -5,12 +5,12 @@ import { S, loadSingleJson, loadMultipleTraces, activeCluster, exportSession, im
 
 let _debounce: ReturnType<typeof setTimeout> | null = null
 
-function resolveField<T>(obj: Record<string, any>, aliases: string[], fallback: T | (() => T)): T {
+export function resolveField<T>(obj: Record<string, any>, aliases: string[], fallback: T | (() => T)): T {
   for (const alias of aliases) { if (obj[alias] !== undefined) return obj[alias] as T }
   return typeof fallback === 'function' ? (fallback as () => T)() : fallback
 }
 
-function normalizeSlice(raw: Record<string, any>): Slice {
+export function normalizeSlice(raw: Record<string, any>): Slice {
   const cfg = DEFAULT_SLICE_FIELD_CONFIG
   return {
     ts: resolveField(raw, cfg.ts.aliases, cfg.ts.fallback),
@@ -24,7 +24,7 @@ function normalizeSlice(raw: Record<string, any>): Slice {
 }
 
 // If a package_name value is a JSON string like '{"package_name":"com.foo",...}', extract the real name
-function resolvePackageName(raw: Record<string, any>): string {
+export function resolvePackageName(raw: Record<string, any>): string {
   const cfg = DEFAULT_COLUMN_CONFIG
   const val = resolveField(raw, cfg.package_name.aliases, cfg.package_name.fallback)
   if (typeof val === 'string' && val.startsWith('{')) {
@@ -37,7 +37,7 @@ function resolvePackageName(raw: Record<string, any>): string {
 }
 
 // Convert array-of-arrays [[header,...], [val,...], ...] to array-of-objects
-function arrayOfArraysToObjects(arr: any[][]): Record<string, any>[] {
+export function arrayOfArraysToObjects(arr: any[][]): Record<string, any>[] {
   const headers = arr[0] as string[]
   return arr.slice(1).map(row => {
     const obj: Record<string, any> = {}
@@ -46,7 +46,7 @@ function arrayOfArraysToObjects(arr: any[][]): Record<string, any>[] {
   })
 }
 
-function normalizeTrace(raw: Record<string, any>): TraceEntry | null {
+export function normalizeTrace(raw: Record<string, any>): TraceEntry | null {
   const cfg = DEFAULT_COLUMN_CONFIG
   const rawSlices = resolveField<any>(raw, cfg.slices.aliases, cfg.slices.fallback)
   let slices: Slice[]
@@ -173,7 +173,7 @@ function tryLoadDelimited(text: string, delimiter: string, clusterName: string) 
   } catch (err: any) { S.importMsg = { text: err.message, ok: false }; m.redraw() }
 }
 
-function handleTextInput(text: string, clusterName: string) {
+export function handleTextInput(text: string, clusterName: string) {
   text = text.trim(); if (!text) return
   if (text.startsWith('[') || text.startsWith('{')) { tryLoadJson(text, clusterName) }
   else {
