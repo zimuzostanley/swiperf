@@ -2133,10 +2133,10 @@ function loadFromFile(e) {
 }
 function loadMultipleFiles(files) {
   var _a;
-  const traces = [];
   let loaded = 0;
   const total = files.length;
-  const name = total > 1 ? `${total} files` : ((_a = files[0]) == null ? void 0 : _a.name.replace(/\.\w+$/, "")) || "Import";
+  let totalTraces = 0;
+  total > 1 ? `${total} files` : ((_a = files[0]) == null ? void 0 : _a.name.replace(/\.\w+$/, "")) || "Import";
   Array.from(files).forEach((file) => {
     if (!file.name.match(/\.(json|txt|tsv|csv)$/i)) {
       loaded++;
@@ -2146,13 +2146,11 @@ function loadMultipleFiles(files) {
     const reader = new FileReader();
     reader.onload = (ev) => {
       var _a2;
-      try {
-        const parsed = JSON.parse((_a2 = ev.target) == null ? void 0 : _a2.result);
-        const trace = normalizeTrace(
-          Array.isArray(parsed) ? { slices: parsed, trace_uuid: file.name.replace(/\.\w+$/, "") } : parsed
-        );
-        if (trace) traces.push(trace);
-      } catch {
+      const text = (((_a2 = ev.target) == null ? void 0 : _a2.result) || "").trim();
+      if (text) {
+        const before = S.clusters.length;
+        handleTextInput(text, file.name.replace(/\.\w+$/, ""));
+        if (S.clusters.length > before) totalTraces += S.clusters[S.clusters.length - 1].traces.length;
       }
       loaded++;
       check();
@@ -2161,9 +2159,8 @@ function loadMultipleFiles(files) {
   });
   function check() {
     if (loaded < total) return;
-    if (traces.length) {
-      loadMultipleTraces(name, traces);
-      S.importMsg = { text: `Loaded ${traces.length} traces from ${total} files`, ok: true };
+    if (totalTraces > 0) {
+      S.importMsg = { text: `Loaded ${totalTraces} traces from ${total} files`, ok: true };
     } else {
       S.importMsg = { text: "No valid traces found", ok: false };
     }
