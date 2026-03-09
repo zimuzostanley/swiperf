@@ -144,7 +144,7 @@ function applyPropFilters(cl: Cluster, traces: TraceState[]): TraceState[] {
   if (cl.propFilters.size === 0) return traces
   return traces.filter(ts => {
     for (const [field, allowed] of cl.propFilters) {
-      const val = String(ts.trace.extra?.[field] ?? '')
+      const val = traceFieldValue(ts, field)
       if (!allowed.has(val)) return false
     }
     return true
@@ -188,24 +188,30 @@ export function getNegativeTraces(): TraceState[] {
   return cl.traces.filter(ts => cl.verdicts.get(ts._key) === 'dislike')
 }
 
-// Collect unique values for a given extra field across all traces
+// Resolve a filterable field value — checks top-level trace fields first, then extra
+function traceFieldValue(ts: TraceState, field: string): string {
+  if (field in ts.trace) return String((ts.trace as any)[field] ?? '')
+  return String(ts.trace.extra?.[field] ?? '')
+}
+
+// Collect unique values for a given field across all traces
 export function getFieldValues(cl: Cluster, field: string): string[] {
   const vals = new Set<string>()
   for (const ts of cl.traces) {
-    vals.add(String(ts.trace.extra?.[field] ?? ''))
+    vals.add(traceFieldValue(ts, field))
   }
   return [...vals].sort()
 }
 
 // Only these fields appear in the filter dropdown
-const FILTERABLE_FIELDS = ['device_name', 'unique_session_name', 'startup_type']
+const FILTERABLE_FIELDS = ['package_name', 'device_name', 'unique_session_name', 'startup_type']
 
 // Get list of filterable extra fields that have multiple distinct values
 export function getFilterableFields(cl: Cluster): string[] {
   return FILTERABLE_FIELDS.filter(field => {
     const vals = new Set<string>()
     for (const ts of cl.traces) {
-      vals.add(String(ts.trace.extra?.[field] ?? ''))
+      vals.add(traceFieldValue(ts, field))
       if (vals.size >= 2) return true
     }
     return false
