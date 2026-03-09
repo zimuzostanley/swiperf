@@ -88,6 +88,15 @@ function renderSlider(ts: TraceState) {
 }
 
 
+function traceLink(ts: TraceState): string | null {
+  const uuid = ts.trace.trace_uuid
+  if (!uuid) return null
+  const startupId = ts.trace.extra?.startup_id
+  let url = `http://go/trace-uuid/${uuid}`
+  if (startupId) url += `?com.android.AndroidStartup.startupId=${encodeURIComponent(String(startupId))}`
+  return url
+}
+
 function renderTraceCard(cl: Cluster, ts: TraceState, idx: number) {
   const key = ts._key
   const isExpanded = expanded.has(key)
@@ -106,6 +115,14 @@ function renderTraceCard(cl: Cluster, ts: TraceState, idx: number) {
       ts.trace.startup_dur
         ? m('span.trace-startup-dur', fmt_dur(ts.trace.startup_dur))
         : null,
+      (() => {
+        const href = traceLink(ts)
+        return href ? m('a.trace-link', {
+          href, target: '_blank', rel: 'noopener',
+          onclick: (e: Event) => e.stopPropagation(),
+          title: 'Open in trace viewer',
+        }, '\u2197') : null
+      })(),
       m('span.trace-actions', [
         m('button.verdict-btn-sm' + (verdict === 'like' ? '.active-positive' : ''), {
           onclick: (e: Event) => { e.stopPropagation(); setVerdict(cl, key, 'like') },

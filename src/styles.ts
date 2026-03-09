@@ -257,6 +257,11 @@ textarea.json-area:focus { border-color: var(--accent); }
   font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent);
   white-space: nowrap;
 }
+.trace-link {
+  font-size: 12px; color: var(--accent); text-decoration: none; opacity: 0.6;
+  transition: opacity 0.15s;
+}
+.trace-link:hover { opacity: 1; }
 .trace-actions { margin-left: auto; display: flex; gap: 4px; flex-shrink: 0; }
 
 .trace-card-body { padding: 6px 14px 10px; }
