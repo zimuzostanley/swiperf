@@ -250,25 +250,25 @@ function loadFromFile(e: Event) {
 }
 
 function loadMultipleFiles(files: FileList) {
-  const traces: TraceEntry[] = []; let loaded = 0; const total = files.length
+  let loaded = 0; const total = files.length; let totalTraces = 0
   const name = total > 1 ? `${total} files` : (files[0]?.name.replace(/\.\w+$/, '') || 'Import')
   Array.from(files).forEach(file => {
     if (!file.name.match(/\.(json|txt|tsv|csv)$/i)) { loaded++; check(); return }
     const reader = new FileReader()
     reader.onload = (ev) => {
-      try {
-        const parsed = JSON.parse(ev.target?.result as string)
-        const trace = normalizeTrace(
-          Array.isArray(parsed) ? { slices: parsed, trace_uuid: file.name.replace(/\.\w+$/, '') } : parsed)
-        if (trace) traces.push(trace)
-      } catch {}
+      const text = (ev.target?.result as string || '').trim()
+      if (text) {
+        const before = S.clusters.length
+        handleTextInput(text, file.name.replace(/\.\w+$/, ''))
+        if (S.clusters.length > before) totalTraces += S.clusters[S.clusters.length - 1].traces.length
+      }
       loaded++; check()
     }
     reader.readAsText(file)
   })
   function check() {
     if (loaded < total) return
-    if (traces.length) { loadMultipleTraces(name, traces); S.importMsg = { text: `Loaded ${traces.length} traces from ${total} files`, ok: true } }
+    if (totalTraces > 0) { S.importMsg = { text: `Loaded ${totalTraces} traces from ${total} files`, ok: true } }
     else { S.importMsg = { text: 'No valid traces found', ok: false } }
     m.redraw()
   }
