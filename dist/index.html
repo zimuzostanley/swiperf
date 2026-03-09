@@ -2635,148 +2635,46 @@ function rowsToTsv(rows) {
 function rowsToJson(rows) {
   return JSON.stringify(rows, null, 2);
 }
-const _Hsluv = class _Hsluv {
-  constructor() {
-    this.hex = "#000000";
-    this.rgb_r = 0;
-    this.rgb_g = 0;
-    this.rgb_b = 0;
-    this.xyz_x = 0;
-    this.xyz_y = 0;
-    this.xyz_z = 0;
-    this.luv_l = 0;
-    this.luv_u = 0;
-    this.luv_v = 0;
-    this.lch_l = 0;
-    this.lch_c = 0;
-    this.lch_h = 0;
-    this.hsluv_h = 0;
-    this.hsluv_s = 0;
-    this.hsluv_l = 0;
-    this.r0s = 0;
-    this.r0i = 0;
-    this.r1s = 0;
-    this.r1i = 0;
-    this.g0s = 0;
-    this.g0i = 0;
-    this.g1s = 0;
-    this.g1i = 0;
-    this.b0s = 0;
-    this.b0i = 0;
-    this.b1s = 0;
-    this.b1i = 0;
+function hslToHex(h, s, l) {
+  s /= 100;
+  l /= 100;
+  const c = (1 - Math.abs(2 * l - 1)) * s;
+  const x = c * (1 - Math.abs(h / 60 % 2 - 1));
+  const m3 = l - c / 2;
+  let r = 0, g = 0, b = 0;
+  if (h < 60) {
+    r = c;
+    g = x;
+  } else if (h < 120) {
+    r = x;
+    g = c;
+  } else if (h < 180) {
+    g = c;
+    b = x;
+  } else if (h < 240) {
+    g = x;
+    b = c;
+  } else if (h < 300) {
+    r = x;
+    b = c;
+  } else {
+    r = c;
+    b = x;
   }
-  static fromLinear(c) {
-    return c <= 31308e-7 ? 12.92 * c : 1.055 * Math.pow(c, 1 / 2.4) - 0.055;
+  const ri = Math.round((r + m3) * 255);
+  const gi = Math.round((g + m3) * 255);
+  const bi = Math.round((b + m3) * 255);
+  return "#" + [ri, gi, bi].map((v) => v.toString(16).padStart(2, "0")).join("");
+}
+function perfetto_hash(s, max) {
+  let h = 2166136261 & 268435455;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = h * 16777619 & 4294967295;
   }
-  static lToY(L) {
-    return L <= 8 ? _Hsluv.refY * L / _Hsluv.kappa : _Hsluv.refY * Math.pow((L + 16) / 116, 3);
-  }
-  static rgbChannelToHex(c) {
-    const n = Math.round(c * 255), d2 = n % 16, d1 = (n - d2) / 16 | 0;
-    return _Hsluv.hexChars[d1] + _Hsluv.hexChars[d2];
-  }
-  static distanceFromOriginAngle(s, i, a) {
-    const d = i / (Math.sin(a) - s * Math.cos(a));
-    return d < 0 ? Infinity : d;
-  }
-  static min6(a, b, c, d, e, f) {
-    return Math.min(a, b, c, d, e, f);
-  }
-  rgbToHex() {
-    this.hex = "#" + _Hsluv.rgbChannelToHex(this.rgb_r) + _Hsluv.rgbChannelToHex(this.rgb_g) + _Hsluv.rgbChannelToHex(this.rgb_b);
-  }
-  xyzToRgb() {
-    this.rgb_r = _Hsluv.fromLinear(_Hsluv.m_r0 * this.xyz_x + _Hsluv.m_r1 * this.xyz_y + _Hsluv.m_r2 * this.xyz_z);
-    this.rgb_g = _Hsluv.fromLinear(_Hsluv.m_g0 * this.xyz_x + _Hsluv.m_g1 * this.xyz_y + _Hsluv.m_g2 * this.xyz_z);
-    this.rgb_b = _Hsluv.fromLinear(_Hsluv.m_b0 * this.xyz_x + _Hsluv.m_b1 * this.xyz_y + _Hsluv.m_b2 * this.xyz_z);
-  }
-  luvToXyz() {
-    if (this.luv_l === 0) {
-      this.xyz_x = this.xyz_y = this.xyz_z = 0;
-      return;
-    }
-    const vU = this.luv_u / (13 * this.luv_l) + _Hsluv.refU;
-    const vV = this.luv_v / (13 * this.luv_l) + _Hsluv.refV;
-    this.xyz_y = _Hsluv.lToY(this.luv_l);
-    this.xyz_x = -9 * this.xyz_y * vU / ((vU - 4) * vV - vU * vV);
-    this.xyz_z = (9 * this.xyz_y - 15 * vV * this.xyz_y - vV * this.xyz_x) / (3 * vV);
-  }
-  lchToLuv() {
-    const r = this.lch_h / 180 * Math.PI;
-    this.luv_l = this.lch_l;
-    this.luv_u = Math.cos(r) * this.lch_c;
-    this.luv_v = Math.sin(r) * this.lch_c;
-  }
-  calculateBoundingLines(l) {
-    const sub1 = Math.pow(l + 16, 3) / 1560896;
-    const sub2 = sub1 > _Hsluv.epsilon ? sub1 : l / _Hsluv.kappa;
-    const s1r = sub2 * (284517 * _Hsluv.m_r0 - 94839 * _Hsluv.m_r2), s2r = sub2 * (838422 * _Hsluv.m_r2 + 769860 * _Hsluv.m_r1 + 731718 * _Hsluv.m_r0), s3r = sub2 * (632260 * _Hsluv.m_r2 - 126452 * _Hsluv.m_r1);
-    const s1g = sub2 * (284517 * _Hsluv.m_g0 - 94839 * _Hsluv.m_g2), s2g = sub2 * (838422 * _Hsluv.m_g2 + 769860 * _Hsluv.m_g1 + 731718 * _Hsluv.m_g0), s3g = sub2 * (632260 * _Hsluv.m_g2 - 126452 * _Hsluv.m_g1);
-    const s1b = sub2 * (284517 * _Hsluv.m_b0 - 94839 * _Hsluv.m_b2), s2b = sub2 * (838422 * _Hsluv.m_b2 + 769860 * _Hsluv.m_b1 + 731718 * _Hsluv.m_b0), s3b = sub2 * (632260 * _Hsluv.m_b2 - 126452 * _Hsluv.m_b1);
-    this.r0s = s1r / s3r;
-    this.r0i = s2r * l / s3r;
-    this.r1s = s1r / (s3r + 126452);
-    this.r1i = (s2r - 769860) * l / (s3r + 126452);
-    this.g0s = s1g / s3g;
-    this.g0i = s2g * l / s3g;
-    this.g1s = s1g / (s3g + 126452);
-    this.g1i = (s2g - 769860) * l / (s3g + 126452);
-    this.b0s = s1b / s3b;
-    this.b0i = s2b * l / s3b;
-    this.b1s = s1b / (s3b + 126452);
-    this.b1i = (s2b - 769860) * l / (s3b + 126452);
-  }
-  calcMaxChromaHsluv(h) {
-    const r = h / 360 * Math.PI * 2;
-    return _Hsluv.min6(
-      _Hsluv.distanceFromOriginAngle(this.r0s, this.r0i, r),
-      _Hsluv.distanceFromOriginAngle(this.r1s, this.r1i, r),
-      _Hsluv.distanceFromOriginAngle(this.g0s, this.g0i, r),
-      _Hsluv.distanceFromOriginAngle(this.g1s, this.g1i, r),
-      _Hsluv.distanceFromOriginAngle(this.b0s, this.b0i, r),
-      _Hsluv.distanceFromOriginAngle(this.b1s, this.b1i, r)
-    );
-  }
-  hsluvToLch() {
-    if (this.hsluv_l > 99.9999999) {
-      this.lch_l = 100;
-      this.lch_c = 0;
-    } else if (this.hsluv_l < 1e-8) {
-      this.lch_l = 0;
-      this.lch_c = 0;
-    } else {
-      this.lch_l = this.hsluv_l;
-      this.calculateBoundingLines(this.hsluv_l);
-      this.lch_c = this.calcMaxChromaHsluv(this.hsluv_h) / 100 * this.hsluv_s;
-    }
-    this.lch_h = this.hsluv_h;
-  }
-  hsluvToHex() {
-    this.hsluvToLch();
-    this.lchToLuv();
-    this.luvToXyz();
-    this.xyzToRgb();
-    this.rgbToHex();
-  }
-};
-_Hsluv.hexChars = "0123456789abcdef";
-_Hsluv.refY = 1;
-_Hsluv.refU = 0.19783000664283;
-_Hsluv.refV = 0.46831999493879;
-_Hsluv.kappa = 903.2962962;
-_Hsluv.epsilon = 0.0088564516;
-_Hsluv.m_r0 = 3.240969941904521;
-_Hsluv.m_r1 = -1.537383177570093;
-_Hsluv.m_r2 = -0.498610760293;
-_Hsluv.m_g0 = -0.96924363628087;
-_Hsluv.m_g1 = 1.87596750150772;
-_Hsluv.m_g2 = 0.041555057407175;
-_Hsluv.m_b0 = 0.055630079696993;
-_Hsluv.m_b1 = -0.20397695888897;
-_Hsluv.m_b2 = 1.056971514242878;
-let Hsluv = _Hsluv;
-const MD_PALETTE_HSLUV = [
+  return Math.abs(h) % max;
+}
+const MD_PALETTE_HSL = [
   [4, 90, 58],
   [340, 82, 52],
   [291, 64, 42],
@@ -2796,47 +2694,45 @@ const MD_PALETTE_HSLUV = [
   [200, 18, 46],
   [54, 100, 62]
 ];
+const MD_PALETTE_HEX = MD_PALETTE_HSL.map(
+  ([h, s, l]) => hslToHex(h, Math.max(0, s - 20), l)
+);
 const _name_color_cache = /* @__PURE__ */ new Map();
-function perfetto_hash(s, max) {
-  let h = 2166136261 & 4294967295;
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
-    h = Math.imul(h, 16777619) & 4294967295;
-  }
-  return Math.abs(h) % max;
-}
 function name_color(name) {
   const seed = name.replace(/( )?\d+/g, "");
   if (_name_color_cache.has(seed)) return _name_color_cache.get(seed);
-  const idx = perfetto_hash(seed, MD_PALETTE_HSLUV.length);
-  const [ph, ps, pl] = MD_PALETTE_HSLUV[idx];
-  const conv = new Hsluv();
-  conv.hsluv_h = ph;
-  conv.hsluv_s = Math.max(0, ps - 20);
-  conv.hsluv_l = pl;
-  conv.hsluvToHex();
-  _name_color_cache.set(seed, conv.hex);
-  return conv.hex;
+  const idx = perfetto_hash(seed, MD_PALETTE_HEX.length);
+  const hex = MD_PALETTE_HEX[idx];
+  _name_color_cache.set(seed, hex);
+  return hex;
 }
 function isDark() {
   return document.documentElement.getAttribute("data-theme") === "dark";
 }
+const STATE_RUNNING = hslToHex(120, 44, 34);
+const STATE_RUNNABLE = hslToHex(75, 55, 47);
+const STATE_IO_WAIT = hslToHex(36, 100, 50);
+const STATE_NONIO = hslToHex(3, 30, 49);
+const STATE_CREATED = hslToHex(0, 0, 70);
+const STATE_UNKNOWN = hslToHex(44, 63, 91);
+const STATE_DEAD = hslToHex(0, 0, 62);
+const STATE_INDIGO = hslToHex(231, 48, 48);
 function state_color(d) {
-  const dark = isDark();
-  switch (d.state) {
-    case "Running":
-      return "#357b34";
-    case "Runnable":
-      return "#99b93a";
-    case "Runnable (Preempted)":
-      return "#99b93a";
-    case "Uninterruptible Sleep":
-      return d.io_wait === 1 ? "#e65100" : "#a25c58";
-    case "Sleeping":
-      return dark ? "#2a2a3a" : "#c8ccd8";
-    default:
-      return dark ? "#44444e" : "#aaaaaa";
+  const s = d.state;
+  if (!s) return isDark() ? "#44444e" : STATE_UNKNOWN;
+  if (s === "Created") return STATE_CREATED;
+  if (s === "Running") return STATE_RUNNING;
+  if (s.startsWith("Runnable")) return STATE_RUNNABLE;
+  if (s.includes("Uninterruptible Sleep")) {
+    if (s.includes("non-IO") || d.io_wait === 0) return STATE_NONIO;
+    return STATE_IO_WAIT;
   }
+  if (s.includes("Dead")) return STATE_DEAD;
+  if (s.includes("Sleeping") || s.includes("Idle")) {
+    return isDark() ? "#2a2a3a" : "#ffffff";
+  }
+  if (s.includes("Unknown")) return STATE_UNKNOWN;
+  return STATE_INDIGO;
 }
 function state_label(d) {
   if (!d.state) return "Unknown";
@@ -3578,11 +3474,11 @@ const CSS = `
 :root {
   --mono: 'IBM Plex Mono', monospace;
   --sans: 'Geist', sans-serif;
-  --c-running:        #357b34;
-  --c-runnable:       #99b93a;
-  --c-preempted:      #99b93a;
-  --c-unint-io:       #e65100;
-  --c-unint-nonio:    #a25c58;
+  --c-running:        #317d31;
+  --c-runnable:       #99ba36;
+  --c-preempted:      #99ba36;
+  --c-unint-io:       #ff9900;
+  --c-unint-nonio:    #a25b57;
   --c-sleeping-dark:  #2a2a3a;
   --c-sleeping-light: #c8ccd8;
   --c-positive:       #2e7d32;
