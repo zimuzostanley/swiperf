@@ -147,3 +147,63 @@ export function getNegativeTraces(): TraceState[] {
   if (!cl) return []
   return cl.traces.filter(ts => cl.verdicts.get(ts.trace.trace_uuid) === 'dislike')
 }
+
+// ── Session save / restore ──
+
+interface SessionData {
+  version: 1
+  activeClusterId: string | null
+  clusters: {
+    id: string
+    name: string
+    traces: TraceEntry[]
+    verdicts: [string, Verdict][]
+    overviewFilter: OverviewFilter
+    splitView: boolean
+    splitFilters: [OverviewFilter, OverviewFilter]
+    splitRatio: number
+  }[]
+}
+
+export function exportSession(): string {
+  const data: SessionData = {
+    version: 1,
+    activeClusterId: S.activeClusterId,
+    clusters: S.clusters.map(cl => ({
+      id: cl.id,
+      name: cl.name,
+      traces: cl.traces.map(ts => ts.trace),
+      verdicts: [...cl.verdicts.entries()],
+      overviewFilter: cl.overviewFilter,
+      splitView: cl.splitView,
+      splitFilters: cl.splitFilters,
+      splitRatio: cl.splitRatio,
+    })),
+  }
+  return JSON.stringify(data)
+}
+
+export function importSession(json: string) {
+  const data: SessionData = JSON.parse(json)
+  if (data.version !== 1) throw new Error('Unknown session version')
+  S.clusters = data.clusters.map(sc => {
+    const traces = sc.traces.map(initTraceLazy)
+    const cl: Cluster = {
+      id: sc.id,
+      name: sc.name,
+      traces,
+      verdicts: new Map(sc.verdicts),
+      overviewFilter: sc.overviewFilter,
+      counts: { positive: 0, negative: 0, pending: 0 },
+      tableSortState: {},
+      splitView: sc.splitView,
+      splitFilters: sc.splitFilters,
+      splitRatio: sc.splitRatio,
+    }
+    recomputeCounts(cl)
+    if (traces.length > 0) ensureCache(traces[0])
+    return cl
+  })
+  S.activeClusterId = data.activeClusterId
+  m.redraw()
+}

@@ -1,7 +1,7 @@
 import m from 'mithril'
 import type { Slice, TraceEntry } from '../models/types'
 import { DEFAULT_COLUMN_CONFIG, DEFAULT_SLICE_FIELD_CONFIG } from '../models/types'
-import { S, loadSingleJson, loadMultipleTraces, activeCluster } from '../state'
+import { S, loadSingleJson, loadMultipleTraces, activeCluster, exportSession, importSession } from '../state'
 
 let _debounce: ReturnType<typeof setTimeout> | null = null
 
@@ -21,6 +21,29 @@ function normalizeSlice(raw: Record<string, any>): Slice {
     io_wait: resolveField(raw, cfg.io_wait.aliases, cfg.io_wait.fallback),
     blocked_function: resolveField(raw, cfg.blocked_function.aliases, cfg.blocked_function.fallback),
   }
+}
+
+// If a package_name value is a JSON string like '{"package_name":"com.foo",...}', extract the real name
+function resolvePackageName(raw: Record<string, any>): string {
+  const cfg = DEFAULT_COLUMN_CONFIG
+  const val = resolveField(raw, cfg.package_name.aliases, cfg.package_name.fallback)
+  if (typeof val === 'string' && val.startsWith('{')) {
+    try {
+      const parsed = JSON.parse(val)
+      if (parsed.package_name) return parsed.package_name
+    } catch {}
+  }
+  return val
+}
+
+// Convert array-of-arrays [[header,...], [val,...], ...] to array-of-objects
+function arrayOfArraysToObjects(arr: any[][]): Record<string, any>[] {
+  const headers = arr[0] as string[]
+  return arr.slice(1).map(row => {
+    const obj: Record<string, any> = {}
+    headers.forEach((h, i) => { if (row[i] !== undefined) obj[h] = row[i] })
+    return obj
+  })
 }
 
 function normalizeTrace(raw: Record<string, any>): TraceEntry | null {
@@ -45,7 +68,7 @@ function normalizeTrace(raw: Record<string, any>): TraceEntry | null {
   for (const [k, v] of Object.entries(raw)) { if (!knownKeys.has(k)) extra[k] = v }
   return {
     trace_uuid: resolveField(raw, cfg.trace_uuid.aliases, cfg.trace_uuid.fallback),
-    package_name: resolveField(raw, cfg.package_name.aliases, cfg.package_name.fallback),
+    package_name: resolvePackageName(raw),
     startup_dur: resolveField(raw, cfg.startup_dur.aliases, cfg.startup_dur.fallback),
     slices, extra: Object.keys(extra).length > 0 ? extra : undefined,
   }
@@ -55,16 +78,24 @@ function tryLoadJson(text: string, clusterName: string) {
   try {
     const parsed = JSON.parse(text)
     if (Array.isArray(parsed) && parsed.length) {
-      const first = parsed[0]
+      let items = parsed
+      // Array-of-arrays: first row is headers, rest are data rows
+      if (Array.isArray(parsed[0]) && parsed.length >= 2 && parsed[0].every((h: any) => typeof h === 'string')) {
+        items = arrayOfArraysToObjects(parsed)
+      }
+      const first = items[0]
+      if (typeof first !== 'object' || first === null || Array.isArray(first)) {
+        throw new Error('Expected array of objects or [headers, ...rows]')
+      }
       const looksLikeSlice = DEFAULT_SLICE_FIELD_CONFIG.ts.aliases.some(a => first[a] !== undefined)
         && DEFAULT_SLICE_FIELD_CONFIG.dur.aliases.some(a => first[a] !== undefined)
       const looksLikeTrace = DEFAULT_COLUMN_CONFIG.slices.aliases.some(a => first[a] !== undefined)
       if (looksLikeSlice && !looksLikeTrace) {
-        loadSingleJson(parsed.map((s: any) => normalizeSlice(s)))
-        S.importMsg = { text: `Loaded ${parsed.length} slices`, ok: true }; return
+        loadSingleJson(items.map((s: any) => normalizeSlice(s)))
+        S.importMsg = { text: `Loaded ${items.length} slices`, ok: true }; return
       }
       if (looksLikeTrace) {
-        const traces = parsed.map((t: any) => normalizeTrace(t)).filter(Boolean) as TraceEntry[]
+        const traces = items.map((t: any) => normalizeTrace(t)).filter(Boolean) as TraceEntry[]
         if (traces.length === 0) throw new Error('No valid traces in array')
         loadMultipleTraces(clusterName, traces)
         S.importMsg = { text: `Loaded ${traces.length} traces`, ok: true }; return
@@ -123,9 +154,14 @@ function tryLoadDelimited(text: string, delimiter: string, clusterName: string) 
           if (idx !== slicesIdx && idx !== uuidIdx && idx !== pkgIdx && idx !== durIdx)
             if (cols[idx]?.trim()) extra[h] = cols[idx].trim()
         })
+        let pkgName = pkgIdx >= 0 && cols[pkgIdx] ? cols[pkgIdx].trim() : cfg.package_name.fallback()
+        // If package column is JSON like {"package_name":"com.foo",...}, extract the real name
+        if (pkgName.startsWith('{')) {
+          try { const p = JSON.parse(pkgName); if (p.package_name) pkgName = p.package_name } catch {}
+        }
         traces.push({
           trace_uuid: uuidIdx >= 0 && cols[uuidIdx] ? cols[uuidIdx].trim() : cfg.trace_uuid.fallback(),
-          package_name: pkgIdx >= 0 && cols[pkgIdx] ? cols[pkgIdx].trim() : cfg.package_name.fallback(),
+          package_name: pkgName,
           startup_dur: durIdx >= 0 && cols[durIdx] ? parseFloat(cols[durIdx]) || 0 : 0,
           slices, extra: Object.keys(extra).length > 0 ? extra : undefined,
         })
@@ -200,6 +236,37 @@ function copyCompressed() {
   navigator.clipboard.writeText(JSON.stringify(clean, null, 2))
 }
 
+function saveSession() {
+  const json = exportSession()
+  const blob = new Blob([json], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  const date = new Date().toISOString().slice(0, 10)
+  a.download = `swiperf-session-${date}.json`
+  a.click()
+  URL.revokeObjectURL(url)
+  S.importMsg = { text: 'Session saved', ok: true }; m.redraw()
+}
+
+function loadSession(e: Event) {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  const reader = new FileReader()
+  reader.onload = (ev) => {
+    try {
+      importSession(ev.target?.result as string)
+      S.importMsg = { text: `Session restored (${S.clusters.length} clusters)`, ok: true }
+    } catch (err: any) {
+      S.importMsg = { text: `Session load failed: ${err.message}`, ok: false }
+    }
+    m.redraw()
+  }
+  reader.readAsText(file)
+  input.value = ''
+}
+
 export const Import: m.Component = {
   view() {
     return m('.section', [
@@ -236,6 +303,9 @@ export const Import: m.Component = {
           m('input#file-input', { type: 'file', accept: '.json,.txt,.tsv,.csv', multiple: true, style: { display: 'none' }, onchange: loadFromFile }),
           m('button.btn', { onclick: () => (document.getElementById('dir-input') as HTMLInputElement).click() }, 'Import directory\u2026'),
           m('input#dir-input', { type: 'file', style: { display: 'none' }, onchange: loadDirectory }),
+          S.clusters.length > 0 ? m('button.btn', { onclick: saveSession }, 'Save session') : null,
+          m('button.btn', { onclick: () => (document.getElementById('session-input') as HTMLInputElement).click() }, 'Load session'),
+          m('input#session-input', { type: 'file', accept: '.json', style: { display: 'none' }, onchange: loadSession }),
           activeCluster() ? m('button.btn', { onclick: copyCompressed }, 'Copy compressed') : null,
           S.importMsg ? m(`span.${S.importMsg.ok ? 'msg-ok' : 'msg-err'}`, (S.importMsg.ok ? '\u2713 ' : '\u2717 ') + S.importMsg.text) : null,
         ]),

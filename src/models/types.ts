@@ -57,7 +57,7 @@ export const DEFAULT_COLUMN_CONFIG: ColumnConfig = {
     fallback: () => crypto.randomUUID(),
   },
   package_name: {
-    aliases: ['package_name', 'package', 'pkg', 'app', 'process_name', 'process'],
+    aliases: ['package_name', 'process_name', 'process', 'package', 'pkg', 'app'],
     fallback: () => 'unknown',
   },
   startup_dur: {
@@ -65,7 +65,7 @@ export const DEFAULT_COLUMN_CONFIG: ColumnConfig = {
     fallback: () => 0,
   },
   slices: {
-    aliases: ['slices', 'json', 'data', 'trace_data', 'base64', 'thread_slices'],
+    aliases: ['slices', 'quantized_sequence', 'json', 'data', 'trace_data', 'base64', 'thread_slices'],
     fallback: () => [],
   },
 }
