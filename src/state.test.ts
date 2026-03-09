@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import m from 'mithril'
-import { S, addCluster, activeCluster, setVerdict, removeCluster, switchCluster, filteredTraces, getPositiveTraces, getNegativeTraces, recomputeCounts, renameCluster, traceKey, exportSession, importSession, importSessionData } from './state'
+import { S, addCluster, activeCluster, setVerdict, removeCluster, switchCluster, filteredTraces, getPositiveTraces, getNegativeTraces, recomputeCounts, renameCluster, traceKey, exportSession, importSession, importSessionData, copyFilteredToNewTab } from './state'
 
 // Mithril's redraw requires mount() — stub it for unit tests
 vi.spyOn(m, 'redraw').mockImplementation(() => {})
@@ -318,5 +318,83 @@ describe('session save/restore/append', () => {
     expect(restored.counts.positive).toBe(1)
     expect(restored.counts.discarded).toBe(1)
     expect(restored.counts.pending).toBe(1)
+  })
+})
+
+describe('copyFilteredToNewTab', () => {
+  beforeEach(() => {
+    S.clusters = []
+    S.activeClusterId = null
+    S.importMsg = null
+    S.loadProgress = null
+  })
+
+  it('creates a new tab with copied traces', () => {
+    addCluster('Source', [makeTrace('a'), makeTrace('b'), makeTrace('c')])
+    const source = activeCluster()!
+    setVerdict(source, source.traces[0]._key, 'like')
+
+    // Copy only first two traces
+    copyFilteredToNewTab(source, source.traces.slice(0, 2))
+
+    expect(S.clusters).toHaveLength(2)
+    const copy = activeCluster()!
+    expect(copy.name).toBe('Source (copy)')
+    expect(copy.traces).toHaveLength(2)
+  })
+
+  it('carries over verdicts from source', () => {
+    addCluster('Source', [makeTrace('a'), makeTrace('b')])
+    const source = activeCluster()!
+    setVerdict(source, source.traces[0]._key, 'like')
+    setVerdict(source, source.traces[1]._key, 'dislike')
+
+    copyFilteredToNewTab(source, source.traces)
+
+    const copy = activeCluster()!
+    expect(copy.verdicts.get(copy.traces[0]._key)).toBe('like')
+    expect(copy.verdicts.get(copy.traces[1]._key)).toBe('dislike')
+    expect(copy.counts.positive).toBe(1)
+    expect(copy.counts.negative).toBe(1)
+  })
+
+  it('is independent — changing verdict in copy does not affect source', () => {
+    addCluster('Source', [makeTrace('a')])
+    const source = S.clusters[0]
+    setVerdict(source, source.traces[0]._key, 'like')
+
+    copyFilteredToNewTab(source, source.traces)
+
+    const copy = S.clusters[1]
+    setVerdict(copy, copy.traces[0]._key, 'dislike')
+
+    // Source should still have 'like'
+    expect(source.verdicts.get(source.traces[0]._key)).toBe('like')
+    expect(copy.verdicts.get(copy.traces[0]._key)).toBe('dislike')
+  })
+
+  it('does nothing for empty traces', () => {
+    addCluster('Source', [makeTrace('a')])
+    copyFilteredToNewTab(activeCluster()!, [])
+    expect(S.clusters).toHaveLength(1)
+  })
+
+  it('copied tab survives session roundtrip', () => {
+    addCluster('Source', [makeTrace('a'), makeTrace('b')])
+    const source = activeCluster()!
+    setVerdict(source, source.traces[0]._key, 'like')
+    copyFilteredToNewTab(source, [source.traces[0]])
+
+    expect(S.clusters).toHaveLength(2)
+    const json = exportSession()
+
+    S.clusters = []
+    S.activeClusterId = null
+    importSession(json)
+
+    expect(S.clusters).toHaveLength(2)
+    expect(S.clusters[1].name).toBe('Source (copy)')
+    expect(S.clusters[1].traces).toHaveLength(1)
+    expect(S.clusters[1].counts.positive).toBe(1)
   })
 })

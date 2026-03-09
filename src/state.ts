@@ -132,6 +132,30 @@ export function loadMultipleTraces(name: string, traces: TraceEntry[]) {
   addCluster(name, traces)
 }
 
+/** Deep-copy filtered traces into a new independent tab, carrying over verdicts. */
+export function copyFilteredToNewTab(sourceCl: Cluster, filteredStates: TraceState[]) {
+  if (filteredStates.length === 0) return
+  const entries: TraceEntry[] = filteredStates.map(ts => ({
+    trace_uuid: ts.trace.trace_uuid,
+    package_name: ts.trace.package_name,
+    startup_dur: ts.trace.startup_dur,
+    slices: ts.trace.slices,
+    extra: ts.trace.extra ? { ...ts.trace.extra } : undefined,
+  }))
+  const newStates = entries.map(initTraceLazy)
+  const cl = makeCluster(sourceCl.name + ' (copy)', newStates)
+  // Carry over verdicts from source
+  for (const ts of newStates) {
+    const v = sourceCl.verdicts.get(ts._key)
+    if (v) cl.verdicts.set(ts._key, v)
+  }
+  recomputeCounts(cl)
+  if (newStates.length > 0) ensureCache(newStates[0])
+  S.clusters.push(cl)
+  S.activeClusterId = cl.id
+  m.redraw()
+}
+
 export function removeCluster(id: string) {
   S.clusters = S.clusters.filter(c => c.id !== id)
   if (S.activeClusterId === id)

@@ -432,4 +432,24 @@ input[type=range]::-webkit-slider-thumb {
 .filter-value-label:hover { color: var(--text); }
 .filter-value-label input[type=checkbox] { accent-color: var(--accent); }
 .filter-field + .filter-field { border-top: 1px solid var(--border); padding-top: 8px; margin-top: 4px; }
+
+/* Export dropdown */
+.export-dropdown-wrap { position: relative; }
+.export-caret { font-size: 9px; margin-left: 2px; }
+.export-dropdown {
+  position: absolute; top: 100%; right: 0; margin-top: 4px; z-index: 100;
+  background: var(--surface); border: 1px solid var(--border2); border-radius: 8px;
+  box-shadow: var(--shadow), 0 8px 24px rgba(0,0,0,0.15);
+  padding: 6px 0; min-width: 120px;
+}
+.export-section-label {
+  font-size: 9px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--muted); padding: 4px 12px 2px;
+}
+.export-item {
+  display: block; width: 100%; text-align: left; padding: 5px 12px;
+  font-family: var(--sans); font-size: 11px; color: var(--label); background: none;
+  border: none; cursor: pointer; transition: all 0.1s;
+}
+.export-item:hover { background: var(--accent-bg); color: var(--accent); }
 `

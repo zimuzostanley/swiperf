@@ -1,9 +1,12 @@
 import m from 'mithril'
-import { activeCluster, filteredTraces, filterTraces, ensureCache, setVerdict, updateSlider, updateGlobalSlider, recomputeCounts, getPositiveTraces, getNegativeTraces, getFilterableFields, getFieldValues, togglePropFilter, clearPropFilter } from '../state'
+import { S, activeCluster, filteredTraces, filterTraces, ensureCache, setVerdict, updateSlider, updateGlobalSlider, getFilterableFields, getFieldValues, togglePropFilter, clearPropFilter, copyFilteredToNewTab } from '../state'
 import type { TraceState, Cluster } from '../state'
 import type { OverviewFilter } from '../models/types'
+import { traceExportRow, rowsToTsv, rowsToJson, buildTraceLink } from '../utils/export'
+import type { ExportRow } from '../utils/export'
 
 let openFilterDropdown: string | null = null
+let openExportMenu = false
 import { MiniTimeline } from './MiniTimeline'
 import { Summary } from './Summary'
 import { fmt_dur } from '../utils/format'
@@ -33,24 +36,30 @@ function downloadFile(content: string, filename: string, mime: string) {
   URL.revokeObjectURL(url)
 }
 
-function traceExportRow(ts: TraceState) {
-  const row: Record<string, unknown> = {
-    trace_uuid: ts.trace.trace_uuid,
-    package_name: ts.trace.package_name,
-    startup_dur: ts.trace.startup_dur,
+function buildRows(clusters: Cluster[]): ExportRow[] {
+  const rows: ExportRow[] = []
+  for (const cl of clusters) {
+    for (const ts of cl.traces) {
+      rows.push(traceExportRow(ts.trace, ts._key, cl.name, cl.verdicts))
+    }
   }
-  if (ts.trace.extra) Object.assign(row, ts.trace.extra)
-  return row
+  return rows
 }
 
-function exportVerdicts() {
+function doExport(scope: 'tab' | 'all', format: 'json' | 'tsv') {
   const cl = activeCluster()
   if (!cl) return
-  const pos = getPositiveTraces().map(traceExportRow)
-  const neg = getNegativeTraces().map(traceExportRow)
-  const data = { positive: pos, negative: neg }
+  const clusters = scope === 'tab' ? [cl] : S.clusters
+  const rows = buildRows(clusters)
   const date = new Date().toISOString().slice(0, 10)
-  downloadFile(JSON.stringify(data, null, 2), `swiperf-verdicts-${date}.json`, 'application/json')
+  const stem = scope === 'tab' ? `swiperf-${cl.name}` : 'swiperf-all'
+  const safeStem = stem.replace(/[^a-zA-Z0-9_-]/g, '_')
+  if (format === 'json') {
+    downloadFile(rowsToJson(rows), `${safeStem}-${date}.json`, 'application/json')
+  } else {
+    downloadFile(rowsToTsv(rows), `${safeStem}-${date}.tsv`, 'text/tab-separated-values')
+  }
+  openExportMenu = false
 }
 
 function renderGlobalSlider(cl: Cluster) {
@@ -90,12 +99,8 @@ function renderSlider(ts: TraceState) {
 
 
 function traceLink(ts: TraceState): string | null {
-  const uuid = ts.trace.trace_uuid
-  if (!uuid) return null
-  const startupId = ts.trace.extra?.startup_id
-  let url = `https://apconsole.corp.google.com/link/perfetto/field_traces?uuid=${uuid}`
-  if (startupId) url += `&query=${encodeURIComponent(`com.android.AndroidStartup.startupId=${startupId}`)}`
-  return url
+  const url = buildTraceLink(ts.trace.trace_uuid, ts.trace.extra?.startup_id)
+  return url || null
 }
 
 function renderTraceCard(cl: Cluster, ts: TraceState, idx: number) {
@@ -250,6 +255,37 @@ function renderFilterDropdown(cl: Cluster) {
   ])
 }
 
+function renderExportDropdown(cl: Cluster) {
+  return m('.export-dropdown-wrap', [
+    m('button.btn.primary', {
+      onclick: (e: Event) => {
+        e.stopPropagation()
+        openExportMenu = !openExportMenu
+      },
+    }, ['Export ', m('span.export-caret', '\u25be')]),
+    openExportMenu ? m('.export-dropdown', {
+      onclick: (e: Event) => e.stopPropagation(),
+    }, [
+      m('.export-section-label', 'This tab'),
+      m('button.export-item', {
+        onclick: () => doExport('tab', 'json'),
+      }, 'JSON'),
+      m('button.export-item', {
+        onclick: () => doExport('tab', 'tsv'),
+      }, 'TSV'),
+      S.clusters.length > 1 ? [
+        m('.export-section-label', 'All tabs'),
+        m('button.export-item', {
+          onclick: () => doExport('all', 'json'),
+        }, 'JSON'),
+        m('button.export-item', {
+          onclick: () => doExport('all', 'tsv'),
+        }, 'TSV'),
+      ] : null,
+    ]) : null,
+  ])
+}
+
 function renderCardList(cl: Cluster, traces: TraceState[]) {
   return m('.trace-list', traces.map(ts => {
     const globalIdx = cl.traces.indexOf(ts)
@@ -289,7 +325,12 @@ function onDividerDown(e: MouseEvent, cl: Cluster) {
 
 export const TraceList: m.Component = {
   oncreate() {
-    document.addEventListener('click', () => { if (openFilterDropdown) { openFilterDropdown = null; m.redraw() } })
+    document.addEventListener('click', () => {
+      let changed = false
+      if (openFilterDropdown) { openFilterDropdown = null; changed = true }
+      if (openExportMenu) { openExportMenu = false; changed = true }
+      if (changed) m.redraw()
+    })
   },
   view() {
     const cl = activeCluster()
@@ -321,10 +362,15 @@ export const TraceList: m.Component = {
           onclick: () => { cl.splitView = !cl.splitView },
           title: 'Toggle split view',
         }, cl.splitView ? 'Single' : 'Split'),
-        m('button.btn.primary', {
-          onclick: exportVerdicts,
-          disabled: positive === 0 && negative === 0,
-        }, 'Export'),
+        m('button.btn', {
+          onclick: () => {
+            const visible = filteredTraces()
+            copyFilteredToNewTab(cl, visible)
+          },
+          disabled: cl.splitView || filteredTraces().length === 0,
+          title: cl.splitView ? 'Switch to single view first' : 'Copy visible traces to a new tab',
+        }, 'Copy to tab'),
+        renderExportDropdown(cl),
       ]),
     ])
 

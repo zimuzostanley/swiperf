@@ -443,4 +443,83 @@ describe('browser integration', () => {
 
     await p.close()
   })
+
+  it('copy to tab creates new independent tab from filtered view', async () => {
+    const p = await freshPage()
+    await pasteText(p, JSON.stringify([
+      makeTrace('ct1', 'com.ct1'),
+      makeTrace('ct2', 'com.ct2'),
+      makeTrace('ct3', 'com.ct3'),
+    ]))
+
+    // Vote on first trace as positive
+    const plusBtns = await p.$$('.verdict-btn-sm')
+    await plusBtns[0].click()
+    await new Promise(r => setTimeout(r, 200))
+
+    // Switch to Positive filter
+    const filterBtns = await p.$$('.filter-btn')
+    await filterBtns[1].click()
+    await new Promise(r => setTimeout(r, 200))
+
+    // Should show 1 trace
+    let cardCount = await p.$$eval('.trace-card', els => els.length)
+    expect(cardCount).toBe(1)
+
+    // Click "Copy to tab"
+    const copyBtn = await p.evaluateHandle(() => {
+      const btns = Array.from(document.querySelectorAll('.list-actions .btn'))
+      return btns.find(b => b.textContent?.includes('Copy to tab')) || null
+    })
+    expect(copyBtn).not.toBeNull()
+    await (copyBtn as any).click()
+    await new Promise(r => setTimeout(r, 300))
+
+    // Should now have 2 cluster tabs
+    const tabCount = await p.$$eval('.cluster-tab', els => els.length)
+    expect(tabCount).toBe(2)
+
+    // New tab name should contain "(copy)"
+    const tabNames = await p.$$eval('.cluster-name', els =>
+      els.map(el => el.textContent),
+    )
+    expect(tabNames.some(n => n?.includes('(copy)'))).toBe(true)
+
+    // New tab should have 1 trace (the one we filtered for)
+    cardCount = await p.$$eval('.trace-card', els => els.length)
+    expect(cardCount).toBe(1)
+
+    // The copied trace should carry over the positive verdict
+    const hasPositive = await p.$('.verdict-btn-sm.active-positive')
+    expect(hasPositive).not.toBeNull()
+
+    await p.close()
+  })
+
+  it('export dropdown shows tab and all options', async () => {
+    const p = await freshPage()
+    await pasteText(p, JSON.stringify([makeTrace('ex1', 'com.ex')]))
+
+    // Click the Export button
+    const exportBtn = await p.evaluateHandle(() => {
+      const btns = Array.from(document.querySelectorAll('.list-actions .btn'))
+      return btns.find(b => b.textContent?.includes('Export')) || null
+    })
+    expect(exportBtn).not.toBeNull()
+    await (exportBtn as any).click()
+    await new Promise(r => setTimeout(r, 200))
+
+    // Dropdown should appear
+    const dropdown = await p.$('.export-dropdown')
+    expect(dropdown).not.toBeNull()
+
+    // Should have "This tab" section with JSON and TSV options
+    const items = await p.$$eval('.export-item', els =>
+      els.map(el => el.textContent),
+    )
+    expect(items).toContain('JSON')
+    expect(items).toContain('TSV')
+
+    await p.close()
+  })
 })
