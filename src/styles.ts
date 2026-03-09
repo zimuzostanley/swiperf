@@ -245,13 +245,10 @@ textarea.json-area:focus { border-color: var(--accent); }
 .trace-card.verdict-negative { border-color: var(--c-negative); }
 
 .trace-card-header {
-  display: flex; flex-direction: column; gap: 4px; cursor: pointer; padding: 8px 14px;
+  display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 8px 14px;
   border-bottom: 1px solid var(--border); user-select: none;
 }
 .trace-card-header:hover { background: var(--row-hover); }
-.trace-header-top {
-  display: flex; align-items: center; gap: 8px;
-}
 .collapse-arrow { font-size: 10px; color: var(--muted); transition: transform 0.15s; }
 .collapse-arrow.open { transform: rotate(90deg); }
 .trace-idx { font-family: var(--mono); font-size: 10px; color: var(--dim); min-width: 28px; }
@@ -261,16 +258,6 @@ textarea.json-area:focus { border-color: var(--accent); }
   white-space: nowrap;
 }
 .trace-actions { margin-left: auto; display: flex; gap: 4px; flex-shrink: 0; }
-
-/* Metadata chips row */
-.trace-header-meta {
-  display: flex; flex-wrap: wrap; gap: 4px 8px; padding-left: 36px;
-}
-.meta-chip {
-  display: inline-flex; align-items: center; gap: 4px; font-size: 10px; line-height: 1;
-}
-.meta-chip-label { color: var(--muted); font-family: var(--mono); font-size: 9px; }
-.meta-chip-value { color: var(--dim); font-family: var(--mono); }
 
 .trace-card-body { padding: 6px 14px 10px; }
 

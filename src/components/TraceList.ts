@@ -71,36 +71,12 @@ function renderSlider(ts: TraceState) {
   ])
 }
 
-// Fields to surface as metadata chips in card header (order matters)
-const META_CHIP_FIELDS = ['device_name', 'device', 'device_model', 'build_id', 'build_version', 'upload_date', 'upload_time', 'test_environment']
-
-function getMetaChips(ts: TraceState): [string, string][] {
-  const chips: [string, string][] = []
-  chips.push(['dur', fmt_dur(ts.totalDur)])
-  if (ts.trace.extra) {
-    // Show known important fields first, then any remaining extra fields
-    const shown = new Set<string>()
-    for (const field of META_CHIP_FIELDS) {
-      if (ts.trace.extra[field] != null) {
-        chips.push([field.replace(/_/g, ' '), String(ts.trace.extra[field])])
-        shown.add(field)
-      }
-    }
-    for (const [k, v] of Object.entries(ts.trace.extra)) {
-      if (!shown.has(k) && v != null && String(v).length < 60) {
-        chips.push([k.replace(/_/g, ' '), String(v)])
-      }
-    }
-  }
-  return chips
-}
 
 function renderTraceCard(cl: Cluster, ts: TraceState, idx: number) {
   const key = ts._key
   const isExpanded = expanded.has(key)
   const verdict = cl.verdicts.get(key)
   ensureCache(ts)
-  const chips = getMetaChips(ts)
 
   return m('.card.trace-card', {
     class: verdict === 'like' ? 'verdict-positive' : verdict === 'dislike' ? 'verdict-negative' : '',
@@ -108,30 +84,22 @@ function renderTraceCard(cl: Cluster, ts: TraceState, idx: number) {
     m('.trace-card-header', {
       onclick: () => toggleExpand(key),
     }, [
-      m('.trace-header-top', [
-        m('span.collapse-arrow' + (isExpanded ? '.open' : ''), '\u25b6'),
-        m('span.trace-idx', `#${idx + 1}`),
-        m('span.trace-pkg', ts.trace.package_name),
-        ts.trace.startup_dur
-          ? m('span.trace-startup-dur', fmt_dur(ts.trace.startup_dur))
-          : null,
-        m('span.trace-actions', [
-          m('button.verdict-btn-sm' + (verdict === 'like' ? '.active-positive' : ''), {
-            onclick: (e: Event) => { e.stopPropagation(); setVerdict(cl, key, 'like') },
-            title: 'Positive',
-          }, '+'),
-          m('button.verdict-btn-sm' + (verdict === 'dislike' ? '.active-negative' : ''), {
-            onclick: (e: Event) => { e.stopPropagation(); setVerdict(cl, key, 'dislike') },
-            title: 'Negative',
-          }, '\u2212'),
-        ]),
+      m('span.collapse-arrow' + (isExpanded ? '.open' : ''), '\u25b6'),
+      m('span.trace-idx', `#${idx + 1}`),
+      m('span.trace-pkg', ts.trace.package_name),
+      ts.trace.startup_dur
+        ? m('span.trace-startup-dur', fmt_dur(ts.trace.startup_dur))
+        : null,
+      m('span.trace-actions', [
+        m('button.verdict-btn-sm' + (verdict === 'like' ? '.active-positive' : ''), {
+          onclick: (e: Event) => { e.stopPropagation(); setVerdict(cl, key, 'like') },
+          title: 'Positive',
+        }, '+'),
+        m('button.verdict-btn-sm' + (verdict === 'dislike' ? '.active-negative' : ''), {
+          onclick: (e: Event) => { e.stopPropagation(); setVerdict(cl, key, 'dislike') },
+          title: 'Negative',
+        }, '\u2212'),
       ]),
-      m('.trace-header-meta', chips.map(([label, val]) =>
-        m('span.meta-chip', [
-          m('span.meta-chip-label', label),
-          m('span.meta-chip-value', val),
-        ])
-      )),
     ]),
 
     m('.trace-card-body', [
