@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import m from 'mithril'
-import { S, addCluster, activeCluster, setVerdict, removeCluster, switchCluster, filteredTraces, getPositiveTraces, getNegativeTraces, recomputeCounts, renameCluster, traceKey } from './state'
+import { S, addCluster, activeCluster, setVerdict, removeCluster, switchCluster, filteredTraces, getPositiveTraces, getNegativeTraces, recomputeCounts, renameCluster, traceKey, exportSession, importSession, importSessionData } from './state'
 
 // Mithril's redraw requires mount() — stub it for unit tests
 vi.spyOn(m, 'redraw').mockImplementation(() => {})
@@ -194,5 +194,129 @@ describe('getPositiveTraces / getNegativeTraces', () => {
   it('returns empty array when no cluster active', () => {
     expect(getPositiveTraces()).toEqual([])
     expect(getNegativeTraces()).toEqual([])
+  })
+})
+
+describe('session save/restore/append', () => {
+  beforeEach(() => {
+    S.clusters = []
+    S.activeClusterId = null
+    S.importMsg = null
+    S.loadProgress = null
+  })
+
+  it('exportSession captures all clusters and verdicts', () => {
+    addCluster('A', [makeTrace('a1'), makeTrace('a2')])
+    addCluster('B', [makeTrace('b1')])
+    const cl = S.clusters[0]
+    setVerdict(cl, cl.traces[0]._key, 'like')
+    setVerdict(cl, cl.traces[1]._key, 'dislike')
+
+    const json = exportSession()
+    const data = JSON.parse(json)
+    expect(data.version).toBe(1)
+    expect(data.clusters).toHaveLength(2)
+    expect(data.clusters[0].verdicts).toHaveLength(2)
+  })
+
+  it('importSession restores clusters and verdicts', () => {
+    addCluster('A', [makeTrace('a1'), makeTrace('a2')])
+    const cl = S.clusters[0]
+    setVerdict(cl, cl.traces[0]._key, 'like')
+    const json = exportSession()
+
+    // Clear state
+    S.clusters = []
+    S.activeClusterId = null
+
+    importSession(json)
+    expect(S.clusters).toHaveLength(1)
+    expect(S.clusters[0].name).toBe('A')
+    expect(S.clusters[0].verdicts.size).toBe(1)
+    expect(S.clusters[0].counts.positive).toBe(1)
+  })
+
+  it('importSessionData works with pre-parsed data', () => {
+    addCluster('A', [makeTrace('a1')])
+    const json = exportSession()
+    const data = JSON.parse(json)
+
+    S.clusters = []
+    S.activeClusterId = null
+
+    importSessionData(data)
+    expect(S.clusters).toHaveLength(1)
+  })
+
+  it('session load + file import = merged state, save captures all', () => {
+    // First: create session with one cluster
+    addCluster('Session', [makeTrace('s1'), makeTrace('s2')])
+    const cl = S.clusters[0]
+    setVerdict(cl, cl.traces[0]._key, 'like')
+    const sessionJson = exportSession()
+
+    // Clear and restore session
+    S.clusters = []
+    S.activeClusterId = null
+    importSession(sessionJson)
+
+    expect(S.clusters).toHaveLength(1)
+    expect(S.clusters[0].name).toBe('Session')
+
+    // Now add more data (simulates file import after session load)
+    addCluster('NewFile', [makeTrace('n1'), makeTrace('n2'), makeTrace('n3')])
+
+    expect(S.clusters).toHaveLength(2)
+    expect(S.clusters[0].name).toBe('Session')
+    expect(S.clusters[1].name).toBe('NewFile')
+
+    // Save captures everything
+    const fullJson = exportSession()
+    const fullData = JSON.parse(fullJson)
+    expect(fullData.clusters).toHaveLength(2)
+    expect(fullData.clusters[0].verdicts).toHaveLength(1) // verdict preserved
+    expect(fullData.clusters[1].traces).toHaveLength(3)
+
+    // Re-import the full session
+    S.clusters = []
+    importSession(fullJson)
+    expect(S.clusters).toHaveLength(2)
+    expect(S.clusters[0].counts.positive).toBe(1) // verdict still there
+    expect(S.clusters[1].traces).toHaveLength(3)
+  })
+
+  it('session preserves sort, filters, split view, and global slider', () => {
+    addCluster('A', [makeTrace('a1', 3, 'com.a'), makeTrace('a2', 3, 'com.b')])
+    const cl = S.clusters[0]
+    cl.sortField = 'startup_dur'
+    cl.sortDir = -1
+    cl.splitView = true
+    cl.globalSlider = 42
+
+    const json = exportSession()
+    S.clusters = []
+    importSession(json)
+
+    const restored = S.clusters[0]
+    expect(restored.sortField).toBe('startup_dur')
+    expect(restored.sortDir).toBe(-1)
+    expect(restored.splitView).toBe(true)
+    expect(restored.globalSlider).toBe(42)
+  })
+
+  it('session preserves discard verdicts', () => {
+    addCluster('A', [makeTrace('a1'), makeTrace('a2'), makeTrace('a3')])
+    const cl = S.clusters[0]
+    setVerdict(cl, cl.traces[0]._key, 'like')
+    setVerdict(cl, cl.traces[1]._key, 'discard')
+
+    const json = exportSession()
+    S.clusters = []
+    importSession(json)
+
+    const restored = S.clusters[0]
+    expect(restored.counts.positive).toBe(1)
+    expect(restored.counts.discarded).toBe(1)
+    expect(restored.counts.pending).toBe(1)
   })
 })

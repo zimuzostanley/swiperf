@@ -207,6 +207,23 @@ textarea.json-area:focus { border-color: var(--accent); }
 .msg-ok { font-size: 10px; color: #4caf50; font-family: var(--mono); }
 .msg-err { font-size: 10px; color: #ef5350; font-family: var(--mono); }
 
+/* Progress bar */
+.load-progress { margin-top: 10px; }
+.progress-bar {
+  height: 3px; border-radius: 2px; background: var(--border2); overflow: hidden;
+}
+.progress-fill {
+  height: 100%; background: var(--accent); border-radius: 2px;
+  transition: width 0.2s ease-out;
+}
+.progress-text {
+  font-size: 10px; color: var(--muted); font-family: var(--mono); margin-top: 4px;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+
 /* ========================================
    TRACE LIST — unified vertical view
    ======================================== */

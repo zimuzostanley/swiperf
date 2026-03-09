@@ -56,9 +56,12 @@ interface AppState {
   clusters: Cluster[]
   activeClusterId: string | null
   importMsg: { text: string; ok: boolean } | null
+  loadProgress: { message: string; pct?: number } | null
 }
 
-export const S: AppState = { clusters: [], activeClusterId: null, importMsg: null }
+export const S: AppState = {
+  clusters: [], activeClusterId: null, importMsg: null, loadProgress: null,
+}
 
 export function activeCluster(): Cluster | null {
   return S.clusters.find(c => c.id === S.activeClusterId) ?? null
@@ -300,9 +303,8 @@ export function exportSession(): string {
   return JSON.stringify(data)
 }
 
-export function importSession(json: string) {
-  const data: SessionData = JSON.parse(json)
-  if (data.version !== 1) throw new Error('Unknown session version')
+/** Hydrate pre-parsed session data into app state. No JSON.parse here. */
+export function importSessionData(data: SessionData) {
   S.clusters = data.clusters.map(sc => {
     const traces = sc.traces.map(initTraceLazy)
     const cl: Cluster = {
@@ -327,4 +329,11 @@ export function importSession(json: string) {
   })
   S.activeClusterId = data.activeClusterId
   m.redraw()
+}
+
+/** Parse + hydrate a session JSON string. Sync — use parseSessionAsync for large files. */
+export function importSession(json: string) {
+  const data: SessionData = JSON.parse(json)
+  if (data.version !== 1) throw new Error('Unknown session version')
+  importSessionData(data)
 }
