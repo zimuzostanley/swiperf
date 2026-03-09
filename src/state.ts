@@ -204,7 +204,7 @@ export function getFieldValues(cl: Cluster, field: string): string[] {
 }
 
 // Only these fields appear in the filter dropdown
-const FILTERABLE_FIELDS = ['package_name', 'startup_type', 'device_name', 'unique_session_name']
+const FILTERABLE_FIELDS = ['startup_type', 'package_name', 'device_name', 'unique_session_name']
 
 // Get list of filterable extra fields that have multiple distinct values
 export function getFilterableFields(cl: Cluster): string[] {
