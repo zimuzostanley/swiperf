@@ -1667,9 +1667,8 @@ function setVerdict(cl, uuid, verdict) {
 function applyPropFilters(cl, traces) {
   if (cl.propFilters.size === 0) return traces;
   return traces.filter((ts) => {
-    var _a;
     for (const [field, allowed] of cl.propFilters) {
-      const val = String(((_a = ts.trace.extra) == null ? void 0 : _a[field]) ?? "");
+      const val = traceFieldValue(ts, field);
       if (!allowed.has(val)) return false;
     }
     return true;
@@ -1714,21 +1713,24 @@ function getNegativeTraces() {
   if (!cl) return [];
   return cl.traces.filter((ts) => cl.verdicts.get(ts._key) === "dislike");
 }
-function getFieldValues(cl, field) {
+function traceFieldValue(ts, field) {
   var _a;
+  if (field in ts.trace) return String(ts.trace[field] ?? "");
+  return String(((_a = ts.trace.extra) == null ? void 0 : _a[field]) ?? "");
+}
+function getFieldValues(cl, field) {
   const vals = /* @__PURE__ */ new Set();
   for (const ts of cl.traces) {
-    vals.add(String(((_a = ts.trace.extra) == null ? void 0 : _a[field]) ?? ""));
+    vals.add(traceFieldValue(ts, field));
   }
   return [...vals].sort();
 }
-const FILTERABLE_FIELDS = ["device_name", "unique_session_name", "startup_type"];
+const FILTERABLE_FIELDS = ["package_name", "device_name", "unique_session_name", "startup_type"];
 function getFilterableFields(cl) {
   return FILTERABLE_FIELDS.filter((field) => {
-    var _a;
     const vals = /* @__PURE__ */ new Set();
     for (const ts of cl.traces) {
-      vals.add(String(((_a = ts.trace.extra) == null ? void 0 : _a[field]) ?? ""));
+      vals.add(traceFieldValue(ts, field));
       if (vals.size >= 2) return true;
     }
     return false;
