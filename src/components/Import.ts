@@ -23,6 +23,20 @@ export function normalizeSlice(raw: Record<string, any>): Slice {
   }
 }
 
+// Aliases that indicate milliseconds — convert to nanoseconds
+const MS_ALIASES = new Set(['startup_dur_ms', 'startup_ms'])
+
+function resolveStartupDur(obj: Record<string, any>): number {
+  const cfg = DEFAULT_COLUMN_CONFIG
+  for (const alias of cfg.startup_dur.aliases) {
+    if (obj[alias] !== undefined) {
+      const val = parseFloat(obj[alias]) || 0
+      return MS_ALIASES.has(alias) ? val * 1e6 : val
+    }
+  }
+  return 0
+}
+
 // If a package_name value is a JSON string like '{"package_name":"com.foo",...}', extract the real name
 export function resolvePackageName(raw: Record<string, any>): string {
   const cfg = DEFAULT_COLUMN_CONFIG
@@ -76,7 +90,7 @@ export function normalizeTrace(raw: Record<string, any>): TraceEntry | null {
   return {
     trace_uuid: resolveField(raw, cfg.trace_uuid.aliases, cfg.trace_uuid.fallback),
     package_name: resolvePackageName(raw),
-    startup_dur: resolveField(raw, cfg.startup_dur.aliases, cfg.startup_dur.fallback),
+    startup_dur: resolveStartupDur(raw),
     slices, extra: Object.keys(extra).length > 0 ? extra : undefined,
   }
 }
@@ -173,6 +187,7 @@ function tryLoadDelimited(text: string, delimiter: string, clusterName: string) 
     const uuidIdx = findCol(cfg.trace_uuid.aliases)
     const pkgIdx = findCol(cfg.package_name.aliases)
     const durIdx = findCol(cfg.startup_dur.aliases)
+    const durIsMs = durIdx >= 0 && MS_ALIASES.has(headers[durIdx].toLowerCase().trim())
     if (slicesIdx < 0) throw new Error(`Need a column matching: ${cfg.slices.aliases.join(', ')}`)
     const traces: TraceEntry[] = []; let parseErrors = 0
     for (let i = 1; i < lines.length; i++) {
@@ -199,7 +214,7 @@ function tryLoadDelimited(text: string, delimiter: string, clusterName: string) 
         traces.push({
           trace_uuid: uuidIdx >= 0 && cols[uuidIdx] ? cols[uuidIdx].trim() : cfg.trace_uuid.fallback(),
           package_name: pkgName,
-          startup_dur: durIdx >= 0 && cols[durIdx] ? parseFloat(cols[durIdx]) || 0 : 0,
+          startup_dur: durIdx >= 0 && cols[durIdx] ? (parseFloat(cols[durIdx]) || 0) * (durIsMs ? 1e6 : 1) : 0,
           slices, extra: Object.keys(extra).length > 0 ? extra : undefined,
         })
       } catch { parseErrors++ }
