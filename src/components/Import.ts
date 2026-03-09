@@ -55,7 +55,14 @@ export function normalizeTrace(raw: Record<string, any>): TraceEntry | null {
     if (!decoded.startsWith('[') && !decoded.startsWith('{')) {
       try { decoded = atob(decoded) } catch { return null }
     }
-    try { slices = JSON.parse(decoded).map((s: any) => normalizeSlice(s)) } catch { return null }
+    try {
+      let parsedSlices: any
+      try { parsedSlices = JSON.parse(decoded) } catch {
+        // Try repairing truncated slice JSON
+        parsedSlices = JSON.parse(repairJson(decoded))
+      }
+      slices = (Array.isArray(parsedSlices) ? parsedSlices : []).map((s: any) => normalizeSlice(s))
+    } catch { return null }
   } else if (Array.isArray(rawSlices)) {
     slices = rawSlices.map((s: any) => normalizeSlice(s))
   } else { return null }
@@ -74,9 +81,38 @@ export function normalizeTrace(raw: Record<string, any>): TraceEntry | null {
   }
 }
 
+// Attempt to repair truncated JSON by closing open strings/arrays/objects
+export function repairJson(text: string): string {
+  let result = text.trimEnd()
+  // Track nesting outside of strings
+  let inStr = false
+  let escape = false
+  const stack: string[] = []
+  for (let i = 0; i < result.length; i++) {
+    const ch = result[i]
+    if (escape) { escape = false; continue }
+    if (ch === '\\' && inStr) { escape = true; continue }
+    if (ch === '"' && !escape) { inStr = !inStr; continue }
+    if (inStr) continue
+    if (ch === '[') stack.push(']')
+    else if (ch === '{') stack.push('}')
+    else if (ch === ']' || ch === '}') { if (stack.length > 0 && stack[stack.length - 1] === ch) stack.pop() }
+  }
+  // If we ended inside a string, close it
+  if (inStr) result += '"'
+  // Close any open arrays/objects
+  while (stack.length > 0) result += stack.pop()
+  return result
+}
+
 function tryLoadJson(text: string, clusterName: string) {
   try {
-    const parsed = JSON.parse(text)
+    let parsed: any
+    try { parsed = JSON.parse(text) } catch {
+      // Try repairing truncated JSON
+      const repaired = repairJson(text)
+      parsed = JSON.parse(repaired)
+    }
     if (Array.isArray(parsed) && parsed.length) {
       let items = parsed
       // Array-of-arrays: first row is headers, rest are data rows
@@ -145,7 +181,8 @@ function tryLoadDelimited(text: string, delimiter: string, clusterName: string) 
       let raw = cols[slicesIdx].trim()
       if (!raw.startsWith('[') && !raw.startsWith('{')) { try { raw = atob(raw) } catch {} }
       try {
-        const parsed = JSON.parse(raw)
+        let parsed: any
+        try { parsed = JSON.parse(raw) } catch { parsed = JSON.parse(repairJson(raw)) }
         const sliceArr = Array.isArray(parsed) ? parsed : parsed.slices ?? parsed.data
         if (!Array.isArray(sliceArr) || sliceArr.length === 0) { parseErrors++; continue }
         const slices = sliceArr.map((s: any) => normalizeSlice(s))

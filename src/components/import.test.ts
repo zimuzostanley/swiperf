@@ -89,7 +89,7 @@ describe('delimited line parsing', () => {
 
 // ── Integration tests using exported functions ──
 
-import { normalizeTrace, normalizeSlice, resolvePackageName, arrayOfArraysToObjects, handleTextInput } from './Import'
+import { normalizeTrace, normalizeSlice, resolvePackageName, arrayOfArraysToObjects, handleTextInput, repairJson } from './Import'
 
 const SAMPLE_SLICES = [
   {"ts":1412782513363902,"dur":37000000.0,"name":null,"state":"Sleeping","depth":null,"io_wait":null,"blocked_function":null},
@@ -153,6 +153,44 @@ describe('arrayOfArraysToObjects', () => {
   })
 })
 
+describe('repairJson', () => {
+  it('closes unclosed string', () => {
+    const broken = '["hello", "world'
+    const fixed = repairJson(broken)
+    expect(JSON.parse(fixed)).toEqual(['hello', 'world'])
+  })
+
+  it('closes unclosed arrays', () => {
+    const broken = '[[1, 2], [3, 4]'
+    const fixed = repairJson(broken)
+    expect(JSON.parse(fixed)).toEqual([[1, 2], [3, 4]])
+  })
+
+  it('closes unclosed string inside nested structure', () => {
+    // Simulates truncated quantized_sequence: string ends mid-value
+    const broken = '[["a","b"],["v1","[{\\"ts\\":100}]'
+    const fixed = repairJson(broken)
+    const parsed = JSON.parse(fixed)
+    expect(parsed).toHaveLength(2)
+    expect(parsed[1][1]).toBe('[{"ts":100}]')
+  })
+
+  it('handles already-valid JSON', () => {
+    const valid = '{"a": 1}'
+    expect(repairJson(valid)).toBe('{"a": 1}')
+  })
+
+  it('repairs truncated array-of-arrays with escaped JSON string', () => {
+    const slices = '[{\\"ts\\":100,\\"dur\\":50,\\"state\\":\\"Running\\"}]'
+    const broken = `[["trace_uuid","quantized_sequence"],["abc",${JSON.stringify(JSON.stringify([{ts:100,dur:50,state:"Running"}]))}`
+    // This is: [["trace_uuid","quantized_sequence"],["abc","[{\"ts\":100,...}]"
+    // but missing the closing ]]
+    const fixed = repairJson(broken)
+    const parsed = JSON.parse(fixed)
+    expect(parsed).toHaveLength(2)
+  })
+})
+
 describe('JSON array-of-arrays import', () => {
   beforeEach(() => {
     S.clusters = []
@@ -191,6 +229,22 @@ describe('JSON array-of-arrays import', () => {
     expect(t.trace.extra?.build_id).toBe('UP1A.231005.007')
     expect(t.trace.extra?.upload_date).toBe('2026-03-04')
     expect(t.trace.extra?.startup_type).toBe('hot')
+  })
+
+  it('imports truncated array-of-arrays JSON (repairs missing closing brackets)', () => {
+    // Simulates paste truncation: the JSON ends mid-string without closing ", ] ]
+    const slicesJson = JSON.stringify(SAMPLE_SLICES)
+    const fullJson = JSON.stringify([
+      ["trace_uuid", "process_name", "device_name", "quantized_sequence"],
+      ["uuid-trunc", "com.truncated.app", "pixel", slicesJson],
+    ])
+    // Truncate: remove last 3 chars (the closing "]])
+    const truncated = fullJson.slice(0, -3)
+    handleTextInput(truncated, 'Truncated')
+    expect(S.importMsg?.ok).toBe(true)
+    expect(S.clusters).toHaveLength(1)
+    expect(S.clusters[0].traces[0].trace.trace_uuid).toBe('uuid-trunc')
+    expect(S.clusters[0].traces[0].trace.package_name).toBe('com.truncated.app')
   })
 
   it('imports multiple rows in array-of-arrays', () => {
