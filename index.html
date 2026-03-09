@@ -1676,13 +1676,54 @@ function getNegativeTraces() {
   if (!cl) return [];
   return cl.traces.filter((ts) => cl.verdicts.get(ts.trace.trace_uuid) === "dislike");
 }
+function exportSession() {
+  const data = {
+    version: 1,
+    activeClusterId: S.activeClusterId,
+    clusters: S.clusters.map((cl) => ({
+      id: cl.id,
+      name: cl.name,
+      traces: cl.traces.map((ts) => ts.trace),
+      verdicts: [...cl.verdicts.entries()],
+      overviewFilter: cl.overviewFilter,
+      splitView: cl.splitView,
+      splitFilters: cl.splitFilters,
+      splitRatio: cl.splitRatio
+    }))
+  };
+  return JSON.stringify(data);
+}
+function importSession(json) {
+  const data = JSON.parse(json);
+  if (data.version !== 1) throw new Error("Unknown session version");
+  S.clusters = data.clusters.map((sc) => {
+    const traces = sc.traces.map(initTraceLazy);
+    const cl = {
+      id: sc.id,
+      name: sc.name,
+      traces,
+      verdicts: new Map(sc.verdicts),
+      overviewFilter: sc.overviewFilter,
+      counts: { positive: 0, negative: 0, pending: 0 },
+      tableSortState: {},
+      splitView: sc.splitView,
+      splitFilters: sc.splitFilters,
+      splitRatio: sc.splitRatio
+    };
+    recomputeCounts(cl);
+    if (traces.length > 0) ensureCache(traces[0]);
+    return cl;
+  });
+  S.activeClusterId = data.activeClusterId;
+  m$1.redraw();
+}
 const DEFAULT_COLUMN_CONFIG = {
   trace_uuid: {
     aliases: ["trace_uuid", "uuid", "id", "trace_id"],
     fallback: () => crypto.randomUUID()
   },
   package_name: {
-    aliases: ["package_name", "package", "pkg", "app", "process_name", "process"],
+    aliases: ["package_name", "process_name", "process", "package", "pkg", "app"],
     fallback: () => "unknown"
   },
   startup_dur: {
@@ -1690,7 +1731,7 @@ const DEFAULT_COLUMN_CONFIG = {
     fallback: () => 0
   },
   slices: {
-    aliases: ["slices", "json", "data", "trace_data", "base64", "thread_slices"],
+    aliases: ["slices", "quantized_sequence", "json", "data", "trace_data", "base64", "thread_slices"],
     fallback: () => []
   }
 };
@@ -1721,6 +1762,28 @@ function normalizeSlice(raw) {
     io_wait: resolveField(raw, cfg.io_wait.aliases, cfg.io_wait.fallback),
     blocked_function: resolveField(raw, cfg.blocked_function.aliases, cfg.blocked_function.fallback)
   };
+}
+function resolvePackageName(raw) {
+  const cfg = DEFAULT_COLUMN_CONFIG;
+  const val = resolveField(raw, cfg.package_name.aliases, cfg.package_name.fallback);
+  if (typeof val === "string" && val.startsWith("{")) {
+    try {
+      const parsed = JSON.parse(val);
+      if (parsed.package_name) return parsed.package_name;
+    } catch {
+    }
+  }
+  return val;
+}
+function arrayOfArraysToObjects(arr) {
+  const headers = arr[0];
+  return arr.slice(1).map((row) => {
+    const obj = {};
+    headers.forEach((h, i) => {
+      if (row[i] !== void 0) obj[h] = row[i];
+    });
+    return obj;
+  });
 }
 function normalizeTrace(raw) {
   const cfg = DEFAULT_COLUMN_CONFIG;
@@ -1758,7 +1821,7 @@ function normalizeTrace(raw) {
   }
   return {
     trace_uuid: resolveField(raw, cfg.trace_uuid.aliases, cfg.trace_uuid.fallback),
-    package_name: resolveField(raw, cfg.package_name.aliases, cfg.package_name.fallback),
+    package_name: resolvePackageName(raw),
     startup_dur: resolveField(raw, cfg.startup_dur.aliases, cfg.startup_dur.fallback),
     slices,
     extra: Object.keys(extra).length > 0 ? extra : void 0
@@ -1768,16 +1831,23 @@ function tryLoadJson(text, clusterName) {
   try {
     const parsed = JSON.parse(text);
     if (Array.isArray(parsed) && parsed.length) {
-      const first = parsed[0];
+      let items = parsed;
+      if (Array.isArray(parsed[0]) && parsed.length >= 2 && parsed[0].every((h) => typeof h === "string")) {
+        items = arrayOfArraysToObjects(parsed);
+      }
+      const first = items[0];
+      if (typeof first !== "object" || first === null || Array.isArray(first)) {
+        throw new Error("Expected array of objects or [headers, ...rows]");
+      }
       const looksLikeSlice = DEFAULT_SLICE_FIELD_CONFIG.ts.aliases.some((a) => first[a] !== void 0) && DEFAULT_SLICE_FIELD_CONFIG.dur.aliases.some((a) => first[a] !== void 0);
       const looksLikeTrace = DEFAULT_COLUMN_CONFIG.slices.aliases.some((a) => first[a] !== void 0);
       if (looksLikeSlice && !looksLikeTrace) {
-        loadSingleJson(parsed.map((s) => normalizeSlice(s)));
-        S.importMsg = { text: `Loaded ${parsed.length} slices`, ok: true };
+        loadSingleJson(items.map((s) => normalizeSlice(s)));
+        S.importMsg = { text: `Loaded ${items.length} slices`, ok: true };
         return;
       }
       if (looksLikeTrace) {
-        const traces = parsed.map((t) => normalizeTrace(t)).filter(Boolean);
+        const traces = items.map((t) => normalizeTrace(t)).filter(Boolean);
         if (traces.length === 0) throw new Error("No valid traces in array");
         loadMultipleTraces(clusterName, traces);
         S.importMsg = { text: `Loaded ${traces.length} traces`, ok: true };
@@ -1860,9 +1930,17 @@ function tryLoadDelimited(text, delimiter, clusterName) {
             if ((_a2 = cols[idx]) == null ? void 0 : _a2.trim()) extra[h] = cols[idx].trim();
           }
         });
+        let pkgName = pkgIdx >= 0 && cols[pkgIdx] ? cols[pkgIdx].trim() : cfg.package_name.fallback();
+        if (pkgName.startsWith("{")) {
+          try {
+            const p = JSON.parse(pkgName);
+            if (p.package_name) pkgName = p.package_name;
+          } catch {
+          }
+        }
         traces.push({
           trace_uuid: uuidIdx >= 0 && cols[uuidIdx] ? cols[uuidIdx].trim() : cfg.trace_uuid.fallback(),
-          package_name: pkgIdx >= 0 && cols[pkgIdx] ? cols[pkgIdx].trim() : cfg.package_name.fallback(),
+          package_name: pkgName,
           startup_dur: durIdx >= 0 && cols[durIdx] ? parseFloat(cols[durIdx]) || 0 : 0,
           slices,
           extra: Object.keys(extra).length > 0 ? extra : void 0
@@ -1964,6 +2042,38 @@ function copyCompressed() {
   const clean = ts.currentSeq.map(({ ts: ts2, dur, name, state, depth, io_wait, blocked_function, _merged }) => ({ ts: ts2, dur, name, state, depth, io_wait, blocked_function, _merged }));
   navigator.clipboard.writeText(JSON.stringify(clean, null, 2));
 }
+function saveSession() {
+  const json = exportSession();
+  const blob = new Blob([json], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  const date = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  a.download = `swiperf-session-${date}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+  S.importMsg = { text: "Session saved", ok: true };
+  m$1.redraw();
+}
+function loadSession(e) {
+  var _a;
+  const input = e.target;
+  const file = (_a = input.files) == null ? void 0 : _a[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    var _a2;
+    try {
+      importSession((_a2 = ev.target) == null ? void 0 : _a2.result);
+      S.importMsg = { text: `Session restored (${S.clusters.length} clusters)`, ok: true };
+    } catch (err) {
+      S.importMsg = { text: `Session load failed: ${err.message}`, ok: false };
+    }
+    m$1.redraw();
+  };
+  reader.readAsText(file);
+  input.value = "";
+}
 const Import = {
   view() {
     return m$1(".section", [
@@ -2009,6 +2119,9 @@ const Import = {
           m$1("input#file-input", { type: "file", accept: ".json,.txt,.tsv,.csv", multiple: true, style: { display: "none" }, onchange: loadFromFile }),
           m$1("button.btn", { onclick: () => document.getElementById("dir-input").click() }, "Import directory…"),
           m$1("input#dir-input", { type: "file", style: { display: "none" }, onchange: loadDirectory }),
+          S.clusters.length > 0 ? m$1("button.btn", { onclick: saveSession }, "Save session") : null,
+          m$1("button.btn", { onclick: () => document.getElementById("session-input").click() }, "Load session"),
+          m$1("input#session-input", { type: "file", accept: ".json", style: { display: "none" }, onchange: loadSession }),
           activeCluster() ? m$1("button.btn", { onclick: copyCompressed }, "Copy compressed") : null,
           S.importMsg ? m$1(`span.${S.importMsg.ok ? "msg-ok" : "msg-err"}`, (S.importMsg.ok ? "✓ " : "✗ ") + S.importMsg.text) : null
         ])
