@@ -256,6 +256,10 @@ textarea.json-area:focus { border-color: var(--accent); }
 .collapse-arrow.open { transform: rotate(90deg); }
 .trace-idx { font-family: var(--mono); font-size: 10px; color: var(--dim); min-width: 28px; }
 .trace-pkg { font-size: 11px; font-weight: 500; color: var(--bright); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.trace-startup-dur {
+  font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent);
+  white-space: nowrap;
+}
 .trace-actions { margin-left: auto; display: flex; gap: 4px; flex-shrink: 0; }
 
 /* Metadata chips row */
@@ -383,4 +387,35 @@ input[type=range]::-webkit-slider-thumb {
   content: ''; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
   width: 2px; height: 32px; background: var(--muted); border-radius: 1px;
 }
+
+/* Filter dropdown */
+.filter-dropdown-wrap { position: relative; }
+.filter-dropdown {
+  position: absolute; top: 100%; right: 0; margin-top: 4px; z-index: 100;
+  background: var(--surface); border: 1px solid var(--border2); border-radius: 8px;
+  box-shadow: var(--shadow), 0 8px 24px rgba(0,0,0,0.15);
+  padding: 8px 0; min-width: 200px; max-height: 360px; overflow-y: auto;
+}
+.filter-field { padding: 4px 12px; }
+.filter-field-header {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  margin-bottom: 4px;
+}
+.filter-field-name {
+  font-size: 10px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--muted);
+}
+.filter-clear {
+  font-size: 9px; color: var(--accent); background: none; border: none;
+  cursor: pointer; font-family: var(--sans); padding: 0;
+}
+.filter-clear:hover { text-decoration: underline; }
+.filter-field-values { display: flex; flex-direction: column; gap: 2px; }
+.filter-value-label {
+  display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--label);
+  cursor: pointer; padding: 2px 0;
+}
+.filter-value-label:hover { color: var(--text); }
+.filter-value-label input[type=checkbox] { accent-color: var(--accent); }
+.filter-field + .filter-field { border-top: 1px solid var(--border); padding-top: 8px; margin-top: 4px; }
 `

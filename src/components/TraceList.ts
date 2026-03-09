@@ -1,7 +1,9 @@
 import m from 'mithril'
-import { activeCluster, filteredTraces, filterTraces, ensureCache, setVerdict, updateSlider, recomputeCounts, getPositiveTraces, getNegativeTraces } from '../state'
+import { activeCluster, filteredTraces, filterTraces, ensureCache, setVerdict, updateSlider, recomputeCounts, getPositiveTraces, getNegativeTraces, getFilterableFields, getFieldValues, togglePropFilter, clearPropFilter } from '../state'
 import type { TraceState, Cluster } from '../state'
 import type { OverviewFilter } from '../models/types'
+
+let openFilterDropdown: string | null = null
 import { MiniTimeline } from './MiniTimeline'
 import { Summary } from './Summary'
 import { fmt_dur } from '../utils/format'
@@ -95,9 +97,9 @@ function getMetaChips(ts: TraceState): [string, string][] {
 }
 
 function renderTraceCard(cl: Cluster, ts: TraceState, idx: number) {
-  const uuid = ts.trace.trace_uuid
-  const isExpanded = expanded.has(uuid)
-  const verdict = cl.verdicts.get(uuid)
+  const key = ts._key
+  const isExpanded = expanded.has(key)
+  const verdict = cl.verdicts.get(key)
   ensureCache(ts)
   const chips = getMetaChips(ts)
 
@@ -105,19 +107,22 @@ function renderTraceCard(cl: Cluster, ts: TraceState, idx: number) {
     class: verdict === 'like' ? 'verdict-positive' : verdict === 'dislike' ? 'verdict-negative' : '',
   }, [
     m('.trace-card-header', {
-      onclick: () => toggleExpand(uuid),
+      onclick: () => toggleExpand(key),
     }, [
       m('.trace-header-top', [
         m('span.collapse-arrow' + (isExpanded ? '.open' : ''), '\u25b6'),
         m('span.trace-idx', `#${idx + 1}`),
         m('span.trace-pkg', ts.trace.package_name),
+        ts.trace.startup_dur
+          ? m('span.trace-startup-dur', fmt_dur(ts.trace.startup_dur))
+          : null,
         m('span.trace-actions', [
           m('button.verdict-btn-sm' + (verdict === 'like' ? '.active-positive' : ''), {
-            onclick: (e: Event) => { e.stopPropagation(); setVerdict(cl, uuid, 'like') },
+            onclick: (e: Event) => { e.stopPropagation(); setVerdict(cl, key, 'like') },
             title: 'Positive',
           }, '+'),
           m('button.verdict-btn-sm' + (verdict === 'dislike' ? '.active-negative' : ''), {
-            onclick: (e: Event) => { e.stopPropagation(); setVerdict(cl, uuid, 'dislike') },
+            onclick: (e: Event) => { e.stopPropagation(); setVerdict(cl, key, 'dislike') },
             title: 'Negative',
           }, '\u2212'),
         ]),
@@ -185,6 +190,60 @@ function renderFilterBar(cl: Cluster, activeFilter: OverviewFilter, onSelect: (f
   ))
 }
 
+function renderSortBtn(cl: Cluster) {
+  const active = cl.sortField === 'startup_dur'
+  return m('button.btn' + (active ? '.active-split' : ''), {
+    onclick: () => {
+      if (cl.sortField === 'startup_dur') {
+        cl.sortDir = cl.sortDir === 1 ? -1 : 1
+      } else {
+        cl.sortField = 'startup_dur'
+        cl.sortDir = 1
+      }
+    },
+    title: active ? 'Click to reverse, double-click index to reset' : 'Sort by startup duration',
+  }, active ? `Startup ${cl.sortDir === 1 ? '\u2191' : '\u2193'}` : 'Sort')
+}
+
+function renderFilterDropdown(cl: Cluster) {
+  const fields = getFilterableFields(cl)
+  if (fields.length === 0) return null
+  const hasActive = cl.propFilters.size > 0
+  return m('.filter-dropdown-wrap', [
+    m('button.btn' + (hasActive ? '.active-split' : ''), {
+      onclick: (e: Event) => {
+        e.stopPropagation()
+        openFilterDropdown = openFilterDropdown ? null : cl.id
+      },
+    }, hasActive ? `Filter (${cl.propFilters.size})` : 'Filter'),
+    openFilterDropdown === cl.id ? m('.filter-dropdown', {
+      onclick: (e: Event) => e.stopPropagation(),
+    }, [
+      ...fields.map(field => {
+        const values = getFieldValues(cl, field)
+        const active = cl.propFilters.get(field)
+        return m('.filter-field', [
+          m('.filter-field-header', [
+            m('span.filter-field-name', field.replace(/_/g, ' ')),
+            active ? m('button.filter-clear', {
+              onclick: () => clearPropFilter(cl, field),
+            }, 'clear') : null,
+          ]),
+          m('.filter-field-values', values.map(val =>
+            m('label.filter-value-label', [
+              m('input[type=checkbox]', {
+                checked: !active || active.has(val),
+                onchange: () => togglePropFilter(cl, field, val),
+              }),
+              m('span', val || '(empty)'),
+            ])
+          )),
+        ])
+      }),
+    ]) : null,
+  ])
+}
+
 function renderCardList(cl: Cluster, traces: TraceState[]) {
   return m('.trace-list', traces.map(ts => {
     const globalIdx = cl.traces.indexOf(ts)
@@ -223,6 +282,9 @@ function onDividerDown(e: MouseEvent, cl: Cluster) {
 }
 
 export const TraceList: m.Component = {
+  oncreate() {
+    document.addEventListener('click', () => { if (openFilterDropdown) { openFilterDropdown = null; m.redraw() } })
+  },
   view() {
     const cl = activeCluster()
     if (!cl || cl.traces.length === 0) {
@@ -245,6 +307,8 @@ export const TraceList: m.Component = {
         m('span.stat-pill.stat-pending', `${pending} ?`),
       ]),
       m('.list-actions', [
+        renderSortBtn(cl),
+        renderFilterDropdown(cl),
         m('button.btn' + (cl.splitView ? '.active-split' : ''), {
           onclick: () => { cl.splitView = !cl.splitView },
           title: 'Toggle split view',

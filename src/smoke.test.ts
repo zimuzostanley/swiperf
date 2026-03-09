@@ -34,6 +34,11 @@ function unmount() {
   m.mount(root, null)
 }
 
+/** Helper: get _key for trace at index in active cluster */
+function keyAt(idx: number): string {
+  return activeCluster()!.traces[idx]._key
+}
+
 describe('smoke test — full app mount with dummy data', () => {
   beforeEach(() => {
     resetState()
@@ -71,7 +76,6 @@ describe('smoke test — full app mount with dummy data', () => {
   it('renders multiple traces in trace list without errors', () => {
     addCluster('Multi', [makeTrace('t1'), makeTrace('t2'), makeTrace('t3')])
     expect(() => mount()).not.toThrow()
-    // Should show trace cards
     const cards = document.querySelectorAll('.trace-card')
     expect(cards.length).toBe(3)
   })
@@ -80,12 +84,10 @@ describe('smoke test — full app mount with dummy data', () => {
     addCluster('Multi', [makeTrace('t1'), makeTrace('t2'), makeTrace('t3')])
     mount()
     const cl = activeCluster()!
-    // Mark t1 as positive
-    setVerdict(cl, 't1', 'like')
+    setVerdict(cl, keyAt(0), 'like')
     expect(() => m.redraw.sync()).not.toThrow()
     expect(cl.counts.positive).toBe(1)
-    // Mark t2 as negative
-    setVerdict(cl, 't2', 'dislike')
+    setVerdict(cl, keyAt(1), 'dislike')
     expect(() => m.redraw.sync()).not.toThrow()
     expect(cl.counts.negative).toBe(1)
     expect(cl.counts.pending).toBe(1)
@@ -95,20 +97,17 @@ describe('smoke test — full app mount with dummy data', () => {
     addCluster('Multi', [makeTrace('t1'), makeTrace('t2'), makeTrace('t3')])
     mount()
     const cl = activeCluster()!
-    setVerdict(cl, 't1', 'like')
-    setVerdict(cl, 't2', 'dislike')
+    setVerdict(cl, keyAt(0), 'like')
+    setVerdict(cl, keyAt(1), 'dislike')
 
-    // Filter to positive
     cl.overviewFilter = 'positive'
     expect(filteredTraces().length).toBe(1)
     expect(() => m.redraw.sync()).not.toThrow()
 
-    // Filter to negative
     cl.overviewFilter = 'negative'
     expect(filteredTraces().length).toBe(1)
     expect(() => m.redraw.sync()).not.toThrow()
 
-    // Back to all
     cl.overviewFilter = 'all'
     expect(filteredTraces().length).toBe(3)
     expect(() => m.redraw.sync()).not.toThrow()
@@ -118,12 +117,11 @@ describe('smoke test — full app mount with dummy data', () => {
     addCluster('Test', [makeTrace('t1')])
     mount()
     const cl = activeCluster()!
-    // Set positive
-    setVerdict(cl, 't1', 'like')
-    expect(cl.verdicts.get('t1')).toBe('like')
-    // Toggle off (same verdict again)
-    setVerdict(cl, 't1', 'like')
-    expect(cl.verdicts.has('t1')).toBe(false)
+    const k = keyAt(0)
+    setVerdict(cl, k, 'like')
+    expect(cl.verdicts.get(k)).toBe('like')
+    setVerdict(cl, k, 'like')
+    expect(cl.verdicts.has(k)).toBe(false)
     expect(() => m.redraw.sync()).not.toThrow()
   })
 
@@ -189,14 +187,11 @@ describe('smoke test — full app mount with dummy data', () => {
   it('expanding a trace card shows detail without key errors', () => {
     addCluster('Expand', [makeTrace('e1', 6), makeTrace('e2', 4)])
     mount()
-    // Click the first card header to expand
     const header = document.querySelector('.trace-card-header') as HTMLElement
     expect(header).toBeTruthy()
     header.click()
     expect(() => m.redraw.sync()).not.toThrow()
-    // Detail should now be visible
     expect(document.querySelector('.trace-card-detail')).toBeTruthy()
-    // Collapse it
     header.click()
     expect(() => m.redraw.sync()).not.toThrow()
     expect(document.querySelector('.trace-card-detail')).toBeFalsy()
@@ -206,24 +201,19 @@ describe('smoke test — full app mount with dummy data', () => {
     addCluster('Multi', [makeTrace('m1'), makeTrace('m2'), makeTrace('m3')])
     mount()
     const cl = activeCluster()!
-    // Expand first two cards
     const headers = document.querySelectorAll('.trace-card-header')
     ;(headers[0] as HTMLElement).click()
     expect(() => m.redraw.sync()).not.toThrow()
     ;(headers[1] as HTMLElement).click()
     expect(() => m.redraw.sync()).not.toThrow()
-    // Set verdicts while expanded
-    setVerdict(cl, 'm1', 'like')
+    setVerdict(cl, keyAt(0), 'like')
     expect(() => m.redraw.sync()).not.toThrow()
-    setVerdict(cl, 'm2', 'dislike')
+    setVerdict(cl, keyAt(1), 'dislike')
     expect(() => m.redraw.sync()).not.toThrow()
-    // Switch filter to positive
     cl.overviewFilter = 'positive'
     expect(() => m.redraw.sync()).not.toThrow()
-    // Switch to negative
     cl.overviewFilter = 'negative'
     expect(() => m.redraw.sync()).not.toThrow()
-    // Back to all
     cl.overviewFilter = 'all'
     expect(() => m.redraw.sync()).not.toThrow()
   })
@@ -233,23 +223,18 @@ describe('smoke test — full app mount with dummy data', () => {
     mount()
     const cl = activeCluster()!
 
-    // Toggle split view on
     cl.splitView = true
     expect(() => m.redraw.sync()).not.toThrow()
     expect(document.querySelector('.split-container')).toBeTruthy()
     expect(document.querySelectorAll('.split-panel').length).toBe(2)
-
-    // Each panel has its own filter bar
     expect(document.querySelectorAll('.split-panel-header').length).toBe(2)
 
-    // Set verdicts and change split filters
-    setVerdict(cl, 's1', 'like')
-    setVerdict(cl, 's2', 'dislike')
+    setVerdict(cl, keyAt(0), 'like')
+    setVerdict(cl, keyAt(1), 'dislike')
     expect(() => m.redraw.sync()).not.toThrow()
     cl.splitFilters = ['positive', 'negative']
     expect(() => m.redraw.sync()).not.toThrow()
 
-    // Toggle split view off
     cl.splitView = false
     expect(() => m.redraw.sync()).not.toThrow()
     expect(document.querySelector('.split-container')).toBeFalsy()
@@ -264,8 +249,33 @@ describe('smoke test — full app mount with dummy data', () => {
     expect(() => m.redraw.sync()).not.toThrow()
     const panels = document.querySelectorAll('.split-panel')
     expect(panels.length).toBe(2)
-    // First panel should reflect the ratio
     const style = (panels[0] as HTMLElement).style.width
     expect(style).toContain('30')
+  })
+
+  it('deduplicates traces with same composite key', () => {
+    addCluster('Dedup', [makeTrace('dup'), makeTrace('dup'), makeTrace('unique')])
+    mount()
+    const cl = activeCluster()!
+    expect(cl.traces.length).toBe(2)
+    expect(document.querySelectorAll('.trace-card').length).toBe(2)
+  })
+
+  it('sort by startup_dur works', () => {
+    const t1 = makeTrace('fast')
+    t1.startup_dur = 1000
+    const t2 = makeTrace('slow')
+    t2.startup_dur = 9000
+    const t3 = makeTrace('mid')
+    t3.startup_dur = 5000
+    addCluster('Sort', [t1, t2, t3])
+    mount()
+    const cl = activeCluster()!
+    cl.sortField = 'startup_dur'
+    cl.sortDir = 1
+    const sorted = filteredTraces()
+    expect(sorted[0].trace.startup_dur).toBe(1000)
+    expect(sorted[2].trace.startup_dur).toBe(9000)
+    expect(() => m.redraw.sync()).not.toThrow()
   })
 })

@@ -4,11 +4,17 @@ import { build_merge_cache, get_compressed } from './models/compression'
 
 export interface TraceState {
   trace: TraceEntry
+  _key: string
   cache: Map<number, MergedSlice[]> | null
   totalDur: number
   origN: number
   sliderValue: number
   currentSeq: MergedSlice[]
+}
+
+export function traceKey(t: TraceEntry): string {
+  const startupId = t.extra?.startup_id ?? ''
+  return `${t.trace_uuid}|${t.package_name}|${startupId}|${t.startup_dur}`
 }
 
 interface VerdictCounts { positive: number; negative: number; pending: number }
@@ -24,6 +30,9 @@ export interface Cluster {
   splitView: boolean
   splitFilters: [OverviewFilter, OverviewFilter]
   splitRatio: number
+  sortField: 'index' | 'startup_dur'
+  sortDir: 1 | -1
+  propFilters: Map<string, Set<string>>
 }
 
 function makeCluster(name: string, traces: TraceState[]): Cluster {
@@ -35,6 +44,9 @@ function makeCluster(name: string, traces: TraceState[]): Cluster {
     splitView: false,
     splitFilters: ['pending', 'positive'],
     splitRatio: 0.5,
+    sortField: 'index',
+    sortDir: 1,
+    propFilters: new Map(),
   }
 }
 
@@ -62,7 +74,7 @@ export function initTraceLazy(trace: TraceEntry): TraceState {
   const slices = trace.slices
   const totalDur = slices.length > 0
     ? slices.reduce((mx, d) => Math.max(mx, (d.ts - slices[0].ts) + d.dur), 0) : 0
-  return { trace, cache: null, totalDur, origN: slices.length,
+  return { trace, _key: traceKey(trace), cache: null, totalDur, origN: slices.length,
     sliderValue: slices.length, currentSeq: [] }
 }
 
@@ -79,7 +91,14 @@ export function updateSlider(ts: TraceState, value: number) {
 }
 
 export function addCluster(name: string, entries: TraceEntry[]) {
-  const states = entries.map(initTraceLazy)
+  const allStates = entries.map(initTraceLazy)
+  // Deduplicate by composite key
+  const seen = new Set<string>()
+  const states = allStates.filter(ts => {
+    if (seen.has(ts._key)) return false
+    seen.add(ts._key)
+    return true
+  })
   const cl = makeCluster(name, states)
   if (states.length > 0) ensureCache(states[0])
   S.clusters.push(cl)
@@ -121,13 +140,34 @@ export function setVerdict(cl: Cluster, uuid: string, verdict: Verdict) {
   m.redraw()
 }
 
+function applyPropFilters(cl: Cluster, traces: TraceState[]): TraceState[] {
+  if (cl.propFilters.size === 0) return traces
+  return traces.filter(ts => {
+    for (const [field, allowed] of cl.propFilters) {
+      const val = String(ts.trace.extra?.[field] ?? '')
+      if (!allowed.has(val)) return false
+    }
+    return true
+  })
+}
+
+function applySorting(cl: Cluster, traces: TraceState[]): TraceState[] {
+  if (cl.sortField === 'index') return traces
+  const sorted = [...traces]
+  sorted.sort((a, b) => (a.trace.startup_dur - b.trace.startup_dur) * cl.sortDir)
+  return sorted
+}
+
 export function filterTraces(cl: Cluster, filter: OverviewFilter): TraceState[] {
+  let result: TraceState[]
   switch (filter) {
-    case 'positive': return cl.traces.filter(ts => cl.verdicts.get(ts.trace.trace_uuid) === 'like')
-    case 'negative': return cl.traces.filter(ts => cl.verdicts.get(ts.trace.trace_uuid) === 'dislike')
-    case 'pending': return cl.traces.filter(ts => !cl.verdicts.has(ts.trace.trace_uuid))
-    default: return cl.traces
+    case 'positive': result = cl.traces.filter(ts => cl.verdicts.get(ts._key) === 'like'); break
+    case 'negative': result = cl.traces.filter(ts => cl.verdicts.get(ts._key) === 'dislike'); break
+    case 'pending': result = cl.traces.filter(ts => !cl.verdicts.has(ts._key)); break
+    default: result = cl.traces
   }
+  result = applyPropFilters(cl, result)
+  return applySorting(cl, result)
 }
 
 export function filteredTraces(): TraceState[] {
@@ -139,13 +179,64 @@ export function filteredTraces(): TraceState[] {
 export function getPositiveTraces(): TraceState[] {
   const cl = activeCluster()
   if (!cl) return []
-  return cl.traces.filter(ts => cl.verdicts.get(ts.trace.trace_uuid) === 'like')
+  return cl.traces.filter(ts => cl.verdicts.get(ts._key) === 'like')
 }
 
 export function getNegativeTraces(): TraceState[] {
   const cl = activeCluster()
   if (!cl) return []
-  return cl.traces.filter(ts => cl.verdicts.get(ts.trace.trace_uuid) === 'dislike')
+  return cl.traces.filter(ts => cl.verdicts.get(ts._key) === 'dislike')
+}
+
+// Collect unique values for a given extra field across all traces
+export function getFieldValues(cl: Cluster, field: string): string[] {
+  const vals = new Set<string>()
+  for (const ts of cl.traces) {
+    vals.add(String(ts.trace.extra?.[field] ?? ''))
+  }
+  return [...vals].sort()
+}
+
+// Get list of extra fields that have multiple distinct values (worth filtering on)
+export function getFilterableFields(cl: Cluster): string[] {
+  const fieldVals = new Map<string, Set<string>>()
+  for (const ts of cl.traces) {
+    if (!ts.trace.extra) continue
+    for (const [k, v] of Object.entries(ts.trace.extra)) {
+      if (v == null) continue
+      let s = fieldVals.get(k)
+      if (!s) { s = new Set(); fieldVals.set(k, s) }
+      s.add(String(v))
+    }
+  }
+  // Only fields with 2+ distinct values and not too many (< 50)
+  return [...fieldVals.entries()]
+    .filter(([, vals]) => vals.size >= 2 && vals.size < 50)
+    .map(([k]) => k)
+}
+
+export function togglePropFilter(cl: Cluster, field: string, value: string) {
+  let allowed = cl.propFilters.get(field)
+  if (!allowed) {
+    // First click: select only this value (deselect all others)
+    const all = getFieldValues(cl, field)
+    allowed = new Set([value])
+    cl.propFilters.set(field, allowed)
+  } else if (allowed.has(value)) {
+    allowed.delete(value)
+    if (allowed.size === 0) cl.propFilters.delete(field)
+  } else {
+    allowed.add(value)
+    // If all values selected, remove filter entirely
+    const all = getFieldValues(cl, field)
+    if (allowed.size === all.length) cl.propFilters.delete(field)
+  }
+  m.redraw()
+}
+
+export function clearPropFilter(cl: Cluster, field: string) {
+  cl.propFilters.delete(field)
+  m.redraw()
 }
 
 // ── Session save / restore ──
@@ -162,6 +253,9 @@ interface SessionData {
     splitView: boolean
     splitFilters: [OverviewFilter, OverviewFilter]
     splitRatio: number
+    sortField?: 'index' | 'startup_dur'
+    sortDir?: 1 | -1
+    propFilters?: [string, string[]][]
   }[]
 }
 
@@ -178,6 +272,9 @@ export function exportSession(): string {
       splitView: cl.splitView,
       splitFilters: cl.splitFilters,
       splitRatio: cl.splitRatio,
+      sortField: cl.sortField,
+      sortDir: cl.sortDir,
+      propFilters: [...cl.propFilters.entries()].map(([k, v]) => [k, [...v]]),
     })),
   }
   return JSON.stringify(data)
@@ -199,6 +296,9 @@ export function importSession(json: string) {
       splitView: sc.splitView,
       splitFilters: sc.splitFilters,
       splitRatio: sc.splitRatio,
+      sortField: sc.sortField || 'index',
+      sortDir: sc.sortDir || 1,
+      propFilters: new Map((sc.propFilters || []).map(([k, v]) => [k, new Set(v)])),
     }
     recomputeCounts(cl)
     if (traces.length > 0) ensureCache(traces[0])
