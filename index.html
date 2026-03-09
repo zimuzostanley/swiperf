@@ -1656,6 +1656,27 @@ function loadSingleJson(data, uuid, pkg, dur) {
 function loadMultipleTraces(name, traces) {
   addCluster(name, traces);
 }
+function copyFilteredToNewTab(sourceCl, filteredStates) {
+  if (filteredStates.length === 0) return;
+  const entries = filteredStates.map((ts) => ({
+    trace_uuid: ts.trace.trace_uuid,
+    package_name: ts.trace.package_name,
+    startup_dur: ts.trace.startup_dur,
+    slices: ts.trace.slices,
+    extra: ts.trace.extra ? { ...ts.trace.extra } : void 0
+  }));
+  const newStates = entries.map(initTraceLazy);
+  const cl = makeCluster(sourceCl.name + " (copy)", newStates);
+  for (const ts of newStates) {
+    const v = sourceCl.verdicts.get(ts._key);
+    if (v) cl.verdicts.set(ts._key, v);
+  }
+  recomputeCounts(cl);
+  if (newStates.length > 0) ensureCache(newStates[0]);
+  S.clusters.push(cl);
+  S.activeClusterId = cl.id;
+  m$1.redraw();
+}
 function removeCluster(id) {
   S.clusters = S.clusters.filter((c) => c.id !== id);
   if (S.activeClusterId === id)
@@ -1724,16 +1745,6 @@ function filteredTraces() {
   const cl = activeCluster();
   if (!cl) return [];
   return filterTraces(cl, cl.overviewFilter);
-}
-function getPositiveTraces() {
-  const cl = activeCluster();
-  if (!cl) return [];
-  return cl.traces.filter((ts) => cl.verdicts.get(ts._key) === "like");
-}
-function getNegativeTraces() {
-  const cl = activeCluster();
-  if (!cl) return [];
-  return cl.traces.filter((ts) => cl.verdicts.get(ts._key) === "dislike");
 }
 function traceFieldValue(ts, field) {
   var _a;
@@ -2566,6 +2577,64 @@ const Import = {
     }
   }
 };
+const EXCLUDED_EXTRA = /* @__PURE__ */ new Set([
+  "slices",
+  "quantized_sequence",
+  "quantized_sequence_base64"
+]);
+function buildTraceLink(uuid, startupId) {
+  if (!uuid) return "";
+  let url = `https://apconsole.corp.google.com/link/perfetto/field_traces?uuid=${uuid}`;
+  if (startupId != null && startupId !== "") {
+    url += `&query=${encodeURIComponent(`com.android.AndroidStartup.startupId=${startupId}`)}`;
+  }
+  return url;
+}
+function verdictLabel(v) {
+  if (v === "like") return "positive";
+  if (v === "dislike") return "negative";
+  if (v === "discard") return "discarded";
+  return "pending";
+}
+function traceExportRow(trace, traceKey2, tabName, verdicts) {
+  var _a;
+  const row = {
+    trace_uuid: trace.trace_uuid,
+    package_name: trace.package_name,
+    startup_dur: trace.startup_dur,
+    tab_name: tabName,
+    verdict: verdictLabel(verdicts.get(traceKey2)),
+    link: buildTraceLink(trace.trace_uuid, (_a = trace.extra) == null ? void 0 : _a.startup_id)
+  };
+  if (trace.extra) {
+    for (const [k, v] of Object.entries(trace.extra)) {
+      if (!EXCLUDED_EXTRA.has(k)) row[k] = v;
+    }
+  }
+  return row;
+}
+const FIXED_COLS = ["trace_uuid", "package_name", "startup_dur", "tab_name", "verdict", "link"];
+function tsvEscape(v) {
+  if (v == null) return "";
+  if (typeof v === "object") return JSON.stringify(v).replace(/[\t\n\r]/g, " ");
+  return String(v).replace(/[\t\n\r]/g, " ");
+}
+function rowsToTsv(rows) {
+  if (rows.length === 0) return "";
+  const extraCols = /* @__PURE__ */ new Set();
+  for (const row of rows) {
+    for (const k of Object.keys(row)) {
+      if (!FIXED_COLS.includes(k)) extraCols.add(k);
+    }
+  }
+  const cols = [...FIXED_COLS, ...[...extraCols].sort()];
+  const header = cols.join("	");
+  const lines = rows.map((row) => cols.map((c) => tsvEscape(row[c])).join("	"));
+  return header + "\n" + lines.join("\n");
+}
+function rowsToJson(rows) {
+  return JSON.stringify(rows, null, 2);
+}
 const _Hsluv = class _Hsluv {
   constructor() {
     this.hex = "#000000";
@@ -3022,6 +3091,7 @@ const Summary = {
   }
 };
 let openFilterDropdown = null;
+let openExportMenu = false;
 const expanded = /* @__PURE__ */ new Set();
 function toggleExpand(uuid) {
   if (expanded.has(uuid)) expanded.delete(uuid);
@@ -3043,23 +3113,29 @@ function downloadFile(content, filename, mime) {
   a.click();
   URL.revokeObjectURL(url);
 }
-function traceExportRow(ts) {
-  const row = {
-    trace_uuid: ts.trace.trace_uuid,
-    package_name: ts.trace.package_name,
-    startup_dur: ts.trace.startup_dur
-  };
-  if (ts.trace.extra) Object.assign(row, ts.trace.extra);
-  return row;
+function buildRows(clusters) {
+  const rows = [];
+  for (const cl of clusters) {
+    for (const ts of cl.traces) {
+      rows.push(traceExportRow(ts.trace, ts._key, cl.name, cl.verdicts));
+    }
+  }
+  return rows;
 }
-function exportVerdicts() {
+function doExport(scope, format) {
   const cl = activeCluster();
   if (!cl) return;
-  const pos = getPositiveTraces().map(traceExportRow);
-  const neg = getNegativeTraces().map(traceExportRow);
-  const data = { positive: pos, negative: neg };
+  const clusters = scope === "tab" ? [cl] : S.clusters;
+  const rows = buildRows(clusters);
   const date = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
-  downloadFile(JSON.stringify(data, null, 2), `swiperf-verdicts-${date}.json`, "application/json");
+  const stem = scope === "tab" ? `swiperf-${cl.name}` : "swiperf-all";
+  const safeStem = stem.replace(/[^a-zA-Z0-9_-]/g, "_");
+  if (format === "json") {
+    downloadFile(rowsToJson(rows), `${safeStem}-${date}.json`, "application/json");
+  } else {
+    downloadFile(rowsToTsv(rows), `${safeStem}-${date}.tsv`, "text/tab-separated-values");
+  }
+  openExportMenu = false;
 }
 function renderGlobalSlider(cl) {
   return m$1(".trace-slider.global-slider", [
@@ -3096,12 +3172,8 @@ function renderSlider(ts) {
 }
 function traceLink(ts) {
   var _a;
-  const uuid = ts.trace.trace_uuid;
-  if (!uuid) return null;
-  const startupId = (_a = ts.trace.extra) == null ? void 0 : _a.startup_id;
-  let url = `https://apconsole.corp.google.com/link/perfetto/field_traces?uuid=${uuid}`;
-  if (startupId) url += `&query=${encodeURIComponent(`com.android.AndroidStartup.startupId=${startupId}`)}`;
-  return url;
+  const url = buildTraceLink(ts.trace.trace_uuid, (_a = ts.trace.extra) == null ? void 0 : _a.startup_id);
+  return url || null;
 }
 function renderTraceCard(cl, ts, idx) {
   const key = ts._key;
@@ -3258,6 +3330,36 @@ function renderFilterDropdown(cl) {
     ]) : null
   ]);
 }
+function renderExportDropdown(cl) {
+  return m$1(".export-dropdown-wrap", [
+    m$1("button.btn.primary", {
+      onclick: (e) => {
+        e.stopPropagation();
+        openExportMenu = !openExportMenu;
+      }
+    }, ["Export ", m$1("span.export-caret", "▾")]),
+    openExportMenu ? m$1(".export-dropdown", {
+      onclick: (e) => e.stopPropagation()
+    }, [
+      m$1(".export-section-label", "This tab"),
+      m$1("button.export-item", {
+        onclick: () => doExport("tab", "json")
+      }, "JSON"),
+      m$1("button.export-item", {
+        onclick: () => doExport("tab", "tsv")
+      }, "TSV"),
+      S.clusters.length > 1 ? [
+        m$1(".export-section-label", "All tabs"),
+        m$1("button.export-item", {
+          onclick: () => doExport("all", "json")
+        }, "JSON"),
+        m$1("button.export-item", {
+          onclick: () => doExport("all", "tsv")
+        }, "TSV")
+      ] : null
+    ]) : null
+  ]);
+}
 function renderCardList(cl, traces) {
   return m$1(".trace-list", traces.map((ts) => {
     const globalIdx = cl.traces.indexOf(ts);
@@ -3289,10 +3391,16 @@ function onDividerDown(e, cl) {
 const TraceList = {
   oncreate() {
     document.addEventListener("click", () => {
+      let changed = false;
       if (openFilterDropdown) {
         openFilterDropdown = null;
-        m$1.redraw();
+        changed = true;
       }
+      if (openExportMenu) {
+        openExportMenu = false;
+        changed = true;
+      }
+      if (changed) m$1.redraw();
     });
   },
   view() {
@@ -3324,10 +3432,15 @@ const TraceList = {
           },
           title: "Toggle split view"
         }, cl.splitView ? "Single" : "Split"),
-        m$1("button.btn.primary", {
-          onclick: exportVerdicts,
-          disabled: positive === 0 && negative === 0
-        }, "Export")
+        m$1("button.btn", {
+          onclick: () => {
+            const visible = filteredTraces();
+            copyFilteredToNewTab(cl, visible);
+          },
+          disabled: cl.splitView || filteredTraces().length === 0,
+          title: cl.splitView ? "Switch to single view first" : "Copy visible traces to a new tab"
+        }, "Copy to tab"),
+        renderExportDropdown()
       ])
     ]);
     if (!cl.splitView) {
@@ -3895,6 +4008,26 @@ input[type=range]::-webkit-slider-thumb {
 .filter-value-label:hover { color: var(--text); }
 .filter-value-label input[type=checkbox] { accent-color: var(--accent); }
 .filter-field + .filter-field { border-top: 1px solid var(--border); padding-top: 8px; margin-top: 4px; }
+
+/* Export dropdown */
+.export-dropdown-wrap { position: relative; }
+.export-caret { font-size: 9px; margin-left: 2px; }
+.export-dropdown {
+  position: absolute; top: 100%; right: 0; margin-top: 4px; z-index: 100;
+  background: var(--surface); border: 1px solid var(--border2); border-radius: 8px;
+  box-shadow: var(--shadow), 0 8px 24px rgba(0,0,0,0.15);
+  padding: 6px 0; min-width: 120px;
+}
+.export-section-label {
+  font-size: 9px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--muted); padding: 4px 12px 2px;
+}
+.export-item {
+  display: block; width: 100%; text-align: left; padding: 5px 12px;
+  font-family: var(--sans); font-size: 11px; color: var(--label); background: none;
+  border: none; cursor: pointer; transition: all 0.1s;
+}
+.export-item:hover { background: var(--accent-bg); color: var(--accent); }
 `;
 const style = document.createElement("style");
 style.textContent = CSS;
