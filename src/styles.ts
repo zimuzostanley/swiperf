@@ -268,6 +268,8 @@ textarea.json-area:focus { border-color: var(--accent); }
 .slider-label { font-size: 10px; color: var(--dim); white-space: nowrap; }
 .slider-num { font-family: var(--mono); font-size: 12px; font-weight: 500; color: var(--bright); min-width: 24px; }
 .slider-of { font-family: var(--mono); font-size: 10px; color: var(--muted); }
+.global-slider { padding: 0; }
+.global-slider input[type=range] { width: 120px; }
 
 input[type=range] {
   -webkit-appearance: none; appearance: none; width: 200px; height: 2px; border-radius: 1px;

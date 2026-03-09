@@ -1,5 +1,5 @@
 import m from 'mithril'
-import { activeCluster, filteredTraces, filterTraces, ensureCache, setVerdict, updateSlider, recomputeCounts, getPositiveTraces, getNegativeTraces, getFilterableFields, getFieldValues, togglePropFilter, clearPropFilter } from '../state'
+import { activeCluster, filteredTraces, filterTraces, ensureCache, setVerdict, updateSlider, updateGlobalSlider, recomputeCounts, getPositiveTraces, getNegativeTraces, getFilterableFields, getFieldValues, togglePropFilter, clearPropFilter } from '../state'
 import type { TraceState, Cluster } from '../state'
 import type { OverviewFilter } from '../models/types'
 
@@ -50,6 +50,22 @@ function exportVerdicts() {
   const data = { positive: pos, negative: neg }
   const date = new Date().toISOString().slice(0, 10)
   downloadFile(JSON.stringify(data, null, 2), `swiperf-verdicts-${date}.json`, 'application/json')
+}
+
+function renderGlobalSlider(cl: Cluster) {
+  return m('.trace-slider.global-slider', [
+    m('span.slider-label', 'All'),
+    m('span.slider-num', String(cl.globalSlider) + '%'),
+    m('input[type=range]', {
+      min: 1,
+      max: 100,
+      value: cl.globalSlider,
+      step: 1,
+      oninput: (e: Event) => {
+        updateGlobalSlider(cl, +(e.target as HTMLInputElement).value)
+      },
+    }),
+  ])
 }
 
 function renderSlider(ts: TraceState) {
@@ -273,6 +289,7 @@ export const TraceList: m.Component = {
         m('span.stat-pill.stat-negative', `${negative} \u2212`),
         m('span.stat-pill.stat-pending', `${pending} ?`),
       ]),
+      renderGlobalSlider(cl),
       m('.list-actions', [
         renderSortBtn(cl),
         renderFilterDropdown(cl),

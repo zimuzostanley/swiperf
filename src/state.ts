@@ -33,6 +33,7 @@ export interface Cluster {
   sortField: 'index' | 'startup_dur'
   sortDir: 1 | -1
   propFilters: Map<string, Set<string>>
+  globalSlider: number  // 1–100 percentage
 }
 
 function makeCluster(name: string, traces: TraceState[]): Cluster {
@@ -47,6 +48,7 @@ function makeCluster(name: string, traces: TraceState[]): Cluster {
     sortField: 'index',
     sortDir: 1,
     propFilters: new Map(),
+    globalSlider: 100,
   }
 }
 
@@ -88,6 +90,16 @@ export function updateSlider(ts: TraceState, value: number) {
   ensureCache(ts)
   ts.sliderValue = value
   ts.currentSeq = get_compressed(ts.cache!, ts.origN, value)
+}
+
+export function updateGlobalSlider(cl: Cluster, pct: number) {
+  cl.globalSlider = pct
+  const frac = pct / 100
+  for (const ts of cl.traces) {
+    const target = Math.max(2, Math.round(2 + (ts.origN - 2) * frac))
+    updateSlider(ts, target)
+  }
+  m.redraw()
 }
 
 export function addCluster(name: string, entries: TraceEntry[]) {
@@ -259,6 +271,7 @@ interface SessionData {
     sortField?: 'index' | 'startup_dur'
     sortDir?: 1 | -1
     propFilters?: [string, string[]][]
+    globalSlider?: number
   }[]
 }
 
@@ -278,6 +291,7 @@ export function exportSession(): string {
       sortField: cl.sortField,
       sortDir: cl.sortDir,
       propFilters: [...cl.propFilters.entries()].map(([k, v]) => [k, [...v]]),
+      globalSlider: cl.globalSlider,
     })),
   }
   return JSON.stringify(data)
@@ -302,6 +316,7 @@ export function importSession(json: string) {
       sortField: sc.sortField || 'index',
       sortDir: sc.sortDir || 1,
       propFilters: new Map((sc.propFilters || []).map(([k, v]) => [k, new Set(v)])),
+      globalSlider: sc.globalSlider ?? 100,
     }
     recomputeCounts(cl)
     if (traces.length > 0) ensureCache(traces[0])
