@@ -1558,6 +1558,11 @@ function get_compressed(cache, orig_n, target) {
   for (const k of cache.keys()) if (k >= t && k < best) best = k;
   return cache.get(best) ?? cache.get(2) ?? [];
 }
+function traceKey(t) {
+  var _a;
+  const startupId = ((_a = t.extra) == null ? void 0 : _a.startup_id) ?? "";
+  return `${t.trace_uuid}|${t.package_name}|${startupId}|${t.startup_dur}`;
+}
 function makeCluster(name, traces) {
   return {
     id: crypto.randomUUID(),
@@ -1569,7 +1574,10 @@ function makeCluster(name, traces) {
     tableSortState: {},
     splitView: false,
     splitFilters: ["pending", "positive"],
-    splitRatio: 0.5
+    splitRatio: 0.5,
+    sortField: "index",
+    sortDir: 1,
+    propFilters: /* @__PURE__ */ new Map()
   };
 }
 const S = { clusters: [], activeClusterId: null, importMsg: null };
@@ -1589,6 +1597,7 @@ function initTraceLazy(trace) {
   const totalDur = slices.length > 0 ? slices.reduce((mx, d) => Math.max(mx, d.ts - slices[0].ts + d.dur), 0) : 0;
   return {
     trace,
+    _key: traceKey(trace),
     cache: null,
     totalDur,
     origN: slices.length,
@@ -1607,7 +1616,13 @@ function updateSlider(ts, value) {
   ts.currentSeq = get_compressed(ts.cache, ts.origN, value);
 }
 function addCluster(name, entries) {
-  const states = entries.map(initTraceLazy);
+  const allStates = entries.map(initTraceLazy);
+  const seen = /* @__PURE__ */ new Set();
+  const states = allStates.filter((ts) => {
+    if (seen.has(ts._key)) return false;
+    seen.add(ts._key);
+    return true;
+  });
   const cl = makeCluster(name, states);
   if (states.length > 0) ensureCache(states[0]);
   S.clusters.push(cl);
@@ -1649,17 +1664,40 @@ function setVerdict(cl, uuid, verdict) {
   recomputeCounts(cl);
   m$1.redraw();
 }
+function applyPropFilters(cl, traces) {
+  if (cl.propFilters.size === 0) return traces;
+  return traces.filter((ts) => {
+    var _a;
+    for (const [field, allowed] of cl.propFilters) {
+      const val = String(((_a = ts.trace.extra) == null ? void 0 : _a[field]) ?? "");
+      if (!allowed.has(val)) return false;
+    }
+    return true;
+  });
+}
+function applySorting(cl, traces) {
+  if (cl.sortField === "index") return traces;
+  const sorted = [...traces];
+  sorted.sort((a, b) => (a.trace.startup_dur - b.trace.startup_dur) * cl.sortDir);
+  return sorted;
+}
 function filterTraces(cl, filter) {
+  let result;
   switch (filter) {
     case "positive":
-      return cl.traces.filter((ts) => cl.verdicts.get(ts.trace.trace_uuid) === "like");
+      result = cl.traces.filter((ts) => cl.verdicts.get(ts._key) === "like");
+      break;
     case "negative":
-      return cl.traces.filter((ts) => cl.verdicts.get(ts.trace.trace_uuid) === "dislike");
+      result = cl.traces.filter((ts) => cl.verdicts.get(ts._key) === "dislike");
+      break;
     case "pending":
-      return cl.traces.filter((ts) => !cl.verdicts.has(ts.trace.trace_uuid));
+      result = cl.traces.filter((ts) => !cl.verdicts.has(ts._key));
+      break;
     default:
-      return cl.traces;
+      result = cl.traces;
   }
+  result = applyPropFilters(cl, result);
+  return applySorting(cl, result);
 }
 function filteredTraces() {
   const cl = activeCluster();
@@ -1669,12 +1707,56 @@ function filteredTraces() {
 function getPositiveTraces() {
   const cl = activeCluster();
   if (!cl) return [];
-  return cl.traces.filter((ts) => cl.verdicts.get(ts.trace.trace_uuid) === "like");
+  return cl.traces.filter((ts) => cl.verdicts.get(ts._key) === "like");
 }
 function getNegativeTraces() {
   const cl = activeCluster();
   if (!cl) return [];
-  return cl.traces.filter((ts) => cl.verdicts.get(ts.trace.trace_uuid) === "dislike");
+  return cl.traces.filter((ts) => cl.verdicts.get(ts._key) === "dislike");
+}
+function getFieldValues(cl, field) {
+  var _a;
+  const vals = /* @__PURE__ */ new Set();
+  for (const ts of cl.traces) {
+    vals.add(String(((_a = ts.trace.extra) == null ? void 0 : _a[field]) ?? ""));
+  }
+  return [...vals].sort();
+}
+function getFilterableFields(cl) {
+  const fieldVals = /* @__PURE__ */ new Map();
+  for (const ts of cl.traces) {
+    if (!ts.trace.extra) continue;
+    for (const [k, v] of Object.entries(ts.trace.extra)) {
+      if (v == null) continue;
+      let s = fieldVals.get(k);
+      if (!s) {
+        s = /* @__PURE__ */ new Set();
+        fieldVals.set(k, s);
+      }
+      s.add(String(v));
+    }
+  }
+  return [...fieldVals.entries()].filter(([, vals]) => vals.size >= 2 && vals.size < 50).map(([k]) => k);
+}
+function togglePropFilter(cl, field, value) {
+  let allowed = cl.propFilters.get(field);
+  if (!allowed) {
+    getFieldValues(cl, field);
+    allowed = /* @__PURE__ */ new Set([value]);
+    cl.propFilters.set(field, allowed);
+  } else if (allowed.has(value)) {
+    allowed.delete(value);
+    if (allowed.size === 0) cl.propFilters.delete(field);
+  } else {
+    allowed.add(value);
+    const all = getFieldValues(cl, field);
+    if (allowed.size === all.length) cl.propFilters.delete(field);
+  }
+  m$1.redraw();
+}
+function clearPropFilter(cl, field) {
+  cl.propFilters.delete(field);
+  m$1.redraw();
 }
 function exportSession() {
   const data = {
@@ -1688,7 +1770,10 @@ function exportSession() {
       overviewFilter: cl.overviewFilter,
       splitView: cl.splitView,
       splitFilters: cl.splitFilters,
-      splitRatio: cl.splitRatio
+      splitRatio: cl.splitRatio,
+      sortField: cl.sortField,
+      sortDir: cl.sortDir,
+      propFilters: [...cl.propFilters.entries()].map(([k, v]) => [k, [...v]])
     }))
   };
   return JSON.stringify(data);
@@ -1708,7 +1793,10 @@ function importSession(json) {
       tableSortState: {},
       splitView: sc.splitView,
       splitFilters: sc.splitFilters,
-      splitRatio: sc.splitRatio
+      splitRatio: sc.splitRatio,
+      sortField: sc.sortField || "index",
+      sortDir: sc.sortDir || 1,
+      propFilters: new Map((sc.propFilters || []).map(([k, v]) => [k, new Set(v)]))
     };
     recomputeCounts(cl);
     if (traces.length > 0) ensureCache(traces[0]);
@@ -2638,6 +2726,7 @@ const Summary = {
     return m$1(".summary-grid", tables);
   }
 };
+let openFilterDropdown = null;
 const expanded = /* @__PURE__ */ new Set();
 function toggleExpand(uuid) {
   if (expanded.has(uuid)) expanded.delete(uuid);
@@ -2716,33 +2805,34 @@ function getMetaChips(ts) {
   return chips;
 }
 function renderTraceCard(cl, ts, idx) {
-  const uuid = ts.trace.trace_uuid;
-  const isExpanded = expanded.has(uuid);
-  const verdict = cl.verdicts.get(uuid);
+  const key = ts._key;
+  const isExpanded = expanded.has(key);
+  const verdict = cl.verdicts.get(key);
   ensureCache(ts);
   const chips = getMetaChips(ts);
   return m$1(".card.trace-card", {
     class: verdict === "like" ? "verdict-positive" : verdict === "dislike" ? "verdict-negative" : ""
   }, [
     m$1(".trace-card-header", {
-      onclick: () => toggleExpand(uuid)
+      onclick: () => toggleExpand(key)
     }, [
       m$1(".trace-header-top", [
         m$1("span.collapse-arrow" + (isExpanded ? ".open" : ""), "▶"),
         m$1("span.trace-idx", `#${idx + 1}`),
         m$1("span.trace-pkg", ts.trace.package_name),
+        ts.trace.startup_dur ? m$1("span.trace-startup-dur", fmt_dur(ts.trace.startup_dur)) : null,
         m$1("span.trace-actions", [
           m$1("button.verdict-btn-sm" + (verdict === "like" ? ".active-positive" : ""), {
             onclick: (e) => {
               e.stopPropagation();
-              setVerdict(cl, uuid, "like");
+              setVerdict(cl, key, "like");
             },
             title: "Positive"
           }, "+"),
           m$1("button.verdict-btn-sm" + (verdict === "dislike" ? ".active-negative" : ""), {
             onclick: (e) => {
               e.stopPropagation();
-              setVerdict(cl, uuid, "dislike");
+              setVerdict(cl, key, "dislike");
             },
             title: "Negative"
           }, "−")
@@ -2807,6 +2897,58 @@ function renderFilterBar(cl, activeFilter, onSelect) {
     ])
   ));
 }
+function renderSortBtn(cl) {
+  const active = cl.sortField === "startup_dur";
+  return m$1("button.btn" + (active ? ".active-split" : ""), {
+    onclick: () => {
+      if (cl.sortField === "startup_dur") {
+        cl.sortDir = cl.sortDir === 1 ? -1 : 1;
+      } else {
+        cl.sortField = "startup_dur";
+        cl.sortDir = 1;
+      }
+    },
+    title: active ? "Click to reverse, double-click index to reset" : "Sort by startup duration"
+  }, active ? `Startup ${cl.sortDir === 1 ? "↑" : "↓"}` : "Sort");
+}
+function renderFilterDropdown(cl) {
+  const fields = getFilterableFields(cl);
+  if (fields.length === 0) return null;
+  const hasActive = cl.propFilters.size > 0;
+  return m$1(".filter-dropdown-wrap", [
+    m$1("button.btn" + (hasActive ? ".active-split" : ""), {
+      onclick: (e) => {
+        e.stopPropagation();
+        openFilterDropdown = openFilterDropdown ? null : cl.id;
+      }
+    }, hasActive ? `Filter (${cl.propFilters.size})` : "Filter"),
+    openFilterDropdown === cl.id ? m$1(".filter-dropdown", {
+      onclick: (e) => e.stopPropagation()
+    }, [
+      ...fields.map((field) => {
+        const values = getFieldValues(cl, field);
+        const active = cl.propFilters.get(field);
+        return m$1(".filter-field", [
+          m$1(".filter-field-header", [
+            m$1("span.filter-field-name", field.replace(/_/g, " ")),
+            active ? m$1("button.filter-clear", {
+              onclick: () => clearPropFilter(cl, field)
+            }, "clear") : null
+          ]),
+          m$1(".filter-field-values", values.map(
+            (val) => m$1("label.filter-value-label", [
+              m$1("input[type=checkbox]", {
+                checked: !active || active.has(val),
+                onchange: () => togglePropFilter(cl, field, val)
+              }),
+              m$1("span", val || "(empty)")
+            ])
+          ))
+        ]);
+      })
+    ]) : null
+  ]);
+}
 function renderCardList(cl, traces) {
   return m$1(".trace-list", traces.map((ts) => {
     const globalIdx = cl.traces.indexOf(ts);
@@ -2836,6 +2978,14 @@ function onDividerDown(e, cl) {
   document.addEventListener("mouseup", onUp);
 }
 const TraceList = {
+  oncreate() {
+    document.addEventListener("click", () => {
+      if (openFilterDropdown) {
+        openFilterDropdown = null;
+        m$1.redraw();
+      }
+    });
+  },
   view() {
     const cl = activeCluster();
     if (!cl || cl.traces.length === 0) {
@@ -2855,6 +3005,8 @@ const TraceList = {
         m$1("span.stat-pill.stat-pending", `${pending} ?`)
       ]),
       m$1(".list-actions", [
+        renderSortBtn(cl),
+        renderFilterDropdown(cl),
         m$1("button.btn" + (cl.splitView ? ".active-split" : ""), {
           onclick: () => {
             cl.splitView = !cl.splitView;
@@ -3256,6 +3408,10 @@ textarea.json-area:focus { border-color: var(--accent); }
 .collapse-arrow.open { transform: rotate(90deg); }
 .trace-idx { font-family: var(--mono); font-size: 10px; color: var(--dim); min-width: 28px; }
 .trace-pkg { font-size: 11px; font-weight: 500; color: var(--bright); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.trace-startup-dur {
+  font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent);
+  white-space: nowrap;
+}
 .trace-actions { margin-left: auto; display: flex; gap: 4px; flex-shrink: 0; }
 
 /* Metadata chips row */
@@ -3383,6 +3539,37 @@ input[type=range]::-webkit-slider-thumb {
   content: ''; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
   width: 2px; height: 32px; background: var(--muted); border-radius: 1px;
 }
+
+/* Filter dropdown */
+.filter-dropdown-wrap { position: relative; }
+.filter-dropdown {
+  position: absolute; top: 100%; right: 0; margin-top: 4px; z-index: 100;
+  background: var(--surface); border: 1px solid var(--border2); border-radius: 8px;
+  box-shadow: var(--shadow), 0 8px 24px rgba(0,0,0,0.15);
+  padding: 8px 0; min-width: 200px; max-height: 360px; overflow-y: auto;
+}
+.filter-field { padding: 4px 12px; }
+.filter-field-header {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  margin-bottom: 4px;
+}
+.filter-field-name {
+  font-size: 10px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--muted);
+}
+.filter-clear {
+  font-size: 9px; color: var(--accent); background: none; border: none;
+  cursor: pointer; font-family: var(--sans); padding: 0;
+}
+.filter-clear:hover { text-decoration: underline; }
+.filter-field-values { display: flex; flex-direction: column; gap: 2px; }
+.filter-value-label {
+  display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--label);
+  cursor: pointer; padding: 2px 0;
+}
+.filter-value-label:hover { color: var(--text); }
+.filter-value-label input[type=checkbox] { accent-color: var(--accent); }
+.filter-field + .filter-field { border-top: 1px solid var(--border); padding-top: 8px; margin-top: 4px; }
 `;
 const style = document.createElement("style");
 style.textContent = CSS;
