@@ -145,8 +145,8 @@ canvas { display: block; width: 100%; cursor: crosshair; }
   box-shadow: var(--shadow), 0 8px 24px rgba(0,0,0,0.15); transition: background 0.2s, border-color 0.2s;
 }
 .tt-name { font-weight: 600; color: var(--bright); font-size: 12px; margin-bottom: 8px; line-height: 1.4; word-break: break-all; white-space: normal; }
-.tt-grid { display: grid; grid-template-columns: 80px 1fr; gap: 4px 10px; align-items: baseline; }
-.tt-k { color: var(--muted); font-size: 10px; font-family: var(--mono); }
+.tt-grid { display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; align-items: baseline; }
+.tt-k { color: var(--muted); font-size: 10px; font-family: var(--mono); white-space: nowrap; }
 .tt-v { color: var(--text); font-family: var(--mono); font-size: 10px; word-break: break-all; white-space: normal; line-height: 1.5; }
 
 /* Summary tables */
