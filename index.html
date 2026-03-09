@@ -2830,7 +2830,7 @@ function traceLink(ts) {
   const uuid = ts.trace.trace_uuid;
   if (!uuid) return null;
   const startupId = (_a = ts.trace.extra) == null ? void 0 : _a.startup_id;
-  let url = `http://go/trace-uuid/${uuid}`;
+  let url = `https://apconsole.corp.google.com/link/field_traces/${uuid}`;
   if (startupId) url += `?com.android.AndroidStartup.startupId=${encodeURIComponent(String(startupId))}`;
   return url;
 }
