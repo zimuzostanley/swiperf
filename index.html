@@ -1722,21 +1722,17 @@ function getFieldValues(cl, field) {
   }
   return [...vals].sort();
 }
+const FILTERABLE_FIELDS = ["device_name", "build_id", "unique_session_name", "startup_type"];
 function getFilterableFields(cl) {
-  const fieldVals = /* @__PURE__ */ new Map();
-  for (const ts of cl.traces) {
-    if (!ts.trace.extra) continue;
-    for (const [k, v] of Object.entries(ts.trace.extra)) {
-      if (v == null) continue;
-      let s = fieldVals.get(k);
-      if (!s) {
-        s = /* @__PURE__ */ new Set();
-        fieldVals.set(k, s);
-      }
-      s.add(String(v));
+  return FILTERABLE_FIELDS.filter((field) => {
+    var _a;
+    const vals = /* @__PURE__ */ new Set();
+    for (const ts of cl.traces) {
+      vals.add(String(((_a = ts.trace.extra) == null ? void 0 : _a[field]) ?? ""));
+      if (vals.size >= 2) return true;
     }
-  }
-  return [...fieldVals.entries()].filter(([, vals]) => vals.size >= 2 && vals.size < 50).map(([k]) => k);
+    return false;
+  });
 }
 function togglePropFilter(cl, field, value) {
   let allowed = cl.propFilters.get(field);
@@ -2787,7 +2783,6 @@ const META_CHIP_FIELDS = ["device_name", "device", "device_model", "build_id", "
 function getMetaChips(ts) {
   const chips = [];
   chips.push(["dur", fmt_dur(ts.totalDur)]);
-  if (ts.trace.startup_dur) chips.push(["startup", fmt_dur(ts.trace.startup_dur)]);
   if (ts.trace.extra) {
     const shown = /* @__PURE__ */ new Set();
     for (const field of META_CHIP_FIELDS) {
