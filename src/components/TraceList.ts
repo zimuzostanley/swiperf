@@ -93,8 +93,8 @@ function traceLink(ts: TraceState): string | null {
   const uuid = ts.trace.trace_uuid
   if (!uuid) return null
   const startupId = ts.trace.extra?.startup_id
-  let url = `https://apconsole.corp.google.com/link/field_traces/${uuid}`
-  if (startupId) url += `?com.android.AndroidStartup.startupId=${encodeURIComponent(String(startupId))}`
+  let url = `https://apconsole.corp.google.com/link/perfetto/field_traces?uuid=${uuid}`
+  if (startupId) url += `&query=${encodeURIComponent(`com.android.AndroidStartup.startupId=${startupId}`)}`
   return url
 }
 
