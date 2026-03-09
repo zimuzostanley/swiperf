@@ -61,7 +61,7 @@ export const DEFAULT_COLUMN_CONFIG: ColumnConfig = {
     fallback: () => 'unknown',
   },
   startup_dur: {
-    aliases: ['startup_dur', 'startup_duration', 'dur', 'duration', 'total_dur', 'startup_ms'],
+    aliases: ['startup_dur', 'startup_dur_ms', 'startup_duration', 'dur', 'duration', 'total_dur', 'startup_ms'],
     fallback: () => 0,
   },
   slices: {
