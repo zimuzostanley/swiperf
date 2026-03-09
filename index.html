@@ -2028,32 +2028,58 @@ function tryLoadJson(text, clusterName) {
     m$1.redraw();
   }
 }
-function parseDelimitedLine(line, delimiter) {
-  const fields = [];
+function parseDelimitedRows(text, delimiter) {
+  const rows = [];
+  let fields = [];
   let current = "";
   let inQ = false;
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
-    if (ch === '"') {
-      inQ = !inQ;
-      continue;
+  let i = 0;
+  while (i < text.length) {
+    const ch = text[i];
+    if (inQ) {
+      if (ch === '"') {
+        if (i + 1 < text.length && text[i + 1] === '"') {
+          current += '"';
+          i += 2;
+          continue;
+        }
+        inQ = false;
+        i++;
+        continue;
+      }
+      current += ch;
+      i++;
+    } else {
+      if (ch === '"' && current === "") {
+        inQ = true;
+        i++;
+      } else if (ch === delimiter) {
+        fields.push(current);
+        current = "";
+        i++;
+      } else if (ch === "\n" || ch === "\r") {
+        fields.push(current);
+        current = "";
+        if (ch === "\r" && i + 1 < text.length && text[i + 1] === "\n") i++;
+        if (fields.some((f) => f.trim() !== "")) rows.push(fields);
+        fields = [];
+        i++;
+      } else {
+        current += ch;
+        i++;
+      }
     }
-    if (ch === delimiter && !inQ) {
-      fields.push(current);
-      current = "";
-      continue;
-    }
-    current += ch;
   }
   fields.push(current);
-  return fields;
+  if (fields.some((f) => f.trim() !== "")) rows.push(fields);
+  return rows;
 }
 function tryLoadDelimited(text, delimiter, clusterName) {
   var _a;
   try {
-    const lines = text.trim().split("\n");
-    if (lines.length < 2) throw new Error("Need header + data rows");
-    const headers = parseDelimitedLine(lines[0], delimiter);
+    const rows = parseDelimitedRows(text, delimiter);
+    if (rows.length < 2) throw new Error("Need header + data rows");
+    const headers = rows[0];
     const cfg = DEFAULT_COLUMN_CONFIG;
     const findCol = (aliases) => headers.findIndex((h) => aliases.some((a) => h.toLowerCase().trim() === a.toLowerCase()));
     const slicesIdx = findCol(cfg.slices.aliases);
@@ -2064,8 +2090,8 @@ function tryLoadDelimited(text, delimiter, clusterName) {
     if (slicesIdx < 0) throw new Error(`Need a column matching: ${cfg.slices.aliases.join(", ")}`);
     const traces = [];
     let parseErrors = 0;
-    for (let i = 1; i < lines.length; i++) {
-      const cols = parseDelimitedLine(lines[i], delimiter);
+    for (let i = 1; i < rows.length; i++) {
+      const cols = rows[i];
       if (!((_a = cols[slicesIdx]) == null ? void 0 : _a.trim())) continue;
       let raw = cols[slicesIdx].trim();
       if (!raw.startsWith("[") && !raw.startsWith("{")) {
