@@ -197,22 +197,19 @@ export function getFieldValues(cl: Cluster, field: string): string[] {
   return [...vals].sort()
 }
 
-// Get list of extra fields that have multiple distinct values (worth filtering on)
+// Only these fields appear in the filter dropdown
+const FILTERABLE_FIELDS = ['device_name', 'build_id', 'unique_session_name', 'startup_type']
+
+// Get list of filterable extra fields that have multiple distinct values
 export function getFilterableFields(cl: Cluster): string[] {
-  const fieldVals = new Map<string, Set<string>>()
-  for (const ts of cl.traces) {
-    if (!ts.trace.extra) continue
-    for (const [k, v] of Object.entries(ts.trace.extra)) {
-      if (v == null) continue
-      let s = fieldVals.get(k)
-      if (!s) { s = new Set(); fieldVals.set(k, s) }
-      s.add(String(v))
+  return FILTERABLE_FIELDS.filter(field => {
+    const vals = new Set<string>()
+    for (const ts of cl.traces) {
+      vals.add(String(ts.trace.extra?.[field] ?? ''))
+      if (vals.size >= 2) return true
     }
-  }
-  // Only fields with 2+ distinct values and not too many (< 50)
-  return [...fieldVals.entries()]
-    .filter(([, vals]) => vals.size >= 2 && vals.size < 50)
-    .map(([k]) => k)
+    return false
+  })
 }
 
 export function togglePropFilter(cl: Cluster, field: string, value: string) {

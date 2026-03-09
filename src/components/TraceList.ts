@@ -77,7 +77,6 @@ const META_CHIP_FIELDS = ['device_name', 'device', 'device_model', 'build_id', '
 function getMetaChips(ts: TraceState): [string, string][] {
   const chips: [string, string][] = []
   chips.push(['dur', fmt_dur(ts.totalDur)])
-  if (ts.trace.startup_dur) chips.push(['startup', fmt_dur(ts.trace.startup_dur)])
   if (ts.trace.extra) {
     // Show known important fields first, then any remaining extra fields
     const shown = new Set<string>()
