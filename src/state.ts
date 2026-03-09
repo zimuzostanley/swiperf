@@ -17,7 +17,7 @@ export function traceKey(t: TraceEntry): string {
   return `${t.trace_uuid}|${t.package_name}|${startupId}|${t.startup_dur}`
 }
 
-interface VerdictCounts { positive: number; negative: number; pending: number }
+interface VerdictCounts { positive: number; negative: number; pending: number; discarded: number }
 
 export interface Cluster {
   id: string
@@ -40,7 +40,7 @@ function makeCluster(name: string, traces: TraceState[]): Cluster {
   return {
     id: crypto.randomUUID(), name, traces,
     verdicts: new Map(), overviewFilter: 'all',
-    counts: { positive: 0, negative: 0, pending: traces.length },
+    counts: { positive: 0, negative: 0, pending: traces.length, discarded: 0 },
     tableSortState: {},
     splitView: false,
     splitFilters: ['pending', 'positive'],
@@ -65,11 +65,13 @@ export function activeCluster(): Cluster | null {
 }
 
 export function recomputeCounts(cl: Cluster) {
-  let positive = 0, negative = 0
+  let positive = 0, negative = 0, discarded = 0
   for (const v of cl.verdicts.values()) {
-    if (v === 'like') positive++; else if (v === 'dislike') negative++
+    if (v === 'like') positive++
+    else if (v === 'dislike') negative++
+    else if (v === 'discard') discarded++
   }
-  cl.counts = { positive, negative, pending: cl.traces.length - positive - negative }
+  cl.counts = { positive, negative, discarded, pending: cl.traces.length - positive - negative - discarded }
 }
 
 export function initTraceLazy(trace: TraceEntry): TraceState {
@@ -175,7 +177,8 @@ export function filterTraces(cl: Cluster, filter: OverviewFilter): TraceState[] 
   switch (filter) {
     case 'positive': result = cl.traces.filter(ts => cl.verdicts.get(ts._key) === 'like'); break
     case 'negative': result = cl.traces.filter(ts => cl.verdicts.get(ts._key) === 'dislike'); break
-    case 'pending': result = cl.traces.filter(ts => !cl.verdicts.has(ts._key)); break
+    case 'pending': result = cl.traces.filter(ts => { const v = cl.verdicts.get(ts._key); return !v }); break
+    case 'discarded': result = cl.traces.filter(ts => cl.verdicts.get(ts._key) === 'discard'); break
     default: result = cl.traces
   }
   result = applyPropFilters(cl, result)
@@ -308,7 +311,7 @@ export function importSession(json: string) {
       traces,
       verdicts: new Map(sc.verdicts),
       overviewFilter: sc.overviewFilter,
-      counts: { positive: 0, negative: 0, pending: 0 },
+      counts: { positive: 0, negative: 0, pending: 0, discarded: 0 },
       tableSortState: {},
       splitView: sc.splitView,
       splitFilters: sc.splitFilters,

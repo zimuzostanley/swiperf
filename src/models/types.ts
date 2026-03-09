@@ -22,9 +22,9 @@ export interface TraceEntry {
   extra?: Record<string, unknown>
 }
 
-export type Verdict = 'like' | 'dislike'
+export type Verdict = 'like' | 'dislike' | 'discard'
 
-export type OverviewFilter = 'all' | 'positive' | 'negative' | 'pending'
+export type OverviewFilter = 'all' | 'positive' | 'negative' | 'pending' | 'discarded'
 
 export interface SortState {
   col: string

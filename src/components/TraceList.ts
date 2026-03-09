@@ -20,6 +20,7 @@ const ALL_FILTERS: { id: OverviewFilter; label: string }[] = [
   { id: 'positive', label: 'Positive' },
   { id: 'negative', label: 'Negative' },
   { id: 'pending', label: 'Pending' },
+  { id: 'discarded', label: 'Discarded' },
 ]
 
 function downloadFile(content: string, filename: string, mime: string) {
@@ -104,7 +105,7 @@ function renderTraceCard(cl: Cluster, ts: TraceState, idx: number) {
   ensureCache(ts)
 
   return m('.card.trace-card', {
-    class: verdict === 'like' ? 'verdict-positive' : verdict === 'dislike' ? 'verdict-negative' : '',
+    class: verdict === 'like' ? 'verdict-positive' : verdict === 'dislike' ? 'verdict-negative' : verdict === 'discard' ? 'verdict-discard' : '',
   }, [
     m('.trace-card-header', {
       onclick: () => toggleExpand(key),
@@ -132,6 +133,10 @@ function renderTraceCard(cl: Cluster, ts: TraceState, idx: number) {
           onclick: (e: Event) => { e.stopPropagation(); setVerdict(cl, key, 'dislike') },
           title: 'Negative',
         }, '\u2212'),
+        m('button.verdict-btn-sm' + (verdict === 'discard' ? '.active-discard' : ''), {
+          onclick: (e: Event) => { e.stopPropagation(); setVerdict(cl, key, 'discard') },
+          title: 'Discard',
+        }, '\u00d7'),
       ]),
     ]),
 
@@ -175,6 +180,7 @@ function filterCount(cl: Cluster, filter: OverviewFilter): number {
     case 'positive': return cl.counts.positive
     case 'negative': return cl.counts.negative
     case 'pending': return cl.counts.pending
+    case 'discarded': return cl.counts.discarded
     default: return cl.traces.length
   }
 }
@@ -294,7 +300,7 @@ export const TraceList: m.Component = {
       ])
     }
 
-    const { positive, negative, pending } = cl.counts
+    const { positive, negative, pending, discarded } = cl.counts
 
     // Toolbar
     const toolbar = m('.card.list-toolbar', [
@@ -305,6 +311,7 @@ export const TraceList: m.Component = {
         m('span.stat-pill.stat-positive', `${positive} +`),
         m('span.stat-pill.stat-negative', `${negative} \u2212`),
         m('span.stat-pill.stat-pending', `${pending} ?`),
+        discarded > 0 ? m('span.stat-pill.stat-discard', `${discarded} \u00d7`) : null,
       ]),
       renderGlobalSlider(cl),
       m('.list-actions', [

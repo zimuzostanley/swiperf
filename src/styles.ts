@@ -122,6 +122,7 @@ body {
 .verdict-btn-sm:hover { transform: translateY(-1px); box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
 .verdict-btn-sm.active-positive { background: var(--c-positive); color: #fff; border-color: var(--c-positive); }
 .verdict-btn-sm.active-negative { background: var(--c-negative); color: #fff; border-color: var(--c-negative); }
+.verdict-btn-sm.active-discard { background: var(--muted); color: #fff; border-color: var(--muted); }
 
 kbd {
   font-family: var(--mono); font-size: 9px; color: var(--muted); padding: 1px 4px;
@@ -236,6 +237,7 @@ textarea.json-area:focus { border-color: var(--accent); }
 .stat-positive { background: color-mix(in srgb, var(--c-positive) 15%, transparent); color: var(--c-positive); }
 .stat-negative { background: color-mix(in srgb, var(--c-negative) 15%, transparent); color: var(--c-negative); }
 .stat-pending { background: var(--surface2); color: var(--dim); }
+.stat-discard { background: var(--surface2); color: var(--muted); }
 
 /* Trace cards */
 .trace-list { display: flex; flex-direction: column; gap: 8px; }
@@ -243,6 +245,7 @@ textarea.json-area:focus { border-color: var(--accent); }
 .trace-card { transition: border-color 0.2s; }
 .trace-card.verdict-positive { border-color: var(--c-positive); }
 .trace-card.verdict-negative { border-color: var(--c-negative); }
+.trace-card.verdict-discard { border-color: var(--muted); opacity: 0.5; }
 
 .trace-card-header {
   display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 8px 14px;
