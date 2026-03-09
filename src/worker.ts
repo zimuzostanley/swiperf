@@ -61,11 +61,15 @@ self.onmessage = (e: MessageEvent<WorkerRequest>) => {
       }
 
       case 'parse-session': {
-        sendProgress(id, 'Parsing session data...')
+        const sizeMB = (payload.json.length / (1024 * 1024)).toFixed(1)
+        sendProgress(id, `Parsing ${sizeMB}MB of session JSON...`)
         const data = JSON.parse(payload.json)
         if (data.version !== 1) throw new Error('Unknown session version')
         const clusterCount = data.clusters?.length || 0
-        sendProgress(id, `Loaded ${clusterCount} cluster${clusterCount !== 1 ? 's' : ''}`)
+        const traceCount = data.clusters?.reduce(
+          (sum: number, c: any) => sum + (c.traces?.length || 0), 0,
+        ) || 0
+        sendProgress(id, `Parsed ${traceCount} traces in ${clusterCount} cluster${clusterCount !== 1 ? 's' : ''}`)
         sendResult(id, { session: data })
         break
       }

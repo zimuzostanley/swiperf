@@ -303,31 +303,65 @@ export function exportSession(): string {
   return JSON.stringify(data)
 }
 
-/** Hydrate pre-parsed session data into app state. No JSON.parse here. */
+/** Hydrate pre-parsed session data into app state synchronously. */
 export function importSessionData(data: SessionData) {
-  S.clusters = data.clusters.map(sc => {
-    const traces = sc.traces.map(initTraceLazy)
-    const cl: Cluster = {
-      id: sc.id,
-      name: sc.name,
-      traces,
-      verdicts: new Map(sc.verdicts),
-      overviewFilter: sc.overviewFilter,
-      counts: { positive: 0, negative: 0, pending: 0, discarded: 0 },
-      tableSortState: {},
-      splitView: sc.splitView,
-      splitFilters: sc.splitFilters,
-      splitRatio: sc.splitRatio,
-      sortField: sc.sortField || 'index',
-      sortDir: sc.sortDir || 1,
-      propFilters: new Map((sc.propFilters || []).map(([k, v]) => [k, new Set(v)])),
-      globalSlider: sc.globalSlider ?? 100,
-    }
-    recomputeCounts(cl)
-    if (traces.length > 0) ensureCache(traces[0])
-    return cl
-  })
+  S.clusters = data.clusters.map(sc => hydrateCluster(sc))
   S.activeClusterId = data.activeClusterId
+  m.redraw()
+}
+
+function hydrateCluster(sc: SessionData['clusters'][0]): Cluster {
+  const traces = sc.traces.map(initTraceLazy)
+  const cl: Cluster = {
+    id: sc.id,
+    name: sc.name,
+    traces,
+    verdicts: new Map(sc.verdicts),
+    overviewFilter: sc.overviewFilter,
+    counts: { positive: 0, negative: 0, pending: 0, discarded: 0 },
+    tableSortState: {},
+    splitView: sc.splitView,
+    splitFilters: sc.splitFilters,
+    splitRatio: sc.splitRatio,
+    sortField: sc.sortField || 'index',
+    sortDir: sc.sortDir || 1,
+    propFilters: new Map((sc.propFilters || []).map(([k, v]) => [k, new Set(v)])),
+    globalSlider: sc.globalSlider ?? 100,
+  }
+  recomputeCounts(cl)
+  if (traces.length > 0) ensureCache(traces[0])
+  return cl
+}
+
+/**
+ * Hydrate session data asynchronously, yielding to the event loop
+ * between clusters so the progress bar can update.
+ */
+export async function importSessionDataAsync(
+  data: SessionData,
+  onProgress?: (message: string, pct: number) => void,
+) {
+  const clusters: Cluster[] = []
+  const total = data.clusters.length
+  let processedTraces = 0
+  const totalTraces = data.clusters.reduce((sum, sc) => sum + sc.traces.length, 0)
+
+  for (let i = 0; i < total; i++) {
+    const sc = data.clusters[i]
+    onProgress?.(
+      `Hydrating cluster ${i + 1}/${total}: ${sc.name} (${sc.traces.length} traces)`,
+      totalTraces > 0 ? (processedTraces / totalTraces) * 100 : ((i / total) * 100),
+    )
+    // Yield so the UI can repaint the progress bar
+    await new Promise(r => setTimeout(r, 0))
+
+    clusters.push(hydrateCluster(sc))
+    processedTraces += sc.traces.length
+  }
+
+  S.clusters = clusters
+  S.activeClusterId = data.activeClusterId
+  onProgress?.('Done', 100)
   m.redraw()
 }
 

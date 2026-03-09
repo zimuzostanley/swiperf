@@ -1,15 +1,15 @@
 // src/components/Import.ts — Data import UI
 //
-// Paste uses synchronous parsing (clipboard data is small).
-// File, directory, and session imports use the Web Worker via parseAsync
-// to keep the UI responsive during large loads.
+// Small pastes (<100KB) use synchronous parsing for snappy feel.
+// Large pastes, file/directory imports, and session loads all use the
+// Web Worker via parseAsync to keep the UI responsive.
 
 import m from 'mithril'
 import { parseText } from '../parse'
 import { parseTextAsync, parseFilesAsync, parseSessionAsync } from '../parseAsync'
 import {
   S, addCluster, loadSingleJson, loadMultipleTraces,
-  activeCluster, exportSession, importSessionData,
+  activeCluster, exportSession, importSessionDataAsync,
 } from '../state'
 
 // Re-export pure parsing functions for tests
@@ -20,33 +20,60 @@ export {
 
 let _debounce: ReturnType<typeof setTimeout> | null = null
 
-// ── Sync paste handler (small inputs) ──
+// ── Paste handler ──
 
-export function handleTextInput(text: string, clusterName: string) {
+function applyParsedTraces(traces: import('../models/types').TraceEntry[], clusterName: string) {
+  if (traces.length === 0) {
+    S.importMsg = { text: 'No valid traces found', ok: false }
+    return
+  }
+  if (
+    traces.length === 1 &&
+    traces[0].package_name === 'unknown' &&
+    traces[0].startup_dur === 0
+  ) {
+    loadSingleJson(traces[0].slices)
+    S.importMsg = { text: `Loaded ${traces[0].slices.length} slices`, ok: true }
+  } else {
+    loadMultipleTraces(clusterName, traces)
+    S.importMsg = { text: `Loaded ${traces.length} traces`, ok: true }
+  }
+}
+
+export async function handleTextInput(text: string, clusterName: string) {
   text = text.trim()
   if (!text) return
+
+  // Small inputs (<100KB) — parse synchronously for snappy feel
+  if (text.length < 100_000) {
+    try {
+      applyParsedTraces(parseText(text), clusterName)
+    } catch (err: any) {
+      S.importMsg = { text: err.message, ok: false }
+    }
+    m.redraw()
+    return
+  }
+
+  // Large inputs — parse in worker to keep UI responsive
+  S.loadProgress = { message: 'Parsing pasted data...' }
+  m.redraw()
+
   try {
-    const traces = parseText(text)
-    if (traces.length === 0) {
-      S.importMsg = { text: 'No valid traces found', ok: false }
-      return
-    }
-    // Single trace with auto-generated uuid = raw slice array
-    if (
-      traces.length === 1 &&
-      traces[0].package_name === 'unknown' &&
-      traces[0].startup_dur === 0
-    ) {
-      loadSingleJson(traces[0].slices)
-      S.importMsg = { text: `Loaded ${traces[0].slices.length} slices`, ok: true }
-    } else {
-      loadMultipleTraces(clusterName, traces)
-      S.importMsg = { text: `Loaded ${traces.length} traces`, ok: true }
-    }
+    const result = await parseTextAsync(text, clusterName, (msg, cur, tot) => {
+      S.loadProgress = {
+        message: msg,
+        pct: tot ? ((cur ?? 0) / tot) * 100 : undefined,
+      }
+      m.redraw()
+    })
+    applyParsedTraces(result.traces, clusterName)
   } catch (err: any) {
     S.importMsg = { text: err.message, ok: false }
-    m.redraw()
   }
+
+  S.loadProgress = null
+  m.redraw()
 }
 
 // ── File reading helper ──
@@ -185,8 +212,11 @@ async function loadSession(e: Event) {
       m.redraw()
     })
 
-    // Hydrate state on main thread (fast — just creating Maps/Sets)
-    importSessionData(session)
+    // Hydrate state on main thread with granular progress
+    await importSessionDataAsync(session, (msg, pct) => {
+      S.loadProgress = { message: msg, pct }
+      m.redraw()
+    })
     S.importMsg = {
       text: `Session restored (${S.clusters.length} clusters)`,
       ok: true,
@@ -220,22 +250,24 @@ export const Import: m.Component = {
           disabled: loading,
           onpaste: (e: Event) => {
             if (_debounce) clearTimeout(_debounce)
-            _debounce = setTimeout(() => {
+            _debounce = setTimeout(async () => {
               const el = e.target as HTMLTextAreaElement
               if (el.value.trim()) {
-                handleTextInput(el.value, 'Paste')
+                const text = el.value
                 el.value = ''
+                await handleTextInput(text, 'Paste')
               }
               m.redraw()
             }, 50)
           },
           oninput: (e: Event) => {
             if (_debounce) clearTimeout(_debounce)
-            _debounce = setTimeout(() => {
+            _debounce = setTimeout(async () => {
               const el = e.target as HTMLTextAreaElement
               if (el.value.trim()) {
-                handleTextInput(el.value, 'Paste')
+                const text = el.value
                 el.value = ''
+                await handleTextInput(text, 'Paste')
               }
               m.redraw()
             }, 600)
