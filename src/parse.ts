@@ -354,9 +354,10 @@ export function parseDelimitedToTraces(
 
   const headers = rows[0]
   const cfg = DEFAULT_COLUMN_CONFIG
+  const norm = (s: string) => s.toLowerCase().trim().replace(/\s+/g, '_')
   const findCol = (aliases: string[]): number => {
     for (const a of aliases) {
-      const idx = headers.findIndex(h => h.toLowerCase().trim() === a.toLowerCase())
+      const idx = headers.findIndex(h => norm(h) === a.toLowerCase())
       if (idx >= 0) return idx
     }
     return -1
@@ -367,7 +368,7 @@ export function parseDelimitedToTraces(
   const pkgIdx = findCol(cfg.package_name.aliases)
   const durIdx = findCol(cfg.startup_dur.aliases)
   const durIsMs =
-    durIdx >= 0 && MS_ALIASES.has(headers[durIdx].toLowerCase().trim())
+    durIdx >= 0 && MS_ALIASES.has(norm(headers[durIdx]))
 
   if (slicesIdx < 0) {
     throw new Error(

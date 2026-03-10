@@ -200,6 +200,15 @@ describe('parseDelimitedToTraces', () => {
     expect(traces).toHaveLength(1)
   })
 
+  it('matches space-separated display-name headers to underscore aliases', () => {
+    const tsv = `Trace Uuid\tPackage\tStartup Dur Ms\tQuantized Sequence\nu1\tcom.app\t1500\t${JSON.stringify(SLICES)}`
+    const traces = parseDelimitedToTraces(tsv, '\t')
+    expect(traces).toHaveLength(1)
+    expect(traces[0].trace_uuid).toBe('u1')
+    expect(traces[0].package_name).toBe('com.app')
+    expect(traces[0].startup_dur).toBe(1500 * 1e6) // ms → ns
+  })
+
   it('reports progress', () => {
     const rows = Array.from({ length: 15 }, (_, i) =>
       `u${i}\t${JSON.stringify(SLICES)}`,
