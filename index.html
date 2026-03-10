@@ -2403,13 +2403,6 @@ async function loadFromFile(e) {
   S.loadProgress = null;
   m$1.redraw();
 }
-async function loadDirectory(e) {
-  var _a;
-  const input = e.target;
-  if (!((_a = input.files) == null ? void 0 : _a.length)) return;
-  input.files;
-  await loadFromFile(e);
-}
 function copyCompressed() {
   const cl = activeCluster();
   if (!cl) return;
@@ -2547,7 +2540,7 @@ const Import = {
           m$1("input#dir-input", {
             type: "file",
             style: { display: "none" },
-            onchange: loadDirectory
+            onchange: loadFromFile
           }),
           S.clusters.length > 0 ? m$1("button.btn", { onclick: saveSession, disabled: loading }, "Save session") : null,
           m$1("button.btn", {
@@ -2875,6 +2868,7 @@ function fmt_pct(ns, total) {
   if (total === 0) return "0.0%";
   return (ns / total * 100).toFixed(1) + "%";
 }
+const LONG_PKG_PREFIX$1 = "com.redfin.android.core.activity.launch.deeplink.";
 function renderMiniCanvas(canvas, ts) {
   const seq = ts.currentSeq;
   const totalDur = ts.totalDur;
@@ -2927,7 +2921,7 @@ function showTooltip(e, hits, totalDur) {
     ["×merged", String(d._merged), null]
   ];
   const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-  const name_display = esc((d.name ?? "null").replace("com.redfin.android.core.activity.launch.deeplink.", ""));
+  const name_display = esc((d.name ?? "null").replace(LONG_PKG_PREFIX$1, ""));
   tip2.innerHTML = `<div class="tt-name">${name_display}</div><div class="tt-grid">` + rows.map(
     ([k, v, col]) => `<span class="tt-k">${esc(String(k))}</span><span class="tt-v"${col ? ` style="color:${esc(String(col))}"` : ""}>${esc(String(v))}</span>`
   ).join("") + `</div>`;
@@ -2974,6 +2968,7 @@ const MiniTimeline = {
     return m$1(".overview-mini-canvas", m$1("canvas"));
   }
 };
+const LONG_PKG_PREFIX = "com.redfin.android.core.activity.launch.deeplink.";
 function build_summary_data(data) {
   const stateMap = {};
   const nameMap = {};
@@ -3093,7 +3088,7 @@ const Summary = {
       const maxName = Math.max(...Object.values(nameMap).map((v) => v.dur), 1);
       const nameRows = Object.entries(nameMap).map(([k, v]) => ({
         label: k,
-        short: k.replace("com.redfin.android.core.activity.launch.deeplink.", ""),
+        short: k.replace(LONG_PKG_PREFIX, ""),
         dur: v.dur,
         count: v.count,
         color: name_color(k),
@@ -3189,11 +3184,6 @@ function renderSlider(ts) {
     m$1("span.slider-of", `/ ${ts.origN}`)
   ]);
 }
-function traceLink(ts) {
-  var _a;
-  const url = buildTraceLink(ts.trace.trace_uuid, (_a = ts.trace.extra) == null ? void 0 : _a.startup_id);
-  return url || null;
-}
 function renderTraceCard(cl, ts, idx) {
   const key = ts._key;
   const isExpanded = expanded.has(key);
@@ -3210,7 +3200,8 @@ function renderTraceCard(cl, ts, idx) {
       m$1("span.trace-pkg", ts.trace.package_name),
       ts.trace.startup_dur ? m$1("span.trace-startup-dur", fmt_dur(ts.trace.startup_dur)) : null,
       (() => {
-        const href = traceLink(ts);
+        var _a;
+        const href = buildTraceLink(ts.trace.trace_uuid, (_a = ts.trace.extra) == null ? void 0 : _a.startup_id);
         return href ? m$1("a.trace-link", {
           href,
           target: "_blank",
@@ -3380,16 +3371,16 @@ function renderExportDropdown(cl) {
   ]);
 }
 function renderCardList(cl, traces) {
-  return m$1(".trace-list", traces.map((ts) => {
-    const globalIdx = cl.traces.indexOf(ts);
-    return renderTraceCard(cl, ts, globalIdx);
-  }));
+  const idxMap = /* @__PURE__ */ new Map();
+  cl.traces.forEach((ts, i) => idxMap.set(ts, i));
+  return m$1(".trace-list", traces.map(
+    (ts) => renderTraceCard(cl, ts, idxMap.get(ts) ?? 0)
+  ));
 }
 let _dragging = false;
 function onDividerDown(e, cl) {
   e.preventDefault();
   _dragging = true;
-  cl.id;
   const onMove = (ev) => {
     if (!_dragging) return;
     const container = e.target.parentElement;
@@ -3407,9 +3398,10 @@ function onDividerDown(e, cl) {
   document.addEventListener("mousemove", onMove);
   document.addEventListener("mouseup", onUp);
 }
+let _docClickHandler = null;
 const TraceList = {
   oncreate() {
-    document.addEventListener("click", () => {
+    _docClickHandler = () => {
       let changed = false;
       if (openFilterDropdown) {
         openFilterDropdown = null;
@@ -3420,7 +3412,14 @@ const TraceList = {
         changed = true;
       }
       if (changed) m$1.redraw();
-    });
+    };
+    document.addEventListener("click", _docClickHandler);
+  },
+  onremove() {
+    if (_docClickHandler) {
+      document.removeEventListener("click", _docClickHandler);
+      _docClickHandler = null;
+    }
   },
   view() {
     const cl = activeCluster();
@@ -3431,6 +3430,7 @@ const TraceList = {
       ]);
     }
     const { positive, negative, pending, discarded } = cl.counts;
+    const filtered = cl.splitView ? null : filteredTraces();
     const toolbar = m$1(".card.list-toolbar", [
       cl.splitView ? m$1(".list-filters-label", "Split View") : renderFilterBar(cl, cl.overviewFilter, (f) => {
         cl.overviewFilter = f;
@@ -3453,17 +3453,15 @@ const TraceList = {
         }, cl.splitView ? "Single" : "Split"),
         m$1("button.btn", {
           onclick: () => {
-            const visible = filteredTraces();
-            copyFilteredToNewTab(cl, visible);
+            if (filtered) copyFilteredToNewTab(cl, filtered);
           },
-          disabled: cl.splitView || filteredTraces().length === 0,
+          disabled: cl.splitView || !filtered || filtered.length === 0,
           title: cl.splitView ? "Switch to single view first" : "Copy visible traces to a new tab"
         }, "Copy to tab"),
         renderExportDropdown()
       ])
     ]);
-    if (!cl.splitView) {
-      const filtered = filteredTraces();
+    if (filtered) {
       return m$1(".section", [
         m$1(".section-head", `Traces (${filtered.length}${filtered.length !== cl.traces.length ? "/" + cl.traces.length : ""})`),
         toolbar,
