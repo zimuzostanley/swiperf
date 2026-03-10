@@ -2960,6 +2960,7 @@ function hideTooltip() {
 }
 const canvasHits = /* @__PURE__ */ new WeakMap();
 const canvasHover = /* @__PURE__ */ new WeakMap();
+const canvasListeners = /* @__PURE__ */ new WeakMap();
 const isVisible = /* @__PURE__ */ new WeakMap();
 const needsRender = /* @__PURE__ */ new WeakSet();
 let observer = null;
@@ -3019,7 +3020,7 @@ const MiniTimeline = {
     }
     const canvas = vnode2.dom.querySelector("canvas");
     if (!canvas) return;
-    canvas.addEventListener("mousemove", (e) => {
+    const onMove = (e) => {
       const cvs = e.target;
       const data = canvasHits.get(cvs);
       if (!data) return;
@@ -3040,8 +3041,8 @@ const MiniTimeline = {
         const hits = renderMiniCanvas(cvs, data.ts, hitIdx);
         canvasHits.set(cvs, { hits, totalDur: data.totalDur, ts: data.ts });
       }
-    });
-    canvas.addEventListener("mouseleave", (e) => {
+    };
+    const onLeave = (e) => {
       hideTooltip();
       const cvs = e.target;
       const data = canvasHits.get(cvs);
@@ -3050,12 +3051,24 @@ const MiniTimeline = {
         const hits = renderMiniCanvas(cvs, data.ts);
         canvasHits.set(cvs, { hits, totalDur: data.totalDur, ts: data.ts });
       }
-    });
+    };
+    canvas.addEventListener("mousemove", onMove);
+    canvas.addEventListener("mouseleave", onLeave);
+    canvasListeners.set(canvas, { move: onMove, leave: onLeave });
   },
   onupdate(vnode2) {
     doRender(vnode2.dom, vnode2.attrs.ts);
   },
   onremove(vnode2) {
+    const canvas = vnode2.dom.querySelector("canvas");
+    if (canvas) {
+      const listeners = canvasListeners.get(canvas);
+      if (listeners) {
+        canvas.removeEventListener("mousemove", listeners.move);
+        canvas.removeEventListener("mouseleave", listeners.leave);
+        canvasListeners.delete(canvas);
+      }
+    }
     if (observer) observer.unobserve(vnode2.dom);
     isVisible.delete(vnode2.dom);
     needsRender.delete(vnode2.dom);
