@@ -238,19 +238,20 @@ export const Import: m.Component = {
           placeholder: 'Paste JSON / TSV / CSV \u2014 creates a new cluster tab\u2026',
           spellcheck: false,
           disabled: loading,
-          onpaste: (e: Event) => {
+          onpaste: (e: ClipboardEvent) => {
+            // Read from clipboardData and prevent default to avoid
+            // inserting large text into the textarea DOM (causes freeze/crash).
+            const text = e.clipboardData?.getData('text/plain')
+            if (!text?.trim()) return
+            e.preventDefault()
             if (_debounce) clearTimeout(_debounce)
             _debounce = setTimeout(async () => {
-              const el = e.target as HTMLTextAreaElement
-              if (el.value.trim()) {
-                const text = el.value
-                el.value = ''
-                await handleTextInput(text, 'Paste')
-              }
+              await handleTextInput(text, 'Paste')
               m.redraw()
             }, 50)
           },
           oninput: (e: Event) => {
+            // Fallback for typed/autofill input (not paste)
             if (_debounce) clearTimeout(_debounce)
             _debounce = setTimeout(async () => {
               const el = e.target as HTMLTextAreaElement

@@ -258,6 +258,8 @@ textarea.json-area:focus { border-color: var(--accent); }
 
 /* Trace cards */
 .trace-list { display: flex; flex-direction: column; gap: 8px; }
+.show-more-wrap { text-align: center; padding: 8px 0; }
+.show-more { width: 100%; padding: 8px; font-size: 11px; }
 
 .trace-card { transition: border-color 0.2s; }
 .trace-card.verdict-positive { border-color: var(--c-positive); }

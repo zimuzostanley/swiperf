@@ -74,16 +74,19 @@ async function freshPage(): Promise<Page> {
   return p
 }
 
-// Helper: type text into the paste textarea and wait for import
+// Helper: paste text via ClipboardEvent (matches real user paste behavior)
 async function pasteText(p: Page, text: string) {
   await p.evaluate((t) => {
     const textarea = document.querySelector('.json-area') as HTMLTextAreaElement
-    textarea.value = t
-    textarea.dispatchEvent(new Event('input', { bubbles: true }))
+    textarea.focus()
+    const dt = new DataTransfer()
+    dt.setData('text/plain', t)
+    const event = new ClipboardEvent('paste', { clipboardData: dt, bubbles: true })
+    textarea.dispatchEvent(event)
   }, text)
   // Wait for debounce + processing
   await new Promise(r => setTimeout(r, 1000))
-  await p.waitForSelector('.trace-card', { timeout: 5000 })
+  await p.waitForSelector('.trace-card', { timeout: 10000 })
 }
 
 // ── Tests ──
@@ -592,4 +595,157 @@ describe('browser integration', () => {
 
     await p.close()
   })
+
+  // ── Large paste stress tests ──
+  // Generate JSON trace data of approximate target size in bytes.
+  // Each trace has ~200 bytes of slices, so we control count to hit target.
+  function generateTraces(targetBytes: number): string {
+    const sliceTemplate = [
+      { ts: 0, dur: 1000, name: 'work', state: 'Running', depth: 0, io_wait: null, blocked_function: null },
+      { ts: 1000, dur: 500, name: 'idle', state: 'Sleeping', depth: 0, io_wait: null, blocked_function: null },
+      { ts: 1500, dur: 300, name: 'binder', state: 'Runnable', depth: 1, io_wait: null, blocked_function: null },
+    ]
+    const slicesJson = JSON.stringify(sliceTemplate)
+    // Each trace is roughly: {"trace_uuid":"...","process_name":"...","quantized_sequence":"..."}
+    // ~slicesJson.length + ~80 bytes overhead per trace
+    const perTrace = slicesJson.length + 100
+    const count = Math.max(1, Math.round(targetBytes / perTrace))
+    const traces = []
+    for (let i = 0; i < count; i++) {
+      traces.push({
+        trace_uuid: `stress-${i}`,
+        process_name: `com.stress.app${i % 10}`,
+        quantized_sequence: slicesJson,
+        startup_dur: 1000000 + i * 100,
+      })
+    }
+    return JSON.stringify(traces)
+  }
+
+  // Paste via ClipboardEvent and return timing + result info
+  async function stressPaste(p: Page, json: string, label: string, timeoutMs: number) {
+    const byteLen = json.length
+    const start = Date.now()
+
+    // Check page is alive before paste
+    const alive = await p.evaluate(() => !!document.querySelector('.json-area'))
+    expect(alive).toBe(true)
+
+    // Paste via clipboardData (avoids textarea rendering bottleneck)
+    await p.evaluate((t) => {
+      const textarea = document.querySelector('.json-area') as HTMLTextAreaElement
+      textarea.focus()
+      const dt = new DataTransfer()
+      dt.setData('text/plain', t)
+      const event = new ClipboardEvent('paste', { clipboardData: dt, bubbles: true })
+      textarea.dispatchEvent(event)
+    }, json)
+
+    // Wait for processing — larger payloads need more time
+    const waitMs = Math.max(1500, Math.min(timeoutMs * 0.6, 15000))
+    await new Promise(r => setTimeout(r, waitMs))
+
+    // Check page didn't crash — can still query DOM
+    const pageAlive = await p.evaluate(() => {
+      return {
+        hasShell: !!document.querySelector('.shell'),
+        hasCards: document.querySelectorAll('.trace-card').length,
+        hasProgress: !!document.querySelector('.load-progress'),
+        hasMsg: document.querySelector('.msg-ok')?.textContent || null,
+        textareaValue: (document.querySelector('.json-area') as HTMLTextAreaElement)?.value?.length ?? -1,
+      }
+    }).catch(() => null)
+
+    const elapsed = Date.now() - start
+
+    // Page must still be alive
+    expect(pageAlive).not.toBeNull()
+    if (!pageAlive) return { elapsed, cards: 0, label }
+
+    // Shell must be present (page not crashed)
+    expect(pageAlive.hasShell).toBe(true)
+
+    // If still processing, wait for completion
+    if (pageAlive.hasProgress || pageAlive.hasCards === 0) {
+      try {
+        await p.waitForSelector('.trace-card', { timeout: timeoutMs - elapsed })
+      } catch {
+        // For very large payloads, check if error message appeared
+        const msg = await p.evaluate(() =>
+          document.querySelector('.msg-ok')?.textContent ||
+          document.querySelector('.msg-err')?.textContent || null
+        ).catch(() => null)
+        // Either cards loaded or we got an error message — both are OK, crash is not
+        if (!msg) {
+          // Still no result — check page is alive at minimum
+          const stillAlive = await p.evaluate(() => !!document.querySelector('.shell')).catch(() => false)
+          expect(stillAlive).toBe(true)
+        }
+      }
+    }
+
+    const finalCards = await p.$$eval('.trace-card', els => els.length).catch(() => 0)
+    const finalElapsed = Date.now() - start
+
+    // Textarea should be empty (text was consumed, not left rendering)
+    expect(pageAlive.textareaValue).toBe(0)
+
+    return { elapsed: finalElapsed, cards: finalCards, label, bytes: byteLen }
+  }
+
+  it('handles 10KB paste without crash', async () => {
+    const p = await freshPage()
+    const json = generateTraces(10_000)
+    const result = await stressPaste(p, json, '10KB', 10000)
+    expect(result.cards).toBeGreaterThan(0)
+    await p.close()
+  }, 20000)
+
+  it('handles 50KB paste without crash', async () => {
+    const p = await freshPage()
+    const json = generateTraces(50_000)
+    const result = await stressPaste(p, json, '50KB', 10000)
+    expect(result.cards).toBeGreaterThan(0)
+    await p.close()
+  }, 20000)
+
+  it('handles 99KB paste (sync path boundary) without crash', async () => {
+    const p = await freshPage()
+    const json = generateTraces(99_000)
+    const result = await stressPaste(p, json, '99KB', 10000)
+    expect(result.cards).toBeGreaterThan(0)
+    await p.close()
+  }, 20000)
+
+  it('handles 100KB paste (worker path) without crash', async () => {
+    const p = await freshPage()
+    const json = generateTraces(100_000)
+    const result = await stressPaste(p, json, '100KB', 15000)
+    expect(result.cards).toBeGreaterThan(0)
+    await p.close()
+  }, 25000)
+
+  it('handles 150KB paste without crash', async () => {
+    const p = await freshPage()
+    const json = generateTraces(150_000)
+    const result = await stressPaste(p, json, '150KB', 15000)
+    expect(result.cards).toBeGreaterThan(0)
+    await p.close()
+  }, 25000)
+
+  it('handles 1MB paste without crash', async () => {
+    const p = await freshPage()
+    const json = generateTraces(1_000_000)
+    const result = await stressPaste(p, json, '1MB', 30000)
+    expect(result.cards).toBeGreaterThan(0)
+    await p.close()
+  }, 45000)
+
+  it('handles 10MB paste without crash', async () => {
+    const p = await freshPage()
+    const json = generateTraces(10_000_000)
+    const result = await stressPaste(p, json, '10MB', 60000)
+    expect(result.cards).toBeGreaterThan(0)
+    await p.close()
+  }, 90000)
 })

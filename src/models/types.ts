@@ -65,7 +65,7 @@ export const DEFAULT_COLUMN_CONFIG: ColumnConfig = {
     fallback: () => 0,
   },
   slices: {
-    aliases: ['slices', 'quantized_sequence', 'json', 'data', 'trace_data', 'base64', 'thread_slices'],
+    aliases: ['slices', 'quantized_sequence', 'quantized_sequence_json', 'json', 'data', 'trace_data', 'base64', 'thread_slices'],
     fallback: () => [],
   },
 }

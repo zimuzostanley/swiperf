@@ -24,7 +24,7 @@ export interface ExportableTrace {
 
 /** Fields to always exclude from export (large data columns). */
 const EXCLUDED_EXTRA = new Set([
-  'slices', 'quantized_sequence', 'quantized_sequence_base64',
+  'slices', 'quantized_sequence', 'quantized_sequence_json', 'quantized_sequence_base64',
 ])
 
 /** Build a perfetto trace link URL. */

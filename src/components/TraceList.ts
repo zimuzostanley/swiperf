@@ -1,5 +1,5 @@
 import m from 'mithril'
-import { S, activeCluster, filteredTraces, filterTraces, ensureCache, setVerdict, updateSlider, updateGlobalSlider, getFilterableFields, getFieldValues, togglePropFilter, clearPropFilter, copyFilteredToNewTab } from '../state'
+import { S, activeCluster, filteredTraces, filterTraces, setVerdict, updateSlider, updateGlobalSlider, getFilterableFields, getFieldValues, togglePropFilter, clearPropFilter, copyFilteredToNewTab } from '../state'
 import type { TraceState, Cluster } from '../state'
 import type { OverviewFilter } from '../models/types'
 import { traceExportRow, rowsToTsv, rowsToJson, buildTraceLink } from '../utils/export'
@@ -12,6 +12,8 @@ import { Summary } from './Summary'
 import { fmt_dur } from '../utils/format'
 
 const expanded = new Set<string>()
+const PAGE_SIZE = 100
+const renderLimit = new Map<string, number>()  // cluster id → how many to show
 
 function toggleExpand(uuid: string) {
   if (expanded.has(uuid)) expanded.delete(uuid)
@@ -102,7 +104,6 @@ function renderTraceCard(cl: Cluster, ts: TraceState, idx: number) {
   const key = ts._key
   const isExpanded = expanded.has(key)
   const verdict = cl.verdicts.get(key)
-  ensureCache(ts)
 
   return m('.card.trace-card', {
     class: verdict === 'like' ? 'verdict-positive' : verdict === 'dislike' ? 'verdict-negative' : verdict === 'discard' ? 'verdict-discard' : '',
@@ -285,9 +286,23 @@ function renderCardList(cl: Cluster, traces: TraceState[]) {
   // Build index map once instead of O(n) indexOf per card
   const idxMap = new Map<TraceState, number>()
   cl.traces.forEach((ts, i) => idxMap.set(ts, i))
-  return m('.trace-list', traces.map(ts =>
-    renderTraceCard(cl, ts, idxMap.get(ts) ?? 0)
-  ))
+
+  const limit = renderLimit.get(cl.id) ?? PAGE_SIZE
+  const visible = traces.slice(0, limit)
+  const remaining = traces.length - visible.length
+
+  return m('.trace-list', [
+    ...visible.map(ts =>
+      renderTraceCard(cl, ts, idxMap.get(ts) ?? 0)
+    ),
+    remaining > 0
+      ? m('.show-more-wrap', m('button.btn.show-more', {
+          onclick: () => {
+            renderLimit.set(cl.id, limit + PAGE_SIZE)
+          },
+        }, `Show ${Math.min(remaining, PAGE_SIZE)} more (${remaining} remaining)`))
+      : null,
+  ])
 }
 
 // Split view divider drag state
