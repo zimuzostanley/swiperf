@@ -28,11 +28,11 @@ const EXCLUDED_EXTRA = new Set([
 ])
 
 /** Build a perfetto trace link URL. */
-export function buildTraceLink(uuid: string, startupId?: unknown): string {
+export function buildTraceLink(uuid: string, packageName?: string): string {
   if (!uuid) return ''
   let url = `https://apconsole.corp.google.com/link/perfetto/field_traces?uuid=${uuid}`
-  if (startupId != null && startupId !== '') {
-    url += `&query=${encodeURIComponent(`com.android.AndroidStartup.startupId=${startupId}`)}`
+  if (packageName) {
+    url += `&query=${encodeURIComponent(`com.android.AndroidStartup.packageName=${packageName}`)}`
   }
   return url
 }
@@ -58,7 +58,7 @@ export function traceExportRow(
     startup_dur: trace.startup_dur,
     tab_name: tabName,
     verdict: verdictLabel(verdicts.get(traceKey)),
-    link: buildTraceLink(trace.trace_uuid, trace.extra?.startup_id),
+    link: buildTraceLink(trace.trace_uuid, trace.package_name),
   }
   if (trace.extra) {
     for (const [k, v] of Object.entries(trace.extra)) {

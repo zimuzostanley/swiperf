@@ -118,7 +118,7 @@ function renderTraceCard(cl: Cluster, ts: TraceState, idx: number) {
         ? m('span.trace-startup-dur', fmt_dur(ts.trace.startup_dur))
         : null,
       (() => {
-        const href = buildTraceLink(ts.trace.trace_uuid, ts.trace.extra?.startup_id)
+        const href = buildTraceLink(ts.trace.trace_uuid, ts.trace.package_name)
         return href ? m('a.trace-link', {
           href, target: '_blank', rel: 'noopener',
           onclick: (e: Event) => e.stopPropagation(),

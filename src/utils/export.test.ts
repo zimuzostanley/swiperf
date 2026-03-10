@@ -13,11 +13,11 @@ describe('buildTraceLink', () => {
     expect(url).toBe('https://apconsole.corp.google.com/link/perfetto/field_traces?uuid=abc-123')
   })
 
-  it('includes startup_id query param when provided', () => {
-    const url = buildTraceLink('abc-123', '5')
+  it('includes packageName query param when provided', () => {
+    const url = buildTraceLink('abc-123', 'com.google.android.app')
     expect(url).toContain('uuid=abc-123')
     expect(url).toContain('query=')
-    expect(url).toContain('startupId%3D5')
+    expect(url).toContain('packageName%3Dcom.google.android.app')
   })
 
   it('returns empty string for empty uuid', () => {
@@ -66,11 +66,11 @@ describe('traceExportRow', () => {
     expect(row).not.toHaveProperty('slices')
   })
 
-  it('includes link with startup_id from extra', () => {
-    const trace = makeTrace('u1', 'com.app', 0, { startup_id: '3' })
+  it('includes link with packageName query param', () => {
+    const trace = makeTrace('u1', 'com.google.app', 0)
     const row = traceExportRow(trace, 'k', 'T', new Map())
     expect(row.link).toContain('uuid=u1')
-    expect(row.link).toContain('startupId%3D3')
+    expect(row.link).toContain('packageName%3Dcom.google.app')
   })
 })
 
