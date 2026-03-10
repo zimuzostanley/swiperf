@@ -2590,11 +2590,11 @@ const EXCLUDED_EXTRA = /* @__PURE__ */ new Set([
   "quantized_sequence_json",
   "quantized_sequence_base64"
 ]);
-function buildTraceLink(uuid, startupId) {
+function buildTraceLink(uuid, packageName) {
   if (!uuid) return "";
   let url = `https://apconsole.corp.google.com/link/perfetto/field_traces?uuid=${uuid}`;
-  if (startupId != null && startupId !== "") {
-    url += `&query=${encodeURIComponent(`com.android.AndroidStartup.startupId=${startupId}`)}`;
+  if (packageName) {
+    url += `&query=${encodeURIComponent(`com.android.AndroidStartup.packageName=${packageName}`)}`;
   }
   return url;
 }
@@ -2605,14 +2605,13 @@ function verdictLabel(v) {
   return "pending";
 }
 function traceExportRow(trace, traceKey2, tabName, verdicts) {
-  var _a;
   const row = {
     trace_uuid: trace.trace_uuid,
     package_name: trace.package_name,
     startup_dur: trace.startup_dur,
     tab_name: tabName,
     verdict: verdictLabel(verdicts.get(traceKey2)),
-    link: buildTraceLink(trace.trace_uuid, (_a = trace.extra) == null ? void 0 : _a.startup_id)
+    link: buildTraceLink(trace.trace_uuid, trace.package_name)
   };
   if (trace.extra) {
     for (const [k, v] of Object.entries(trace.extra)) {
@@ -3269,8 +3268,7 @@ function renderTraceCard(cl, ts, idx) {
       m$1("span.trace-pkg", ts.trace.package_name),
       ts.trace.startup_dur ? m$1("span.trace-startup-dur", fmt_dur(ts.trace.startup_dur)) : null,
       (() => {
-        var _a;
-        const href = buildTraceLink(ts.trace.trace_uuid, (_a = ts.trace.extra) == null ? void 0 : _a.startup_id);
+        const href = buildTraceLink(ts.trace.trace_uuid, ts.trace.package_name);
         return href ? m$1("a.trace-link", {
           href,
           target: "_blank",
