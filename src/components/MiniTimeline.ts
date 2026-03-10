@@ -4,8 +4,9 @@ import { ensureCache } from '../state'
 import { renderMiniCanvas, showTooltip, hideTooltip } from './Timeline'
 import type { HitRect } from './Timeline'
 
-// Store hit rects per canvas element — survives across Mithril lifecycle hooks
-const canvasHits = new WeakMap<HTMLCanvasElement, { hits: HitRect[]; totalDur: number }>()
+// Store hit rects + trace state per canvas element — survives across Mithril lifecycle hooks
+const canvasHits = new WeakMap<HTMLCanvasElement, { hits: HitRect[]; totalDur: number; ts: TraceState }>()
+const canvasHover = new WeakMap<HTMLCanvasElement, number | undefined>()
 
 // ── Viewport-gated rendering ──
 // A shared IntersectionObserver tracks which MiniTimeline elements are in or
@@ -63,8 +64,8 @@ function doRender(dom: Element, ts: TraceState) {
   const canvas = dom.querySelector('canvas') as HTMLCanvasElement
   if (!canvas) return
   ensureCache(ts)
-  const hits = renderMiniCanvas(canvas, ts)
-  canvasHits.set(canvas, { hits, totalDur: ts.totalDur })
+  const hits = renderMiniCanvas(canvas, ts, canvasHover.get(canvas))
+  canvasHits.set(canvas, { hits, totalDur: ts.totalDur, ts })
 }
 
 // ── Component ──
@@ -86,11 +87,39 @@ export const MiniTimeline: m.Component<{ ts: TraceState }> = {
     if (!canvas) return
 
     canvas.addEventListener('mousemove', (e: MouseEvent) => {
-      const data = canvasHits.get(e.target as HTMLCanvasElement)
+      const cvs = e.target as HTMLCanvasElement
+      const data = canvasHits.get(cvs)
       if (!data) return
       showTooltip(e, data.hits, data.totalDur)
+
+      // Find hovered segment index and re-render with highlight
+      const rect = cvs.getBoundingClientRect()
+      const mx = e.clientX - rect.left
+      const my = e.clientY - rect.top
+      let hitIdx: number | undefined
+      for (let i = data.hits.length - 1; i >= 0; i--) {
+        const r = data.hits[i]
+        if (mx >= r.x && mx <= r.x + r.w && my >= r.y && my <= r.y + r.h) {
+          hitIdx = i
+          break
+        }
+      }
+      if (hitIdx !== canvasHover.get(cvs)) {
+        canvasHover.set(cvs, hitIdx)
+        const hits = renderMiniCanvas(cvs, data.ts, hitIdx)
+        canvasHits.set(cvs, { hits, totalDur: data.totalDur, ts: data.ts })
+      }
     })
-    canvas.addEventListener('mouseleave', hideTooltip)
+    canvas.addEventListener('mouseleave', (e: MouseEvent) => {
+      hideTooltip()
+      const cvs = e.target as HTMLCanvasElement
+      const data = canvasHits.get(cvs)
+      if (data && canvasHover.get(cvs) != null) {
+        canvasHover.delete(cvs)
+        const hits = renderMiniCanvas(cvs, data.ts)
+        canvasHits.set(cvs, { hits, totalDur: data.totalDur, ts: data.ts })
+      }
+    })
   },
   onupdate(vnode) {
     doRender(vnode.dom, vnode.attrs.ts)

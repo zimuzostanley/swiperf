@@ -9,7 +9,7 @@ export interface HitRect {
   x: number; y: number; w: number; h: number; d: MergedSlice
 }
 
-export function renderMiniCanvas(canvas: HTMLCanvasElement, ts: TraceState): HitRect[] {
+export function renderMiniCanvas(canvas: HTMLCanvasElement, ts: TraceState, highlightIdx?: number): HitRect[] {
   const seq = ts.currentSeq
   const totalDur = ts.totalDur
   const dpr = window.devicePixelRatio || 1
@@ -27,17 +27,20 @@ export function renderMiniCanvas(canvas: HTMLCanvasElement, ts: TraceState): Hit
   ctx.fillStyle = dark ? '#17171a' : '#ffffff'
   ctx.fillRect(0, 0, cssW, cssH)
 
+  const dimmed = highlightIdx != null
   const hits: HitRect[] = []
   const scale = cssW / totalDur
-  seq.forEach(d => {
+  seq.forEach((d, i) => {
     const x = d.tsRel * scale
     const w = Math.max(d.dur * scale, 0.5)
+    ctx.globalAlpha = dimmed && i !== highlightIdx ? 0.25 : 1
     ctx.fillStyle = state_color(d)
     ctx.fillRect(x, 0, w, 12)
     ctx.fillStyle = d.name ? name_color(d.name) : (dark ? '#1c1c26' : '#ede9e2')
     ctx.fillRect(x, 14, w, 16)
     hits.push({ x, y: 0, w, h: cssH, d })
   })
+  ctx.globalAlpha = 1
   return hits
 }
 

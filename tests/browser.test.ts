@@ -596,6 +596,86 @@ describe('browser integration', () => {
     await p.close()
   })
 
+  it('hover highlights segment and dims others', async () => {
+    const p = await freshPage()
+
+    // 3 slices with distinct states to verify dimming
+    const slices = [
+      { ts: 0, dur: 100, name: 'a', state: 'Running', depth: 0, io_wait: null, blocked_function: null },
+      { ts: 100, dur: 100, name: 'b', state: 'Sleeping', depth: 0, io_wait: null, blocked_function: null },
+      { ts: 200, dur: 100, name: 'c', state: 'Running', depth: 0, io_wait: null, blocked_function: null },
+    ]
+    await pasteText(p, JSON.stringify([{
+      trace_uuid: 'hover-test',
+      process_name: 'com.hover',
+      quantized_sequence: JSON.stringify(slices),
+    }]))
+
+    // Sample pixel alpha from middle slice BEFORE hover (should be fully opaque)
+    const beforeAlpha = await p.evaluate(() => {
+      const canvas = document.querySelector('.overview-mini-canvas canvas') as HTMLCanvasElement
+      if (!canvas) return -1
+      const ctx = canvas.getContext('2d')
+      if (!ctx) return -1
+      const dpr = window.devicePixelRatio || 1
+      // Sample from the state row (y=6), middle of canvas (x = width/2)
+      const px = ctx.getImageData(Math.round(canvas.width / 2), Math.round(6 * dpr), 1, 1).data
+      return px[3] // alpha channel
+    })
+    expect(beforeAlpha).toBeGreaterThan(200) // fully opaque
+
+    // Hover over the first slice (left side of canvas)
+    const canvasBox = await p.$eval('.overview-mini-canvas canvas', el => {
+      const r = el.getBoundingClientRect()
+      return { x: r.left, y: r.top, w: r.width, h: r.height }
+    })
+    // Move mouse to x=10% of canvas (first slice region)
+    await p.mouse.move(canvasBox.x + canvasBox.w * 0.1, canvasBox.y + canvasBox.h / 2)
+    await new Promise(r => setTimeout(r, 100))
+
+    // Now sample the MIDDLE slice — it should be dimmed (low alpha or blended toward bg)
+    const afterHover = await p.evaluate(() => {
+      const canvas = document.querySelector('.overview-mini-canvas canvas') as HTMLCanvasElement
+      if (!canvas) return { first: [0, 0, 0, 0], mid: [0, 0, 0, 0] }
+      const ctx = canvas.getContext('2d')
+      if (!ctx) return { first: [0, 0, 0, 0], mid: [0, 0, 0, 0] }
+      const dpr = window.devicePixelRatio || 1
+      const y = Math.round(6 * dpr)
+      // First slice region (x ~10%)
+      const px1 = ctx.getImageData(Math.round(canvas.width * 0.1), y, 1, 1).data
+      // Middle slice region (x ~50%)
+      const px2 = ctx.getImageData(Math.round(canvas.width * 0.5), y, 1, 1).data
+      return { first: Array.from(px1), mid: Array.from(px2) }
+    })
+
+    // The hovered slice (first) should be bright/saturated
+    // The non-hovered slice (mid) should be washed out (closer to background)
+    // With globalAlpha=0.25, non-hovered colors blend heavily with the white/dark bg
+    const [r1, g1, b1] = afterHover.first
+    const [r2, g2, b2] = afterHover.mid
+    // Hovered slice should have more color saturation than dimmed one
+    const sat1 = Math.max(r1, g1, b1) - Math.min(r1, g1, b1)
+    const sat2 = Math.max(r2, g2, b2) - Math.min(r2, g2, b2)
+    expect(sat1).toBeGreaterThan(sat2)
+
+    // Move mouse away — should restore full opacity
+    await p.mouse.move(canvasBox.x - 50, canvasBox.y - 50)
+    await new Promise(r => setTimeout(r, 100))
+
+    const afterLeave = await p.evaluate(() => {
+      const canvas = document.querySelector('.overview-mini-canvas canvas') as HTMLCanvasElement
+      if (!canvas) return -1
+      const ctx = canvas.getContext('2d')
+      if (!ctx) return -1
+      const dpr = window.devicePixelRatio || 1
+      const px = ctx.getImageData(Math.round(canvas.width / 2), Math.round(6 * dpr), 1, 1).data
+      return px[3]
+    })
+    expect(afterLeave).toBeGreaterThan(200) // back to fully opaque
+
+    await p.close()
+  })
+
   // ── Large paste stress tests ──
   // Generate JSON trace data of approximate target size in bytes.
   // Each trace has ~200 bytes of slices, so we control count to hit target.
