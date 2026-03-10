@@ -263,6 +263,50 @@ describe('parseDelimitedRows edge cases', () => {
   })
 })
 
+// ── trace_address / UUID extraction ──
+
+describe('trace_address UUID extraction', () => {
+  it('extracts UUID from a file path', () => {
+    const result = normalizeTrace({
+      trace_address: '/some/path/a1b2c3d4-e5f6-7890-abcd-ef1234567890.pftrace.gz',
+      slices: [{ ts: 0, dur: 1 }],
+    })
+    expect(result!.trace_uuid).toBe('a1b2c3d4-e5f6-7890-abcd-ef1234567890')
+  })
+
+  it('uses trace_uuid directly when no path separator', () => {
+    const result = normalizeTrace({
+      trace_uuid: 'my-simple-id',
+      slices: [{ ts: 0, dur: 1 }],
+    })
+    expect(result!.trace_uuid).toBe('my-simple-id')
+  })
+
+  it('prefers trace_uuid over trace_address (alias order)', () => {
+    const result = normalizeTrace({
+      trace_uuid: 'direct-uuid',
+      trace_address: '/path/to/a1b2c3d4-e5f6-7890-abcd-ef1234567890.pftrace',
+      slices: [{ ts: 0, dur: 1 }],
+    })
+    expect(result!.trace_uuid).toBe('direct-uuid')
+  })
+
+  it('extracts UUID from trace_address in TSV', () => {
+    const addr = '/path/to/a1b2c3d4-e5f6-7890-abcd-ef1234567890.pftrace.gz'
+    const tsv = `trace_address\tquantized_sequence\n${addr}\t${JSON.stringify(SLICES)}`
+    const traces = parseDelimitedToTraces(tsv, '\t')
+    expect(traces[0].trace_uuid).toBe('a1b2c3d4-e5f6-7890-abcd-ef1234567890')
+  })
+
+  it('falls back to basename without extension if no UUID in path', () => {
+    const result = normalizeTrace({
+      trace_address: '/some/path/my-trace-file.pftrace.gz',
+      slices: [{ ts: 0, dur: 1 }],
+    })
+    expect(result!.trace_uuid).toBe('my-trace-file')
+  })
+})
+
 // ── normalizeTrace edge cases ──
 
 describe('normalizeTrace edge cases', () => {

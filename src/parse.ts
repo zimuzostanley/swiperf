@@ -83,6 +83,22 @@ export function arrayOfArraysToObjects(
   })
 }
 
+// ── UUID extraction ──
+// trace_address values are paths like "/path/to/uuid.pftrace.gz"
+// Extract the UUID portion (basename without extension) if the value looks like a path.
+// If it's already a bare UUID, return as-is.
+
+const UUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i
+
+function extractUuid(val: string): string {
+  if (!val || !val.includes('/')) return val
+  const match = val.match(UUID_RE)
+  if (match) return match[0]
+  // Fallback: use basename without extension
+  const base = val.split('/').pop() || val
+  return base.replace(/\.\w+(\.\w+)*$/, '')
+}
+
 // ── Trace normalization ──
 
 export function normalizeTrace(raw: Record<string, any>): TraceEntry | null {
@@ -133,7 +149,7 @@ export function normalizeTrace(raw: Record<string, any>): TraceEntry | null {
   }
 
   return {
-    trace_uuid: resolveField(raw, cfg.trace_uuid.aliases, cfg.trace_uuid.fallback),
+    trace_uuid: extractUuid(resolveField(raw, cfg.trace_uuid.aliases, cfg.trace_uuid.fallback)),
     package_name: resolvePackageName(raw),
     startup_dur: resolveStartupDur(raw),
     slices,
@@ -338,10 +354,13 @@ export function parseDelimitedToTraces(
 
   const headers = rows[0]
   const cfg = DEFAULT_COLUMN_CONFIG
-  const findCol = (aliases: string[]): number =>
-    headers.findIndex(h =>
-      aliases.some(a => h.toLowerCase().trim() === a.toLowerCase()),
-    )
+  const findCol = (aliases: string[]): number => {
+    for (const a of aliases) {
+      const idx = headers.findIndex(h => h.toLowerCase().trim() === a.toLowerCase())
+      if (idx >= 0) return idx
+    }
+    return -1
+  }
 
   const slicesIdx = findCol(cfg.slices.aliases)
   const uuidIdx = findCol(cfg.trace_uuid.aliases)
@@ -419,10 +438,11 @@ export function parseDelimitedToTraces(
       }
 
       traces.push({
-        trace_uuid:
+        trace_uuid: extractUuid(
           uuidIdx >= 0 && cols[uuidIdx]
             ? cols[uuidIdx].trim()
             : cfg.trace_uuid.fallback(),
+        ),
         package_name: pkgName,
         startup_dur:
           durIdx >= 0 && cols[durIdx]

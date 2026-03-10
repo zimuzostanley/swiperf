@@ -53,7 +53,7 @@ export interface ColumnConfig {
 
 export const DEFAULT_COLUMN_CONFIG: ColumnConfig = {
   trace_uuid: {
-    aliases: ['trace_uuid', 'uuid', 'id', 'trace_id'],
+    aliases: ['trace_uuid', 'uuid', 'id', 'trace_id', 'trace_address'],
     fallback: () => crypto.randomUUID(),
   },
   package_name: {
