@@ -423,7 +423,7 @@ export function parseDelimitedToTraces(
           idx !== pkgIdx &&
           idx !== durIdx
         ) {
-          if (cols[idx]?.trim()) extra[h] = cols[idx].trim()
+          if (cols[idx]?.trim()) extra[norm(h)] = cols[idx].trim()
         }
       })
 

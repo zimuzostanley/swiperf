@@ -233,10 +233,10 @@ describe('parseDelimitedToTraces', () => {
     expect(traces[0].slices).toHaveLength(2)
     expect(traces[0].slices[0].state).toBe('Running')
     expect(traces[0].slices[1].state).toBe('Runnable (Preempted)')
-    // Extra fields preserved
-    expect(traces[0].extra?.['Startup Type']).toBe('cold')
-    expect(traces[0].extra?.['Device Name']).toBe('V2207')
-    expect(traces[0].extra?.['Upload Date']).toBe('2026-03-08')
+    // Extra fields preserved with normalized keys
+    expect(traces[0].extra?.['startup_type']).toBe('cold')
+    expect(traces[0].extra?.['device_name']).toBe('V2207')
+    expect(traces[0].extra?.['upload_date']).toBe('2026-03-08')
   })
 
   it('reports progress', () => {
