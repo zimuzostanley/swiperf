@@ -4,7 +4,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import m from 'mithril'
-import { S, addCluster, activeCluster, setVerdict, switchCluster, updateSlider, ensureCache, filteredTraces } from './state'
+import { S, addCluster, activeCluster, setVerdict, switchCluster, updateSlider, ensureCache, filteredTraces, copyFilteredToNewTab, filterTraces, recomputeCounts } from './state'
 import { App } from './components/App'
 import type { TraceEntry } from './models/types'
 
@@ -277,5 +277,122 @@ describe('smoke test — full app mount with dummy data', () => {
     expect(sorted[0].trace.startup_dur).toBe(1000)
     expect(sorted[2].trace.startup_dur).toBe(9000)
     expect(() => m.redraw.sync()).not.toThrow()
+  })
+
+  it('copy-to-tab renders new tab and preserves verdict display', () => {
+    addCluster('Source', [makeTrace('t1'), makeTrace('t2'), makeTrace('t3')])
+    mount()
+    const source = activeCluster()!
+    setVerdict(source, source.traces[0]._key, 'like')
+    setVerdict(source, source.traces[1]._key, 'dislike')
+
+    // Copy only positive
+    const positive = filterTraces(source, 'positive')
+    copyFilteredToNewTab(source, positive)
+    expect(() => m.redraw.sync()).not.toThrow()
+
+    // New tab is active
+    const copy = activeCluster()!
+    expect(copy.name).toBe('Source (copy)')
+    expect(copy.traces).toHaveLength(1)
+    expect(copy.counts.positive).toBe(1)
+    expect(copy.counts.negative).toBe(0)
+
+    // Tab renders correctly
+    expect(document.querySelectorAll('.cluster-tab').length).toBe(2)
+    expect(document.querySelectorAll('.trace-card').length).toBe(1)
+  })
+
+  it('copy-to-tab does not affect source counts on re-render', () => {
+    addCluster('Source', [makeTrace('t1'), makeTrace('t2')])
+    mount()
+    const source = S.clusters[0]
+    setVerdict(source, source.traces[0]._key, 'like')
+    expect(() => m.redraw.sync()).not.toThrow()
+
+    copyFilteredToNewTab(source, source.traces)
+    expect(() => m.redraw.sync()).not.toThrow()
+
+    // Switch back to source
+    switchCluster(source.id)
+    expect(() => m.redraw.sync()).not.toThrow()
+
+    expect(source.counts.positive).toBe(1)
+    expect(source.counts.pending).toBe(1)
+    expect(document.querySelectorAll('.trace-card').length).toBe(2)
+  })
+
+  it('split view verdict changes update counts in both panels', () => {
+    addCluster('Split', [makeTrace('s1'), makeTrace('s2'), makeTrace('s3')])
+    mount()
+    const cl = activeCluster()!
+    setVerdict(cl, cl.traces[0]._key, 'like')
+    setVerdict(cl, cl.traces[1]._key, 'dislike')
+
+    cl.splitView = true
+    cl.splitFilters = ['positive', 'negative']
+    expect(() => m.redraw.sync()).not.toThrow()
+
+    // Verify panels render
+    expect(document.querySelectorAll('.split-panel').length).toBe(2)
+
+    // Change verdict while in split view
+    setVerdict(cl, cl.traces[2]._key, 'like')
+    expect(cl.counts.positive).toBe(2)
+    expect(cl.counts.negative).toBe(1)
+    expect(cl.counts.pending).toBe(0)
+    expect(() => m.redraw.sync()).not.toThrow()
+  })
+
+  it('filter + sort + verdict change renders correctly', () => {
+    const t1 = makeTrace('fast')
+    t1.startup_dur = 1000
+    const t2 = makeTrace('slow')
+    t2.startup_dur = 9000
+    const t3 = makeTrace('mid')
+    t3.startup_dur = 5000
+    addCluster('Combined', [t1, t2, t3])
+    mount()
+    const cl = activeCluster()!
+
+    setVerdict(cl, cl.traces[0]._key, 'like')  // fast
+    setVerdict(cl, cl.traces[1]._key, 'like')  // slow
+    cl.sortField = 'startup_dur'
+    cl.sortDir = -1
+    cl.overviewFilter = 'positive'
+    expect(() => m.redraw.sync()).not.toThrow()
+
+    const visible = filteredTraces()
+    expect(visible).toHaveLength(2)
+    expect(visible[0].trace.startup_dur).toBe(9000) // slow first, descending
+    expect(document.querySelectorAll('.trace-card').length).toBe(2)
+
+    // Remove verdict from slow — it drops out of positive filter
+    setVerdict(cl, cl.traces[1]._key, 'like') // toggle off
+    expect(() => m.redraw.sync()).not.toThrow()
+    expect(filteredTraces()).toHaveLength(1)
+    expect(document.querySelectorAll('.trace-card').length).toBe(1)
+  })
+
+  it('export dropdown renders and closes on click', () => {
+    addCluster('Export', [makeTrace('e1')])
+    mount()
+    const exportBtn = document.querySelector('.export-dropdown-wrap .btn') as HTMLElement
+    expect(exportBtn).toBeTruthy()
+    exportBtn.click()
+    expect(() => m.redraw.sync()).not.toThrow()
+    const dropdown = document.querySelector('.export-dropdown')
+    expect(dropdown).toBeTruthy()
+  })
+
+  it('discard verdict renders with correct CSS class on trace card', () => {
+    addCluster('Discard', [makeTrace('d1')])
+    mount()
+    const cl = activeCluster()!
+    setVerdict(cl, cl.traces[0]._key, 'discard')
+    expect(() => m.redraw.sync()).not.toThrow()
+
+    const card = document.querySelector('.trace-card.verdict-discard')
+    expect(card).toBeTruthy()
   })
 })

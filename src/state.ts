@@ -218,18 +218,6 @@ export function filteredTraces(): TraceState[] {
   return filterTraces(cl, cl.overviewFilter)
 }
 
-export function getPositiveTraces(): TraceState[] {
-  const cl = activeCluster()
-  if (!cl) return []
-  return cl.traces.filter(ts => cl.verdicts.get(ts._key) === 'like')
-}
-
-export function getNegativeTraces(): TraceState[] {
-  const cl = activeCluster()
-  if (!cl) return []
-  return cl.traces.filter(ts => cl.verdicts.get(ts._key) === 'dislike')
-}
-
 // Resolve a filterable field value — checks top-level trace fields first, then extra
 function traceFieldValue(ts: TraceState, field: string): string {
   if (field in ts.trace) return String((ts.trace as any)[field] ?? '')

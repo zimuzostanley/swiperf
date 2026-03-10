@@ -153,3 +153,57 @@ describe('rowsToJson', () => {
     expect(json).toContain('\n') // pretty-printed
   })
 })
+
+describe('multi-tab export', () => {
+  it('rows from different tabs have distinct tab_name', () => {
+    const verdA = new Map<string, Verdict>([['k1', 'like']])
+    const verdB = new Map<string, Verdict>([['k2', 'dislike']])
+    const rowA = traceExportRow(makeTrace('u1'), 'k1', 'Tab A', verdA)
+    const rowB = traceExportRow(makeTrace('u2'), 'k2', 'Tab B', verdB)
+
+    expect(rowA.tab_name).toBe('Tab A')
+    expect(rowA.verdict).toBe('positive')
+    expect(rowB.tab_name).toBe('Tab B')
+    expect(rowB.verdict).toBe('negative')
+
+    const tsv = rowsToTsv([rowA, rowB])
+    const lines = tsv.split('\n')
+    expect(lines[1]).toContain('Tab A')
+    expect(lines[2]).toContain('Tab B')
+  })
+
+  it('TSV column union works across tabs with different extra fields', () => {
+    const traceA = makeTrace('u1', 'com.a', 100, { device_name: 'pixel' })
+    const traceB = makeTrace('u2', 'com.b', 200, { build_type: 'debug' })
+    const rowA = traceExportRow(traceA, 'k1', 'A', new Map())
+    const rowB = traceExportRow(traceB, 'k2', 'B', new Map())
+
+    const tsv = rowsToTsv([rowA, rowB])
+    const header = tsv.split('\n')[0]
+    expect(header).toContain('device_name')
+    expect(header).toContain('build_type')
+
+    // Row A should have empty build_type
+    const headerCols = header.split('\t')
+    const row1Cols = tsv.split('\n')[1].split('\t')
+    const btIdx = headerCols.indexOf('build_type')
+    expect(row1Cols[btIdx]).toBe('')
+  })
+
+  it('JSON export preserves all verdict types', () => {
+    const verdicts = new Map<string, Verdict>([
+      ['k1', 'like'], ['k2', 'dislike'], ['k3', 'discard'],
+    ])
+    const rows = [
+      traceExportRow(makeTrace('u1'), 'k1', 'T', verdicts),
+      traceExportRow(makeTrace('u2'), 'k2', 'T', verdicts),
+      traceExportRow(makeTrace('u3'), 'k3', 'T', verdicts),
+      traceExportRow(makeTrace('u4'), 'k4', 'T', verdicts), // pending
+    ]
+    const parsed = JSON.parse(rowsToJson(rows))
+    expect(parsed[0].verdict).toBe('positive')
+    expect(parsed[1].verdict).toBe('negative')
+    expect(parsed[2].verdict).toBe('discarded')
+    expect(parsed[3].verdict).toBe('pending')
+  })
+})

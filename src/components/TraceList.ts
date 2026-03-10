@@ -98,11 +98,6 @@ function renderSlider(ts: TraceState) {
 }
 
 
-function traceLink(ts: TraceState): string | null {
-  const url = buildTraceLink(ts.trace.trace_uuid, ts.trace.extra?.startup_id)
-  return url || null
-}
-
 function renderTraceCard(cl: Cluster, ts: TraceState, idx: number) {
   const key = ts._key
   const isExpanded = expanded.has(key)
@@ -122,7 +117,7 @@ function renderTraceCard(cl: Cluster, ts: TraceState, idx: number) {
         ? m('span.trace-startup-dur', fmt_dur(ts.trace.startup_dur))
         : null,
       (() => {
-        const href = traceLink(ts)
+        const href = buildTraceLink(ts.trace.trace_uuid, ts.trace.extra?.startup_id)
         return href ? m('a.trace-link', {
           href, target: '_blank', rel: 'noopener',
           onclick: (e: Event) => e.stopPropagation(),
@@ -287,20 +282,20 @@ function renderExportDropdown(cl: Cluster) {
 }
 
 function renderCardList(cl: Cluster, traces: TraceState[]) {
-  return m('.trace-list', traces.map(ts => {
-    const globalIdx = cl.traces.indexOf(ts)
-    return renderTraceCard(cl, ts, globalIdx)
-  }))
+  // Build index map once instead of O(n) indexOf per card
+  const idxMap = new Map<TraceState, number>()
+  cl.traces.forEach((ts, i) => idxMap.set(ts, i))
+  return m('.trace-list', traces.map(ts =>
+    renderTraceCard(cl, ts, idxMap.get(ts) ?? 0)
+  ))
 }
 
 // Split view divider drag state
 let _dragging = false
-let _dragClusterId: string | null = null
 
 function onDividerDown(e: MouseEvent, cl: Cluster) {
   e.preventDefault()
   _dragging = true
-  _dragClusterId = cl.id
 
   const onMove = (ev: MouseEvent) => {
     if (!_dragging) return
@@ -314,7 +309,6 @@ function onDividerDown(e: MouseEvent, cl: Cluster) {
 
   const onUp = () => {
     _dragging = false
-    _dragClusterId = null
     document.removeEventListener('mousemove', onMove)
     document.removeEventListener('mouseup', onUp)
   }
@@ -323,14 +317,23 @@ function onDividerDown(e: MouseEvent, cl: Cluster) {
   document.addEventListener('mouseup', onUp)
 }
 
+let _docClickHandler: (() => void) | null = null
+
 export const TraceList: m.Component = {
   oncreate() {
-    document.addEventListener('click', () => {
+    _docClickHandler = () => {
       let changed = false
       if (openFilterDropdown) { openFilterDropdown = null; changed = true }
       if (openExportMenu) { openExportMenu = false; changed = true }
       if (changed) m.redraw()
-    })
+    }
+    document.addEventListener('click', _docClickHandler)
+  },
+  onremove() {
+    if (_docClickHandler) {
+      document.removeEventListener('click', _docClickHandler)
+      _docClickHandler = null
+    }
   },
   view() {
     const cl = activeCluster()
@@ -342,6 +345,7 @@ export const TraceList: m.Component = {
     }
 
     const { positive, negative, pending, discarded } = cl.counts
+    const filtered = cl.splitView ? null : filteredTraces()
 
     // Toolbar
     const toolbar = m('.card.list-toolbar', [
@@ -363,20 +367,16 @@ export const TraceList: m.Component = {
           title: 'Toggle split view',
         }, cl.splitView ? 'Single' : 'Split'),
         m('button.btn', {
-          onclick: () => {
-            const visible = filteredTraces()
-            copyFilteredToNewTab(cl, visible)
-          },
-          disabled: cl.splitView || filteredTraces().length === 0,
+          onclick: () => { if (filtered) copyFilteredToNewTab(cl, filtered) },
+          disabled: cl.splitView || !filtered || filtered.length === 0,
           title: cl.splitView ? 'Switch to single view first' : 'Copy visible traces to a new tab',
         }, 'Copy to tab'),
         renderExportDropdown(cl),
       ]),
     ])
 
-    if (!cl.splitView) {
+    if (filtered) {
       // Normal single-panel view
-      const filtered = filteredTraces()
       return m('.section', [
         m('.section-head', `Traces (${filtered.length}${filtered.length !== cl.traces.length ? '/' + cl.traces.length : ''})`),
         toolbar,

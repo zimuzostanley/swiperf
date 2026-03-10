@@ -149,16 +149,6 @@ async function loadFromFile(e: Event) {
   m.redraw()
 }
 
-// ── Directory import ──
-
-async function loadDirectory(e: Event) {
-  const input = e.target as HTMLInputElement
-  if (!input.files?.length) return
-  const files = input.files
-  // Reuse file import logic
-  await loadFromFile(e)
-}
-
 // ── Copy compressed slices ──
 
 function copyCompressed() {
@@ -305,7 +295,7 @@ export const Import: m.Component = {
             disabled: loading,
           }, 'Import directory\u2026'),
           m('input#dir-input', {
-            type: 'file', style: { display: 'none' }, onchange: loadDirectory,
+            type: 'file', style: { display: 'none' }, onchange: loadFromFile,
           }),
           S.clusters.length > 0
             ? m('button.btn', { onclick: saveSession, disabled: loading }, 'Save session')

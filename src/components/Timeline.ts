@@ -1,136 +1,12 @@
-import m from 'mithril'
 import type { MergedSlice } from '../models/types'
 import type { TraceState } from '../state'
 import { state_color, state_label, name_color, isDark } from '../utils/colors'
 import { fmt_dur, fmt_pct } from '../utils/format'
 
-const STATE_H = 10
-const GAP = 3
-const NAME_H = 21
-const AXIS_H = 20
-const LABEL_W = 88
-const PAD_R = 10
-const PAD_T = 8
-const CANVAS_H = PAD_T + STATE_H + GAP + NAME_H + AXIS_H + 8
+const LONG_PKG_PREFIX = 'com.redfin.android.core.activity.launch.deeplink.'
 
 export interface HitRect {
   x: number; y: number; w: number; h: number; d: MergedSlice
-}
-
-// Module-level state — only one full Timeline is visible at a time
-let _currentHits: { hitState: HitRect[]; hitName: HitRect[] } = { hitState: [], hitName: [] }
-let _currentTotalDur = 0
-
-function renderCanvas(canvas: HTMLCanvasElement, ts: TraceState) {
-  const seq = ts.currentSeq
-  const totalDur = ts.totalDur
-
-  const dpr = window.devicePixelRatio || 1
-  const cssW = canvas.parentElement!.clientWidth - 28
-  canvas.style.width = cssW + 'px'
-  canvas.style.height = CANVAS_H + 'px'
-  canvas.width = Math.round(cssW * dpr)
-  canvas.height = Math.round(CANVAS_H * dpr)
-
-  const ctx = canvas.getContext('2d')
-  if (!ctx) return
-  ctx.scale(dpr, dpr)
-
-  const drawW = cssW - LABEL_W - PAD_R
-  const scale = drawW / totalDur
-
-  const dark = isDark()
-  const C_BG = dark ? '#17171a' : '#ffffff'
-  const C_TRK = dark ? '#0f0f11' : '#f0ede8'
-  const C_SEP = dark ? '#17171a' : '#ffffff'
-  const C_DIV = dark ? '#252529' : '#e2e0da'
-  const C_LBL = dark ? '#3a3a42' : '#b0ada4'
-  const C_TICK = dark ? '#252529' : '#e2e0da'
-  const C_AXIS = dark ? '#3a3a42' : '#c0bdb5'
-  const C_NULL = dark ? '#1c1c26' : '#ede9e2'
-  const C_NULL_T = dark ? 'rgba(90,90,102,0.55)' : 'rgba(160,157,148,0.8)'
-  const C_TEXT = dark ? 'rgba(255,255,255,0.75)' : 'rgba(28,27,25,0.80)'
-  const C_BADGE = dark ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.12)'
-
-  ctx.fillStyle = C_BG
-  ctx.fillRect(0, 0, cssW, CANVAS_H)
-
-  const stateY = PAD_T
-  const nameY = PAD_T + STATE_H + GAP
-  const axisY = nameY + NAME_H + 4
-
-  ctx.fillStyle = C_TRK
-  ctx.fillRect(LABEL_W, stateY, drawW, STATE_H)
-  ctx.fillRect(LABEL_W, nameY, drawW, NAME_H)
-
-  ctx.fillStyle = C_LBL
-  ctx.font = `500 9px ${getComputedStyle(document.body).getPropertyValue('--sans').trim()}`
-  ctx.textAlign = 'right'
-  ctx.textBaseline = 'middle'
-  ctx.fillText('State', LABEL_W - 8, stateY + STATE_H / 2)
-  ctx.fillText('Name', LABEL_W - 8, nameY + NAME_H / 2)
-
-  ctx.fillStyle = C_DIV
-  ctx.fillRect(LABEL_W - 1, stateY, 1, STATE_H + GAP + NAME_H)
-
-  const hitState: HitRect[] = []
-  const hitName: HitRect[] = []
-
-  seq.forEach(d => {
-    const x = LABEL_W + d.tsRel * scale
-    const w = Math.max(d.dur * scale, 0.8)
-
-    ctx.fillStyle = state_color(d)
-    ctx.fillRect(x, stateY, w, STATE_H)
-    ctx.fillStyle = C_SEP
-    ctx.fillRect(x + w - 0.5, stateY, 0.5, STATE_H)
-    hitState.push({ x, y: stateY, w, h: STATE_H, d })
-
-    ctx.fillStyle = d.name ? name_color(d.name) : C_NULL
-    ctx.fillRect(x, nameY, w, NAME_H)
-    ctx.fillStyle = C_SEP
-    ctx.fillRect(x + w - 0.5, nameY, 0.5, NAME_H)
-
-    if (w > 12) {
-      ctx.save()
-      ctx.beginPath(); ctx.rect(x + 3, nameY + 1, w - 6, NAME_H - 2); ctx.clip()
-      ctx.font = `400 9px 'IBM Plex Mono', monospace`
-      ctx.textBaseline = 'middle'
-      ctx.textAlign = 'left'
-      if (d.name) {
-        ctx.fillStyle = C_TEXT
-        let lbl = d.name.replace('com.redfin.android.core.activity.launch.deeplink.', '')
-        if (lbl.length > 55) lbl = lbl.slice(0, 53) + '\u2026'
-        ctx.fillText(lbl, x + 4, nameY + NAME_H / 2)
-      } else {
-        ctx.fillStyle = C_NULL_T
-        ctx.fillText('null', x + 4, nameY + NAME_H / 2)
-      }
-      if (d._merged > 1 && w > 40) {
-        ctx.fillStyle = C_BADGE
-        ctx.textAlign = 'right'
-        ctx.textBaseline = 'top'
-        ctx.fillText('\u00d7' + d._merged, x + w - 3, nameY + 3)
-      }
-      ctx.restore()
-    }
-    hitName.push({ x, y: nameY, w, h: NAME_H, d })
-  })
-
-  ctx.strokeStyle = C_TICK; ctx.lineWidth = 1
-  ctx.fillStyle = C_AXIS
-  ctx.font = `400 9px 'IBM Plex Mono', monospace`
-  ctx.textAlign = 'center'
-  ctx.textBaseline = 'alphabetic'
-  for (let i = 0; i <= 10; i++) {
-    const x = LABEL_W + (i / 10) * drawW
-    ctx.beginPath(); ctx.moveTo(x, PAD_T); ctx.lineTo(x, axisY); ctx.stroke()
-    ctx.fillText(fmt_dur(totalDur / 10 * i), x, axisY + 14)
-  }
-
-  // Update module-level state for tooltip and resize
-  _currentHits = { hitState, hitName }
-  _currentTotalDur = totalDur
 }
 
 export function renderMiniCanvas(canvas: HTMLCanvasElement, ts: TraceState): HitRect[] {
@@ -189,8 +65,7 @@ export function showTooltip(e: MouseEvent, hits: HitRect[], totalDur: number) {
   ]
 
   const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
-  const name_display = esc((d.name ?? 'null')
-    .replace('com.redfin.android.core.activity.launch.deeplink.', ''))
+  const name_display = esc((d.name ?? 'null').replace(LONG_PKG_PREFIX, ''))
 
   tip.innerHTML =
     `<div class="tt-name">${name_display}</div>` +
@@ -217,46 +92,4 @@ export function showTooltip(e: MouseEvent, hits: HitRect[], totalDur: number) {
 export function hideTooltip() {
   const tip = document.getElementById('tip')
   if (tip) tip.style.display = 'none'
-}
-
-function doRender(dom: Element, ts: TraceState) {
-  const canvas = dom.querySelector('canvas') as HTMLCanvasElement
-  if (canvas) renderCanvas(canvas, ts)
-}
-
-interface TimelineAttrs {
-  ts: TraceState
-}
-
-export const Timeline: m.Component<TimelineAttrs> = {
-  oncreate(vnode) {
-    doRender(vnode.dom, vnode.attrs.ts)
-
-    const canvas = vnode.dom.querySelector('canvas') as HTMLCanvasElement
-
-    const resizeHandler = () => doRender(vnode.dom, vnode.attrs.ts)
-    window.addEventListener('resize', resizeHandler)
-    // Store on DOM element so onremove can clean up
-    ;(vnode.dom as any)._resizeHandler = resizeHandler
-
-    canvas.addEventListener('mousemove', (e: MouseEvent) => {
-      const all = [..._currentHits.hitState, ..._currentHits.hitName]
-      showTooltip(e, all, _currentTotalDur)
-    })
-
-    canvas.addEventListener('mouseleave', hideTooltip)
-  },
-
-  onupdate(vnode) {
-    doRender(vnode.dom, vnode.attrs.ts)
-  },
-
-  onremove(vnode) {
-    const handler = (vnode.dom as any)?._resizeHandler
-    if (handler) window.removeEventListener('resize', handler)
-  },
-
-  view() {
-    return m('.card.canvas-wrap', m('canvas'))
-  },
 }

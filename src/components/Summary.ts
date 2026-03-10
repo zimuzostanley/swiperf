@@ -5,6 +5,8 @@ import { activeCluster } from '../state'
 import { state_color, state_label, name_color } from '../utils/colors'
 import { fmt_dur, fmt_pct } from '../utils/format'
 
+const LONG_PKG_PREFIX = 'com.redfin.android.core.activity.launch.deeplink.'
+
 function build_summary_data(data: MergedSlice[]) {
   const stateMap: Record<string, { dur: number; count: number; color: string }> = {}
   const nameMap: Record<string, { dur: number; count: number }> = {}
@@ -137,7 +139,7 @@ export const Summary: m.Component<SummaryAttrs> = {
       const maxName = Math.max(...Object.values(nameMap).map(v => v.dur), 1)
       const nameRows: SummaryRow[] = Object.entries(nameMap).map(([k, v]) => ({
         label: k,
-        short: k.replace('com.redfin.android.core.activity.launch.deeplink.', ''),
+        short: k.replace(LONG_PKG_PREFIX, ''),
         dur: v.dur, count: v.count, color: name_color(k), pct: v.dur,
       }))
       tables.push(m(TableCard, { id: 'name', title: 'Names', rows: nameRows, maxDur: maxName, totalDur }))
