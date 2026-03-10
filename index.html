@@ -2942,7 +2942,48 @@ function hideTooltip() {
   if (tip2) tip2.style.display = "none";
 }
 const canvasHits = /* @__PURE__ */ new WeakMap();
+const isVisible = /* @__PURE__ */ new WeakMap();
+const needsRender = /* @__PURE__ */ new WeakSet();
+let observer = null;
+let observerRefCount = 0;
+const hasIO = typeof IntersectionObserver !== "undefined";
+function getObserver() {
+  if (!hasIO) return null;
+  if (!observer) {
+    observer = new IntersectionObserver(
+      (entries) => {
+        let anyBecameVisible = false;
+        for (const entry of entries) {
+          const wasVisible = isVisible.get(entry.target) ?? false;
+          isVisible.set(entry.target, entry.isIntersecting);
+          if (entry.isIntersecting && !wasVisible && needsRender.has(entry.target)) {
+            needsRender.delete(entry.target);
+            anyBecameVisible = true;
+          }
+        }
+        if (anyBecameVisible) m$1.redraw();
+      },
+      { rootMargin: "200px 0px" }
+    );
+  }
+  observerRefCount++;
+  return observer;
+}
+function releaseObserver() {
+  if (!hasIO) return;
+  observerRefCount--;
+  if (observerRefCount <= 0 && observer) {
+    observer.disconnect();
+    observer = null;
+    observerRefCount = 0;
+  }
+}
 function doRender(dom, ts) {
+  if (hasIO && !isVisible.get(dom)) {
+    needsRender.add(dom);
+    return;
+  }
+  needsRender.delete(dom);
   const canvas = dom.querySelector("canvas");
   if (!canvas) return;
   ensureCache(ts);
@@ -2951,7 +2992,13 @@ function doRender(dom, ts) {
 }
 const MiniTimeline = {
   oncreate(vnode2) {
-    doRender(vnode2.dom, vnode2.attrs.ts);
+    const obs = getObserver();
+    if (obs) {
+      needsRender.add(vnode2.dom);
+      obs.observe(vnode2.dom);
+    } else {
+      doRender(vnode2.dom, vnode2.attrs.ts);
+    }
     const canvas = vnode2.dom.querySelector("canvas");
     if (!canvas) return;
     canvas.addEventListener("mousemove", (e) => {
@@ -2963,6 +3010,12 @@ const MiniTimeline = {
   },
   onupdate(vnode2) {
     doRender(vnode2.dom, vnode2.attrs.ts);
+  },
+  onremove(vnode2) {
+    if (observer) observer.unobserve(vnode2.dom);
+    isVisible.delete(vnode2.dom);
+    needsRender.delete(vnode2.dom);
+    releaseObserver();
   },
   view() {
     return m$1(".overview-mini-canvas", m$1("canvas"));
