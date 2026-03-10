@@ -522,4 +522,74 @@ describe('browser integration', () => {
 
     await p.close()
   })
+
+  it('renders binder transaction slices in brown (#9e6530)', async () => {
+    const p = await freshPage()
+
+    // Use a minimal trace with a "binder transaction" named slice
+    const slices = [
+      { ts: 100, dur: 50, name: 'bindApplication', state: 'Running', depth: 0, io_wait: null, blocked_function: null },
+      { ts: 150, dur: 30, name: 'binder transaction', state: 'Sleeping', depth: 1, io_wait: null, blocked_function: null },
+      { ts: 180, dur: 20, name: null, state: 'Running', depth: null, io_wait: null, blocked_function: null },
+    ]
+    const json = JSON.stringify([{
+      trace_uuid: 'color-test',
+      process_name: 'com.colortest',
+      quantized_sequence: JSON.stringify(slices),
+    }])
+    await pasteText(p, json)
+
+    // Verify name_color is accessible and returns the correct value
+    const binderColor = await p.evaluate(() => {
+      // Access the name_color function through the module scope
+      // The canvas renders with this color, so we can verify via the exported function
+      const canvas = document.querySelector('.overview-mini-canvas canvas') as HTMLCanvasElement
+      if (!canvas) return null
+      const ctx = canvas.getContext('2d')
+      if (!ctx) return null
+
+      // Sample a pixel from the name row (bottom half of mini canvas)
+      // The mini canvas is 30px high: state row 0-12, name row 14-30
+      // binder transaction is the 2nd slice, positioned in the middle area
+      const w = canvas.width
+      const h = canvas.height
+      const dpr = window.devicePixelRatio || 1
+
+      // Get all pixels from the name row
+      const nameRowY = Math.round(14 * dpr)
+      const imgData = ctx.getImageData(0, nameRowY, w, Math.round(16 * dpr))
+      const data = imgData.data
+
+      // Find a non-white, non-background pixel that's brownish (R > G > B)
+      // binder transaction = #9e6530 → RGB(158, 101, 48)
+      for (let i = 0; i < data.length; i += 4) {
+        const r = data[i], g = data[i+1], b = data[i+2], a = data[i+3]
+        // Look for brownish pixels: high R, medium G, low B
+        if (a > 200 && r > 120 && r > g && g > b && b < 80) {
+          return '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0')).join('')
+        }
+      }
+      return 'no-brown-pixel-found'
+    })
+
+    // Should find brown pixels from "binder transaction" rendering
+    expect(binderColor).not.toBe('no-brown-pixel-found')
+    expect(binderColor).not.toBeNull()
+
+    // Verify it's close to #9e6530 (allow slight rounding from canvas antialiasing)
+    if (binderColor && binderColor.startsWith('#')) {
+      const r = parseInt(binderColor.slice(1, 3), 16)
+      const g = parseInt(binderColor.slice(3, 5), 16)
+      const b = parseInt(binderColor.slice(5, 7), 16)
+      // R should be ~158, G ~101, B ~48
+      expect(r).toBeGreaterThan(130)
+      expect(r).toBeLessThan(180)
+      expect(g).toBeGreaterThan(75)
+      expect(g).toBeLessThan(130)
+      expect(b).toBeGreaterThan(25)
+      expect(b).toBeLessThan(75)
+    }
+
+    await p.close()
+  })
 })
