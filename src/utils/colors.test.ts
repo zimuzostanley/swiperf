@@ -90,11 +90,17 @@ describe('name_color', () => {
     expect(b).toMatch(/^#[0-9a-f]{6}$/)
   })
 
-  it('uses Perfetto hash to pick from MD palette', () => {
-    // 'draw' hashes to index 8 in Perfetto → MD_PALETTE[8] = HSL(174, 80, 29)
-    const c = name_color('draw')
-    expect(c).toMatch(/^#[0-9a-f]{6}$/)
-    // Verify it's the same on repeated calls (cache)
-    expect(name_color('draw')).toBe(c)
+  it('matches Perfetto proceduralColorScheme exactly', () => {
+    // Reference values from Perfetto's hsluv package (v0.1.0)
+    // proceduralColorScheme: hash→hue(0-359), S=80, hash(seed+'x')→L(40-79)
+    expect(name_color('binder transaction')).toBe('#9e6530') // brown, hue=40
+    expect(name_color('bindApplication')).toBe('#4ba7bf')    // teal-blue, hue=218
+    expect(name_color('activityStart')).toBe('#2b6674')      // dark teal, hue=216
+    expect(name_color('inflate')).toBe('#307083')            // blue-teal, hue=220
+    expect(name_color('measure')).toBe('#693dd8')            // purple, hue=272
+    expect(name_color('draw')).toBe('#5475e3')               // blue, hue=260
+    expect(name_color('choreographer')).toBe('#497f30')      // green, hue=120
+    expect(name_color('Choreographer#doFrame')).toBe('#908137') // olive, hue=74
+    expect(name_color('performTraversals')).toBe('#3d6fcc')  // blue, hue=256
   })
 })

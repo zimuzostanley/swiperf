@@ -113,35 +113,31 @@ export function perfetto_hash(s: string, max: number): number {
   return Math.abs(h) % max
 }
 
-// ── Material Design palette — standard HSL, desaturated by 20 ──
-// Matches Perfetto's MD_PALETTE_RAW.map(c => c.desaturate(20))
-
-const MD_PALETTE_HSL: [number, number, number][] = [
-  [4, 90, 58], [340, 82, 52], [291, 64, 42], [262, 52, 47], [231, 48, 48], [207, 90, 54],
-  [199, 98, 48], [187, 100, 42], [174, 100, 29], [122, 39, 49], [88, 50, 53], [66, 70, 54],
-  [45, 100, 51], [36, 100, 50], [14, 100, 57], [16, 25, 38], [200, 18, 46], [54, 100, 62],
-]
-
-// Pre-computed: MD_PALETTE_HSL with saturation reduced by 20 → hex
-const MD_PALETTE_HEX: string[] = MD_PALETTE_HSL.map(
-  ([h, s, l]) => hslToHex(h, Math.max(0, s - 20), l),
-)
-
 const _name_color_cache = new Map<string, string>()
 
 /**
- * Assign a color to a slice/function name using Perfetto's exact algorithm:
+ * Assign a color to a slice/function name using Perfetto's default algorithm:
+ * proceduralColorScheme (USE_CONSISTENT_COLORS=false, the default).
+ *
  * 1. Strip trailing digits from name
- * 2. FNV-1a hash with Perfetto's init value → index into 18-color MD palette
- * 3. MD palette values are standard HSL, desaturated by 20
+ * 2. Hash seed → hue (0-359) in HSLuv
+ * 3. Fixed saturation = 80
+ * 4. Hash (seed + 'x') → lightness (40-79) in HSLuv
+ *
+ * Source: perfetto/ui/src/components/colorizer.ts → proceduralColorScheme()
  */
 export function name_color(name: string): string {
   const seed = name.replace(/( )?\d+/g, '')
   if (_name_color_cache.has(seed)) return _name_color_cache.get(seed)!
-  const idx = perfetto_hash(seed, MD_PALETTE_HEX.length)
-  const hex = MD_PALETTE_HEX[idx]
-  _name_color_cache.set(seed, hex)
-  return hex
+  const hue = perfetto_hash(seed, 360)
+  const lightness = perfetto_hash(seed + 'x', 40) + 40
+  const conv = new Hsluv()
+  conv.hsluv_h = hue
+  conv.hsluv_s = 80
+  conv.hsluv_l = lightness
+  conv.hsluvToHex()
+  _name_color_cache.set(seed, conv.hex)
+  return conv.hex
 }
 
 export function isDark(): boolean {
