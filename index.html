@@ -2883,7 +2883,7 @@ function fmt_pct(ns, total) {
   return (ns / total * 100).toFixed(1) + "%";
 }
 const LONG_PKG_PREFIX$1 = "com.redfin.android.core.activity.launch.deeplink.";
-function renderMiniCanvas(canvas, ts) {
+function renderMiniCanvas(canvas, ts, highlightIdx) {
   const seq = ts.currentSeq;
   const totalDur = ts.totalDur;
   const dpr = window.devicePixelRatio || 1;
@@ -2899,17 +2899,20 @@ function renderMiniCanvas(canvas, ts) {
   const dark = isDark();
   ctx.fillStyle = dark ? "#17171a" : "#ffffff";
   ctx.fillRect(0, 0, cssW, cssH);
+  const dimmed = highlightIdx != null;
   const hits = [];
   const scale = cssW / totalDur;
-  seq.forEach((d) => {
+  seq.forEach((d, i) => {
     const x = d.tsRel * scale;
     const w = Math.max(d.dur * scale, 0.5);
+    ctx.globalAlpha = dimmed && i !== highlightIdx ? 0.25 : 1;
     ctx.fillStyle = state_color(d);
     ctx.fillRect(x, 0, w, 12);
     ctx.fillStyle = d.name ? name_color(d.name) : dark ? "#1c1c26" : "#ede9e2";
     ctx.fillRect(x, 14, w, 16);
     hits.push({ x, y: 0, w, h: cssH, d });
   });
+  ctx.globalAlpha = 1;
   return hits;
 }
 function showTooltip(e, hits, totalDur) {
@@ -2956,6 +2959,7 @@ function hideTooltip() {
   if (tip2) tip2.style.display = "none";
 }
 const canvasHits = /* @__PURE__ */ new WeakMap();
+const canvasHover = /* @__PURE__ */ new WeakMap();
 const isVisible = /* @__PURE__ */ new WeakMap();
 const needsRender = /* @__PURE__ */ new WeakSet();
 let observer = null;
@@ -3001,8 +3005,8 @@ function doRender(dom, ts) {
   const canvas = dom.querySelector("canvas");
   if (!canvas) return;
   ensureCache(ts);
-  const hits = renderMiniCanvas(canvas, ts);
-  canvasHits.set(canvas, { hits, totalDur: ts.totalDur });
+  const hits = renderMiniCanvas(canvas, ts, canvasHover.get(canvas));
+  canvasHits.set(canvas, { hits, totalDur: ts.totalDur, ts });
 }
 const MiniTimeline = {
   oncreate(vnode2) {
@@ -3016,11 +3020,37 @@ const MiniTimeline = {
     const canvas = vnode2.dom.querySelector("canvas");
     if (!canvas) return;
     canvas.addEventListener("mousemove", (e) => {
-      const data = canvasHits.get(e.target);
+      const cvs = e.target;
+      const data = canvasHits.get(cvs);
       if (!data) return;
       showTooltip(e, data.hits, data.totalDur);
+      const rect = cvs.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+      let hitIdx;
+      for (let i = data.hits.length - 1; i >= 0; i--) {
+        const r = data.hits[i];
+        if (mx >= r.x && mx <= r.x + r.w && my >= r.y && my <= r.y + r.h) {
+          hitIdx = i;
+          break;
+        }
+      }
+      if (hitIdx !== canvasHover.get(cvs)) {
+        canvasHover.set(cvs, hitIdx);
+        const hits = renderMiniCanvas(cvs, data.ts, hitIdx);
+        canvasHits.set(cvs, { hits, totalDur: data.totalDur, ts: data.ts });
+      }
     });
-    canvas.addEventListener("mouseleave", hideTooltip);
+    canvas.addEventListener("mouseleave", (e) => {
+      hideTooltip();
+      const cvs = e.target;
+      const data = canvasHits.get(cvs);
+      if (data && canvasHover.get(cvs) != null) {
+        canvasHover.delete(cvs);
+        const hits = renderMiniCanvas(cvs, data.ts);
+        canvasHits.set(cvs, { hits, totalDur: data.totalDur, ts: data.ts });
+      }
+    });
   },
   onupdate(vnode2) {
     doRender(vnode2.dom, vnode2.attrs.ts);
