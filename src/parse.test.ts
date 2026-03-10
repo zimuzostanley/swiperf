@@ -209,6 +209,36 @@ describe('parseDelimitedToTraces', () => {
     expect(traces[0].startup_dur).toBe(1500 * 1e6) // ms → ns
   })
 
+  it('parses real APC console TSV with display-name headers', () => {
+    const slicesJson = JSON.stringify([
+      { ts: '2002315967077879', dur: 2000000, io_wait: null, name: null, blocked_function: null, state: 'Running', token: 'state:Running' },
+      { ts: '2002315969077879', dur: 2000000, io_wait: null, name: null, blocked_function: null, state: 'Runnable (Preempted)', token: 'state:Runnable (Preempted)' },
+    ])
+    const headers = [
+      'Neighbor Apc Link Markdown', 'Cosine Similarity', 'Package',
+      'Startup Dur Ms', 'Startup Type', 'Device Name', 'Build Id',
+      'Upload Date', 'Trace Uuid', 'Quantized Sequence',
+    ].join('\t')
+    const row = [
+      '[link](https://example.com)', '0.982984888112673', 'com.zhiliaoapp.musically',
+      '4792.679462', 'cold', 'V2207', 'UP1A.231005.007_IN',
+      '2026-03-08', '231cc60e-2892-a685-3b8f-ac6f40bde663', slicesJson,
+    ].join('\t')
+    const tsv = headers + '\n' + row
+    const traces = parseDelimitedToTraces(tsv, '\t')
+    expect(traces).toHaveLength(1)
+    expect(traces[0].trace_uuid).toBe('231cc60e-2892-a685-3b8f-ac6f40bde663')
+    expect(traces[0].package_name).toBe('com.zhiliaoapp.musically')
+    expect(traces[0].startup_dur).toBe(4792.679462 * 1e6) // ms → ns
+    expect(traces[0].slices).toHaveLength(2)
+    expect(traces[0].slices[0].state).toBe('Running')
+    expect(traces[0].slices[1].state).toBe('Runnable (Preempted)')
+    // Extra fields preserved
+    expect(traces[0].extra?.['Startup Type']).toBe('cold')
+    expect(traces[0].extra?.['Device Name']).toBe('V2207')
+    expect(traces[0].extra?.['Upload Date']).toBe('2026-03-08')
+  })
+
   it('reports progress', () => {
     const rows = Array.from({ length: 15 }, (_, i) =>
       `u${i}\t${JSON.stringify(SLICES)}`,
