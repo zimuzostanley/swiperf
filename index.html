@@ -1153,23 +1153,16 @@ var request$2 = function($window, oncompletion) {
 };
 var mountRedraw$2 = mountRedraw$3;
 var request$1 = request$2(typeof window !== "undefined" ? window : null, mountRedraw$2.redraw);
-var decodeURIComponentSafe$1;
-var hasRequiredDecodeURIComponentSafe;
-function requireDecodeURIComponentSafe() {
-  if (hasRequiredDecodeURIComponentSafe) return decodeURIComponentSafe$1;
-  hasRequiredDecodeURIComponentSafe = 1;
-  var validUtf8Encodings = /%(?:[0-7]|(?!c[01]|e0%[89]|ed%[ab]|f0%8|f4%[9ab])(?:c|d|(?:e|f[0-4]%[89ab])[\da-f]%[89ab])[\da-f]%[89ab])[\da-f]/gi;
-  decodeURIComponentSafe$1 = function(str) {
-    return String(str).replace(validUtf8Encodings, decodeURIComponent);
-  };
-  return decodeURIComponentSafe$1;
-}
+var validUtf8Encodings = /%(?:[0-7]|(?!c[01]|e0%[89]|ed%[ab]|f0%8|f4%[9ab])(?:c|d|(?:e|f[0-4]%[89ab])[\da-f]%[89ab])[\da-f]%[89ab])[\da-f]/gi;
+var decodeURIComponentSafe$1 = function(str) {
+  return String(str).replace(validUtf8Encodings, decodeURIComponent);
+};
 var parse$1;
 var hasRequiredParse$1;
 function requireParse$1() {
   if (hasRequiredParse$1) return parse$1;
   hasRequiredParse$1 = 1;
-  var decodeURIComponentSafe2 = requireDecodeURIComponentSafe();
+  var decodeURIComponentSafe2 = decodeURIComponentSafe$1;
   parse$1 = function(string) {
     if (string === "" || string == null) return {};
     if (string.charAt(0) === "?") string = string.slice(1);
@@ -1289,7 +1282,7 @@ function requireCensor() {
 }
 var Vnode = requireVnode();
 var hyperscript$1 = hyperscript_1$1;
-var decodeURIComponentSafe = requireDecodeURIComponentSafe();
+var decodeURIComponentSafe = decodeURIComponentSafe$1;
 var buildPathname = requireBuild();
 var parsePathname = requireParse();
 var compileTemplate = compileTemplate$1;
@@ -1684,7 +1677,11 @@ function getProgress(state) {
   for (let i = 0; i < roots.length; i++) {
     for (let j = i + 1; j < roots.length; j++) {
       total++;
-      if (state.negativeEdges.has(edgeKey(roots[i], roots[j]))) resolved++;
+      if (state.negativeEdges.has(edgeKey(roots[i], roots[j]))) {
+        resolved++;
+      } else if (!findUncomparedPair(state, comps.get(roots[i]), comps.get(roots[j]))) {
+        resolved++;
+      }
     }
   }
   const n = state.traceKeys.length;
@@ -3405,6 +3402,7 @@ const Summary = {
 };
 let _keyHandler = null;
 let _ccSliderPct = 100;
+let _lastPairKey = null;
 function updateBothSliders(cl, pct) {
   _ccSliderPct = pct;
   const state = getCrossCompareState();
@@ -3505,7 +3503,7 @@ const CrossCompareModal = {
         recordCrossComparison("negative");
         return;
       }
-      if (e.key === "d" || e.key === "D") {
+      if ((e.key === "s" || e.key === "S") && state.selectedSide) {
         recordCrossComparison("skip");
         return;
       }
@@ -3533,8 +3531,26 @@ const CrossCompareModal = {
     const state = getCrossCompareState();
     if (!state) return null;
     const progress = getProgress(state);
-    return m$1(".cc-overlay", { onclick: closeCrossCompare }, [
-      m$1(".cc-modal", { onclick: (e) => e.stopPropagation() }, [
+    const pairKey = state.currentPair ? state.currentPair[0] + "|" + state.currentPair[1] : null;
+    if (pairKey && pairKey !== _lastPairKey) {
+      _lastPairKey = pairKey;
+      if (_ccSliderPct < 100) updateBothSliders(cl, _ccSliderPct);
+    }
+    return m$1(".cc-overlay", { onclick: () => {
+      const s = getCrossCompareState();
+      if (s && s.selectedSide) {
+        s.selectedSide = null;
+        m$1.redraw();
+      } else closeCrossCompare();
+    } }, [
+      m$1(".cc-modal", { onclick: (e) => {
+        e.stopPropagation();
+        const s = getCrossCompareState();
+        if (s && s.selectedSide) {
+          s.selectedSide = null;
+          m$1.redraw();
+        }
+      } }, [
         // Header
         m$1(".cc-header", [
           m$1("span.cc-title", "Cross Compare"),
@@ -3573,8 +3589,12 @@ const CrossCompareModal = {
               onclick: () => recordCrossComparison("negative")
             }, ["Different ", m$1("kbd", "N")]),
             m$1("button.cc-action-btn", {
-              onclick: () => recordCrossComparison("skip")
-            }, ["Skip ", m$1("kbd", "D")])
+              onclick: () => {
+                if (state.selectedSide) recordCrossComparison("skip");
+              },
+              disabled: !state.selectedSide,
+              title: state.selectedSide ? "Skip this pair" : "Select a side first (arrow keys)"
+            }, ["Skip ", m$1("kbd", "S")])
           ]),
           m$1(".cc-hint", "← → arrow keys to highlight a side · Esc to close"),
           m$1(".cc-footer", [
