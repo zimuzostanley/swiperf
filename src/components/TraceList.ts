@@ -385,7 +385,7 @@ export const TraceList: m.Component = {
           onclick: () => startCrossCompare(cl),
           disabled: cl.traces.length < 2,
           title: 'Compare traces in pairs to find groups',
-        }, 'Cross Compare'),
+        }, 'Compare'),
         renderExportDropdown(cl),
       ]),
     ])

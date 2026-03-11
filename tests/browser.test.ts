@@ -676,7 +676,7 @@ describe('browser integration', () => {
     await p.close()
   })
 
-  // ── Cross Compare tests ──
+  // ── Compare tests ──
 
   it('cross compare button opens modal and keyboard works', async () => {
     const p = await freshPage()
@@ -689,14 +689,14 @@ describe('browser integration', () => {
     ]
     await pasteText(p, JSON.stringify(traces))
 
-    // Cross Compare button should be enabled
+    // Compare button should be enabled
     const ccBtn = await p.waitForSelector('button.btn:not([disabled])')
     const buttons = await p.$$eval('button.btn', els => els.map(e => e.textContent))
-    expect(buttons).toContain('Cross Compare')
+    expect(buttons).toContain('Compare')
 
     // Click it
     const crossCompareBtn = await p.evaluateHandle(() => {
-      return [...document.querySelectorAll('button.btn')].find(b => b.textContent === 'Cross Compare')
+      return [...document.querySelectorAll('button.btn')].find(b => b.textContent === 'Compare')
     })
     await (crossCompareBtn as any).click()
     await p.waitForSelector('.cc-overlay')
@@ -740,7 +740,7 @@ describe('browser integration', () => {
 
     // Open cross compare
     const crossCompareBtn = await p.evaluateHandle(() => {
-      return [...document.querySelectorAll('button.btn')].find(b => b.textContent === 'Cross Compare')
+      return [...document.querySelectorAll('button.btn')].find(b => b.textContent === 'Compare')
     })
     await (crossCompareBtn as any).click()
     await p.waitForSelector('.cc-overlay')
@@ -775,7 +775,7 @@ describe('browser integration', () => {
     await pasteText(p, JSON.stringify([makeTrace('solo-1', 'com.solo')]))
 
     const isDisabled = await p.evaluate(() => {
-      const btn = [...document.querySelectorAll('button.btn')].find(b => b.textContent === 'Cross Compare')
+      const btn = [...document.querySelectorAll('button.btn')].find(b => b.textContent === 'Compare')
       return btn ? (btn as HTMLButtonElement).disabled : null
     })
     expect(isDisabled).toBe(true)

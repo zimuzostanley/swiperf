@@ -8,6 +8,7 @@ import { getProgress, getResults } from '../models/crossCompare'
 import { MiniTimeline } from './MiniTimeline'
 import { Summary } from './Summary'
 import { fmt_dur } from '../utils/format'
+import { buildTraceLink } from '../utils/export'
 
 let _keyHandler: ((e: KeyboardEvent) => void) | null = null
 let _ccSliderPct = 100
@@ -64,6 +65,14 @@ function renderPanel(cl: Cluster, key: string, side: 'left' | 'right') {
       ts.trace.startup_dur
         ? m('span.cc-panel-dur', fmt_dur(ts.trace.startup_dur))
         : null,
+      (() => {
+        const href = buildTraceLink(ts.trace.trace_uuid, ts.trace.package_name)
+        return href ? m('a.trace-link', {
+          href, target: '_blank', rel: 'noopener',
+          onclick: (e: Event) => e.stopPropagation(),
+          title: 'Open in trace viewer',
+        }, '\u2197') : null
+      })(),
     ]),
     m(MiniTimeline, { ts }),
     m('.cc-panel-detail', m(Summary, { ts })),
