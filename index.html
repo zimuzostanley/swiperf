@@ -1558,6 +1558,150 @@ function get_compressed(cache, orig_n, target) {
   for (const k of cache.keys()) if (k >= t && k < best) best = k;
   return cache.get(best) ?? cache.get(2) ?? [];
 }
+function edgeKey(a, b) {
+  return a < b ? `${a}|${b}` : `${b}|${a}`;
+}
+class UnionFind {
+  constructor(keys) {
+    this.parent = /* @__PURE__ */ new Map();
+    this._rank = /* @__PURE__ */ new Map();
+    for (const k of keys) {
+      this.parent.set(k, k);
+      this._rank.set(k, 0);
+    }
+  }
+  find(x) {
+    let root = x;
+    while (this.parent.get(root) !== root) root = this.parent.get(root);
+    let cur = x;
+    while (cur !== root) {
+      const next = this.parent.get(cur);
+      this.parent.set(cur, root);
+      cur = next;
+    }
+    return root;
+  }
+  union(a, b) {
+    const ra = this.find(a), rb = this.find(b);
+    if (ra === rb) return;
+    const rankA = this._rank.get(ra), rankB = this._rank.get(rb);
+    if (rankA < rankB) this.parent.set(ra, rb);
+    else if (rankA > rankB) this.parent.set(rb, ra);
+    else {
+      this.parent.set(rb, ra);
+      this._rank.set(ra, rankA + 1);
+    }
+  }
+  connected(a, b) {
+    return this.find(a) === this.find(b);
+  }
+  /** Returns map of root -> member keys (sorted by insertion order). */
+  components() {
+    const map = /* @__PURE__ */ new Map();
+    for (const k of this.parent.keys()) {
+      const root = this.find(k);
+      let arr = map.get(root);
+      if (!arr) {
+        arr = [];
+        map.set(root, arr);
+      }
+      arr.push(k);
+    }
+    return map;
+  }
+}
+function createCrossCompareState(traceKeys) {
+  const state = {
+    uf: new UnionFind(traceKeys),
+    negativeEdges: /* @__PURE__ */ new Set(),
+    comparisons: /* @__PURE__ */ new Map(),
+    traceKeys,
+    currentPair: null,
+    selectedSide: null,
+    isComplete: false
+  };
+  state.currentPair = nextPair(state);
+  if (!state.currentPair) state.isComplete = true;
+  return state;
+}
+function recordComparison(state, keyA, keyB, result) {
+  const ek = edgeKey(keyA, keyB);
+  state.comparisons.set(ek, result);
+  if (result === "positive") {
+    const rootA = state.uf.find(keyA), rootB = state.uf.find(keyB);
+    const toRekey = [];
+    for (const neg of state.negativeEdges) {
+      const [x, y] = neg.split("|");
+      if (x === rootA || x === rootB || y === rootA || y === rootB) {
+        toRekey.push([x, y]);
+      }
+    }
+    state.uf.union(keyA, keyB);
+    state.uf.find(keyA);
+    for (const [x, y] of toRekey) {
+      state.negativeEdges.delete(edgeKey(x, y));
+      const rx = state.uf.find(x), ry = state.uf.find(y);
+      if (rx !== ry) state.negativeEdges.add(edgeKey(rx, ry));
+    }
+  } else if (result === "negative") {
+    const rootA = state.uf.find(keyA), rootB = state.uf.find(keyB);
+    if (rootA !== rootB) {
+      state.negativeEdges.add(edgeKey(rootA, rootB));
+    }
+  }
+}
+function nextPair(state) {
+  const comps = state.uf.components();
+  const sorted = [...comps.entries()].sort((a, b) => b[1].length - a[1].length);
+  for (let i = 0; i < sorted.length; i++) {
+    for (let j = i + 1; j < sorted.length; j++) {
+      const rootI = sorted[i][0], rootJ = sorted[j][0];
+      if (state.negativeEdges.has(edgeKey(rootI, rootJ))) continue;
+      const repI = sorted[i][1][0], repJ = sorted[j][1][0];
+      if (state.comparisons.has(edgeKey(repI, repJ))) {
+        const pair = findUncomparedPair(state, sorted[i][1], sorted[j][1]);
+        if (pair) return pair;
+        continue;
+      }
+      return [repI, repJ];
+    }
+  }
+  return null;
+}
+function findUncomparedPair(state, membersA, membersB) {
+  for (const a of membersA) {
+    for (const b of membersB) {
+      if (!state.comparisons.has(edgeKey(a, b))) return [a, b];
+    }
+  }
+  return null;
+}
+function getProgress(state) {
+  const comps = state.uf.components();
+  const roots = [...comps.keys()];
+  let total = 0, resolved = 0;
+  for (let i = 0; i < roots.length; i++) {
+    for (let j = i + 1; j < roots.length; j++) {
+      total++;
+      if (state.negativeEdges.has(edgeKey(roots[i], roots[j]))) resolved++;
+    }
+  }
+  const n = state.traceKeys.length;
+  const maxPairs = n * (n - 1) / 2;
+  const mergedPairs = maxPairs - total;
+  const totalWork = maxPairs;
+  const completedWork = mergedPairs + resolved;
+  return {
+    completed: completedWork,
+    total: totalWork,
+    pct: totalWork > 0 ? Math.round(completedWork / totalWork * 100) : 100
+  };
+}
+function getResults(state) {
+  const comps = state.uf.components();
+  const groups = [...comps.values()].sort((a, b) => b.length - a.length);
+  return { groups };
+}
 function traceKey(t) {
   var _a;
   const startupId = ((_a = t.extra) == null ? void 0 : _a.startup_id) ?? "";
@@ -1787,6 +1931,50 @@ function togglePropFilter(cl, field, value) {
 }
 function clearPropFilter(cl, field) {
   cl.propFilters.delete(field);
+  m$1.redraw();
+}
+let _ccState = null;
+function getCrossCompareState() {
+  return _ccState;
+}
+function startCrossCompare(cl) {
+  if (_ccState) {
+    m$1.redraw();
+    return;
+  }
+  const keys = cl.traces.map((ts) => ts._key);
+  _ccState = createCrossCompareState(keys);
+  m$1.redraw();
+}
+function closeCrossCompare() {
+  _ccState = null;
+  m$1.redraw();
+}
+function recordCrossComparison(result) {
+  if (!_ccState || !_ccState.currentPair) return;
+  const [a, b] = _ccState.currentPair;
+  recordComparison(_ccState, a, b, result);
+  _ccState.currentPair = nextPair(_ccState);
+  if (!_ccState.currentPair) _ccState.isComplete = true;
+  _ccState.selectedSide = null;
+  m$1.redraw();
+}
+function applyCrossCompareResults(cl) {
+  if (!_ccState) return;
+  const { groups } = getResults(_ccState);
+  if (groups.length >= 1) {
+    for (const key of groups[0]) cl.verdicts.set(key, "like");
+  }
+  if (groups.length >= 2) {
+    for (const key of groups[1]) cl.verdicts.set(key, "dislike");
+  }
+  recomputeCounts(cl);
+  _ccState = null;
+  m$1.redraw();
+}
+function resetCrossCompare(cl) {
+  const keys = cl.traces.map((ts) => ts._key);
+  _ccState = createCrossCompareState(keys);
   m$1.redraw();
 }
 function exportSession() {
@@ -3214,6 +3402,150 @@ const Summary = {
     return m$1(".summary-grid", tables);
   }
 };
+let _keyHandler = null;
+function findTrace(cl, key) {
+  return cl.traces.find((ts) => ts._key === key);
+}
+function traceIndex(cl, key) {
+  return cl.traces.findIndex((ts) => ts._key === key);
+}
+function renderPanel(cl, key, side) {
+  const ts = findTrace(cl, key);
+  if (!ts) return m$1(".cc-panel", "Trace not found");
+  ensureCache(ts);
+  const state = getCrossCompareState();
+  const selected = (state == null ? void 0 : state.selectedSide) === side;
+  return m$1(".cc-panel" + (selected ? ".selected" : ""), [
+    m$1(".cc-panel-header", [
+      m$1("span.cc-panel-idx", `#${traceIndex(cl, key) + 1}`),
+      m$1("span.cc-panel-pkg", ts.trace.package_name),
+      ts.trace.startup_dur ? m$1("span.cc-panel-dur", fmt_dur(ts.trace.startup_dur)) : null
+    ]),
+    m$1(MiniTimeline, { ts }),
+    m$1(".cc-panel-detail", m$1(Summary, { ts }))
+  ]);
+}
+function renderComplete(cl) {
+  const state = getCrossCompareState();
+  if (!state) return null;
+  const { groups } = getResults(state);
+  return m$1(".cc-results", [
+    m$1(".cc-results-title", "Comparison complete"),
+    m$1("p.cc-hint", `Found ${groups.length} group${groups.length !== 1 ? "s" : ""}`),
+    ...groups.slice(0, 5).map(
+      (group, i) => m$1(".cc-group-row", [
+        m$1(
+          "span.cc-group-label",
+          i === 0 ? "Largest (→ Positive)" : i === 1 ? "Second (→ Negative)" : `Group ${i + 1}`
+        ),
+        m$1("span.cc-group-count", `${group.length} trace${group.length !== 1 ? "s" : ""}`)
+      ])
+    ),
+    m$1(".cc-footer", [
+      m$1("button.cc-action-btn.positive", {
+        onclick: () => applyCrossCompareResults(cl)
+      }, "Apply Results"),
+      m$1("button.cc-action-btn", {
+        onclick: () => resetCrossCompare(cl)
+      }, "Reset"),
+      m$1("button.cc-action-btn", {
+        onclick: closeCrossCompare
+      }, "Close")
+    ])
+  ]);
+}
+const CrossCompareModal = {
+  oncreate() {
+    _keyHandler = (e) => {
+      const state = getCrossCompareState();
+      if (!state) return;
+      if (e.key === "Escape") {
+        closeCrossCompare();
+        return;
+      }
+      if (state.isComplete) return;
+      if (e.key === "p" || e.key === "P") {
+        recordCrossComparison("positive");
+        return;
+      }
+      if (e.key === "n" || e.key === "N") {
+        recordCrossComparison("negative");
+        return;
+      }
+      if (e.key === "d" || e.key === "D") {
+        recordCrossComparison("skip");
+        return;
+      }
+      if (e.key === "ArrowLeft") {
+        state.selectedSide = "left";
+        m$1.redraw();
+        return;
+      }
+      if (e.key === "ArrowRight") {
+        state.selectedSide = "right";
+        m$1.redraw();
+        return;
+      }
+    };
+    document.addEventListener("keydown", _keyHandler);
+  },
+  onremove() {
+    if (_keyHandler) {
+      document.removeEventListener("keydown", _keyHandler);
+      _keyHandler = null;
+    }
+  },
+  view(vnode2) {
+    const { cl } = vnode2.attrs;
+    const state = getCrossCompareState();
+    if (!state) return null;
+    const progress = getProgress(state);
+    return m$1(".cc-overlay", { onclick: closeCrossCompare }, [
+      m$1(".cc-modal", { onclick: (e) => e.stopPropagation() }, [
+        // Header
+        m$1(".cc-header", [
+          m$1("span.cc-title", "Cross Compare"),
+          m$1("button.cc-close", { onclick: closeCrossCompare, title: "Close (Esc)" }, "×")
+        ]),
+        // Progress bar
+        m$1(".cc-progress", [
+          m$1(".cc-progress-text", `${progress.completed} / ${progress.total} pairs resolved (${progress.pct}%)`),
+          m$1(".cc-progress-bar", [
+            m$1(".cc-progress-fill", { style: { width: progress.pct + "%" } })
+          ])
+        ]),
+        // Body
+        state.isComplete ? renderComplete(cl) : state.currentPair ? m$1(".cc-body", [
+          m$1(".cc-pair", [
+            renderPanel(cl, state.currentPair[0], "left"),
+            m$1(".cc-pair-divider", "vs"),
+            renderPanel(cl, state.currentPair[1], "right")
+          ]),
+          m$1(".cc-actions", [
+            m$1("button.cc-action-btn.positive", {
+              onclick: () => recordCrossComparison("positive")
+            }, ["Similar ", m$1("kbd", "P")]),
+            m$1("button.cc-action-btn.negative", {
+              onclick: () => recordCrossComparison("negative")
+            }, ["Different ", m$1("kbd", "N")]),
+            m$1("button.cc-action-btn", {
+              onclick: () => recordCrossComparison("skip")
+            }, ["Skip ", m$1("kbd", "D")])
+          ]),
+          m$1(".cc-hint", "← → arrow keys to highlight a side · Esc to close"),
+          m$1(".cc-footer", [
+            m$1("button.cc-action-btn", {
+              onclick: () => applyCrossCompareResults(cl)
+            }, "Apply Current Results"),
+            m$1("button.cc-action-btn", {
+              onclick: () => resetCrossCompare(cl)
+            }, "Reset")
+          ])
+        ]) : null
+      ])
+    ]);
+  }
+};
 let openFilterDropdown = null;
 let openExportMenu = false;
 const expanded = /* @__PURE__ */ new Set();
@@ -3578,52 +3910,64 @@ const TraceList = {
           disabled: cl.splitView || !filtered || filtered.length === 0,
           title: cl.splitView ? "Switch to single view first" : "Copy visible traces to a new tab"
         }, "Copy to tab"),
+        m$1("button.btn", {
+          onclick: () => startCrossCompare(cl),
+          disabled: cl.traces.length < 2,
+          title: "Compare traces in pairs to find groups"
+        }, "Cross Compare"),
         renderExportDropdown()
       ])
     ]);
+    const ccModal = getCrossCompareState() ? m$1(CrossCompareModal, { cl }) : null;
     if (filtered) {
-      return m$1(".section", [
-        m$1(".section-head", `Traces (${filtered.length}${filtered.length !== cl.traces.length ? "/" + cl.traces.length : ""})`),
-        toolbar,
-        renderCardList(cl, filtered)
-      ]);
+      return [
+        m$1(".section", [
+          m$1(".section-head", `Traces (${filtered.length}${filtered.length !== cl.traces.length ? "/" + cl.traces.length : ""})`),
+          toolbar,
+          renderCardList(cl, filtered)
+        ]),
+        ccModal
+      ];
     }
     const leftTraces = filterTraces(cl, cl.splitFilters[0]);
     const rightTraces = filterTraces(cl, cl.splitFilters[1]);
     const ratio = cl.splitRatio;
-    return m$1(".section", [
-      m$1(".section-head", "Traces (split view)"),
-      toolbar,
-      m$1(".split-container", {
-        style: { cursor: _dragging ? "col-resize" : "" }
-      }, [
-        m$1(".split-panel", {
-          style: { width: (ratio * 100).toFixed(1) + "%" }
+    return [
+      m$1(".section", [
+        m$1(".section-head", "Traces (split view)"),
+        toolbar,
+        m$1(".split-container", {
+          style: { cursor: _dragging ? "col-resize" : "" }
         }, [
-          m$1(".split-panel-header", [
-            renderFilterBar(cl, cl.splitFilters[0], (f) => {
-              cl.splitFilters[0] = f;
-            }),
-            m$1("span.split-count", `${leftTraces.length}`)
+          m$1(".split-panel", {
+            style: { width: (ratio * 100).toFixed(1) + "%" }
+          }, [
+            m$1(".split-panel-header", [
+              renderFilterBar(cl, cl.splitFilters[0], (f) => {
+                cl.splitFilters[0] = f;
+              }),
+              m$1("span.split-count", `${leftTraces.length}`)
+            ]),
+            m$1(".split-panel-body", renderCardList(cl, leftTraces))
           ]),
-          m$1(".split-panel-body", renderCardList(cl, leftTraces))
-        ]),
-        m$1(".split-divider", {
-          onmousedown: (e) => onDividerDown(e, cl)
-        }),
-        m$1(".split-panel", {
-          style: { width: ((1 - ratio) * 100).toFixed(1) + "%" }
-        }, [
-          m$1(".split-panel-header", [
-            renderFilterBar(cl, cl.splitFilters[1], (f) => {
-              cl.splitFilters[1] = f;
-            }),
-            m$1("span.split-count", `${rightTraces.length}`)
-          ]),
-          m$1(".split-panel-body", renderCardList(cl, rightTraces))
+          m$1(".split-divider", {
+            onmousedown: (e) => onDividerDown(e, cl)
+          }),
+          m$1(".split-panel", {
+            style: { width: ((1 - ratio) * 100).toFixed(1) + "%" }
+          }, [
+            m$1(".split-panel-header", [
+              renderFilterBar(cl, cl.splitFilters[1], (f) => {
+                cl.splitFilters[1] = f;
+              }),
+              m$1("span.split-count", `${rightTraces.length}`)
+            ]),
+            m$1(".split-panel-body", renderCardList(cl, rightTraces))
+          ])
         ])
-      ])
-    ]);
+      ]),
+      ccModal
+    ];
   }
 };
 function applyTheme(theme) {
@@ -4167,6 +4511,101 @@ input[type=range]::-webkit-slider-thumb {
   border: none; cursor: pointer; transition: all 0.1s;
 }
 .export-item:hover { background: var(--accent-bg); color: var(--accent); }
+
+/* ── Cross Compare Modal ── */
+.cc-overlay {
+  position: fixed; inset: 0; z-index: 10000;
+  background: rgba(0,0,0,0.6); display: flex;
+  align-items: center; justify-content: center;
+}
+.cc-modal {
+  background: var(--surface); border: 1px solid var(--border2);
+  border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+  max-width: 1200px; width: 95vw; max-height: 90vh;
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.cc-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 20px; border-bottom: 1px solid var(--border);
+}
+.cc-title { font-size: 13px; font-weight: 600; color: var(--bright); }
+.cc-close {
+  background: none; border: none; font-size: 18px; cursor: pointer;
+  color: var(--dim); padding: 0 4px; line-height: 1;
+}
+.cc-close:hover { color: var(--bright); }
+.cc-progress { padding: 10px 20px; }
+.cc-progress-text {
+  font-size: 10px; color: var(--dim); font-family: var(--mono);
+  margin-bottom: 4px;
+}
+.cc-progress-bar {
+  height: 4px; background: var(--border); border-radius: 2px; overflow: hidden;
+}
+.cc-progress-fill {
+  height: 100%; background: var(--accent); border-radius: 2px;
+  transition: width 0.2s;
+}
+.cc-body {
+  flex: 1; overflow-y: auto; padding: 16px 20px;
+  display: flex; flex-direction: column; gap: 12px;
+}
+.cc-pair {
+  display: flex; gap: 12px; align-items: stretch;
+}
+.cc-pair-divider {
+  display: flex; align-items: center; font-size: 11px; font-weight: 600;
+  color: var(--dim); padding: 0 4px;
+}
+.cc-panel {
+  flex: 1; border: 2px solid var(--border); border-radius: 8px;
+  padding: 10px; display: flex; flex-direction: column; gap: 6px;
+  transition: border-color 0.15s; overflow: hidden;
+}
+.cc-panel.selected { border-color: var(--accent); }
+.cc-panel-header {
+  display: flex; align-items: center; gap: 8px;
+}
+.cc-panel-idx { font-family: var(--mono); font-size: 10px; color: var(--dim); }
+.cc-panel-pkg { font-size: 11px; font-weight: 500; color: var(--bright); }
+.cc-panel-dur {
+  font-family: var(--mono); font-size: 12px; font-weight: 700;
+  color: var(--accent); margin-left: auto;
+}
+.cc-panel-detail { max-height: 200px; overflow-y: auto; }
+.cc-actions {
+  display: flex; gap: 10px; justify-content: center; padding: 4px 0;
+}
+.cc-action-btn {
+  padding: 7px 16px; border-radius: 6px; font-size: 11px;
+  font-weight: 600; cursor: pointer; border: 1px solid var(--border2);
+  background: var(--surface2); color: var(--label);
+  display: flex; align-items: center; gap: 6px; transition: all 0.1s;
+}
+.cc-action-btn:hover { background: var(--border2); color: var(--bright); }
+.cc-action-btn.positive { background: color-mix(in srgb, var(--c-positive) 15%, transparent); color: var(--c-positive); border-color: var(--c-positive); }
+.cc-action-btn.positive:hover { background: color-mix(in srgb, var(--c-positive) 25%, transparent); }
+.cc-action-btn.negative { background: color-mix(in srgb, var(--c-negative) 15%, transparent); color: var(--c-negative); border-color: var(--c-negative); }
+.cc-action-btn.negative:hover { background: color-mix(in srgb, var(--c-negative) 25%, transparent); }
+.cc-action-btn kbd {
+  font-family: var(--mono); font-size: 9px; padding: 1px 4px;
+  border: 1px solid currentColor; border-radius: 3px; opacity: 0.6;
+}
+.cc-hint {
+  font-size: 10px; color: var(--dim); text-align: center;
+}
+.cc-footer {
+  display: flex; gap: 8px; justify-content: center;
+  padding: 8px 20px; border-top: 1px solid var(--border);
+}
+.cc-results { padding: 16px 20px; text-align: center; }
+.cc-results-title { font-size: 13px; font-weight: 600; color: var(--bright); margin-bottom: 8px; }
+.cc-group-row {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 4px 0; font-size: 11px;
+}
+.cc-group-label { color: var(--dim); }
+.cc-group-count { font-family: var(--mono); font-weight: 600; color: var(--bright); }
 `;
 const style = document.createElement("style");
 style.textContent = CSS;
