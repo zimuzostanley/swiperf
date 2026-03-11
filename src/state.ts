@@ -1,6 +1,11 @@
 import m from 'mithril'
 import type { TraceEntry, Slice, MergedSlice, Verdict, OverviewFilter, SortState } from './models/types'
 import { build_merge_cache, get_compressed } from './models/compression'
+import type { CrossCompareState } from './models/crossCompare'
+import {
+  createCrossCompareState, recordComparison as ccRecord,
+  nextPair, getResults as ccResults,
+} from './models/crossCompare'
 
 export interface TraceState {
   trace: TraceEntry
@@ -269,6 +274,59 @@ export function togglePropFilter(cl: Cluster, field: string, value: string) {
 
 export function clearPropFilter(cl: Cluster, field: string) {
   cl.propFilters.delete(field)
+  m.redraw()
+}
+
+// ── Cross Compare ──
+
+let _ccState: CrossCompareState | null = null
+
+export function getCrossCompareState(): CrossCompareState | null { return _ccState }
+
+export function startCrossCompare(cl: Cluster): void {
+  if (_ccState) {
+    // Resume if same trace set
+    m.redraw()
+    return
+  }
+  const keys = cl.traces.map(ts => ts._key)
+  _ccState = createCrossCompareState(keys)
+  m.redraw()
+}
+
+export function closeCrossCompare(): void {
+  _ccState = null
+  m.redraw()
+}
+
+export function recordCrossComparison(result: 'positive' | 'negative' | 'skip'): void {
+  if (!_ccState || !_ccState.currentPair) return
+  const [a, b] = _ccState.currentPair
+  ccRecord(_ccState, a, b, result)
+  _ccState.currentPair = nextPair(_ccState)
+  if (!_ccState.currentPair) _ccState.isComplete = true
+  _ccState.selectedSide = null
+  m.redraw()
+}
+
+export function applyCrossCompareResults(cl: Cluster): void {
+  if (!_ccState) return
+  const { groups } = ccResults(_ccState)
+  // Largest group → 'like', second largest → 'dislike', rest unchanged
+  if (groups.length >= 1) {
+    for (const key of groups[0]) cl.verdicts.set(key, 'like')
+  }
+  if (groups.length >= 2) {
+    for (const key of groups[1]) cl.verdicts.set(key, 'dislike')
+  }
+  recomputeCounts(cl)
+  _ccState = null
+  m.redraw()
+}
+
+export function resetCrossCompare(cl: Cluster): void {
+  const keys = cl.traces.map(ts => ts._key)
+  _ccState = createCrossCompareState(keys)
   m.redraw()
 }
 

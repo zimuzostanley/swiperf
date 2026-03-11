@@ -454,4 +454,99 @@ input[type=range]::-webkit-slider-thumb {
   border: none; cursor: pointer; transition: all 0.1s;
 }
 .export-item:hover { background: var(--accent-bg); color: var(--accent); }
+
+/* ── Cross Compare Modal ── */
+.cc-overlay {
+  position: fixed; inset: 0; z-index: 10000;
+  background: rgba(0,0,0,0.6); display: flex;
+  align-items: center; justify-content: center;
+}
+.cc-modal {
+  background: var(--surface); border: 1px solid var(--border2);
+  border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+  max-width: 1200px; width: 95vw; max-height: 90vh;
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.cc-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 20px; border-bottom: 1px solid var(--border);
+}
+.cc-title { font-size: 13px; font-weight: 600; color: var(--bright); }
+.cc-close {
+  background: none; border: none; font-size: 18px; cursor: pointer;
+  color: var(--dim); padding: 0 4px; line-height: 1;
+}
+.cc-close:hover { color: var(--bright); }
+.cc-progress { padding: 10px 20px; }
+.cc-progress-text {
+  font-size: 10px; color: var(--dim); font-family: var(--mono);
+  margin-bottom: 4px;
+}
+.cc-progress-bar {
+  height: 4px; background: var(--border); border-radius: 2px; overflow: hidden;
+}
+.cc-progress-fill {
+  height: 100%; background: var(--accent); border-radius: 2px;
+  transition: width 0.2s;
+}
+.cc-body {
+  flex: 1; overflow-y: auto; padding: 16px 20px;
+  display: flex; flex-direction: column; gap: 12px;
+}
+.cc-pair {
+  display: flex; gap: 12px; align-items: stretch;
+}
+.cc-pair-divider {
+  display: flex; align-items: center; font-size: 11px; font-weight: 600;
+  color: var(--dim); padding: 0 4px;
+}
+.cc-panel {
+  flex: 1; border: 2px solid var(--border); border-radius: 8px;
+  padding: 10px; display: flex; flex-direction: column; gap: 6px;
+  transition: border-color 0.15s; overflow: hidden;
+}
+.cc-panel.selected { border-color: var(--accent); }
+.cc-panel-header {
+  display: flex; align-items: center; gap: 8px;
+}
+.cc-panel-idx { font-family: var(--mono); font-size: 10px; color: var(--dim); }
+.cc-panel-pkg { font-size: 11px; font-weight: 500; color: var(--bright); }
+.cc-panel-dur {
+  font-family: var(--mono); font-size: 12px; font-weight: 700;
+  color: var(--accent); margin-left: auto;
+}
+.cc-panel-detail { max-height: 200px; overflow-y: auto; }
+.cc-actions {
+  display: flex; gap: 10px; justify-content: center; padding: 4px 0;
+}
+.cc-action-btn {
+  padding: 7px 16px; border-radius: 6px; font-size: 11px;
+  font-weight: 600; cursor: pointer; border: 1px solid var(--border2);
+  background: var(--surface2); color: var(--label);
+  display: flex; align-items: center; gap: 6px; transition: all 0.1s;
+}
+.cc-action-btn:hover { background: var(--border2); color: var(--bright); }
+.cc-action-btn.positive { background: color-mix(in srgb, var(--c-positive) 15%, transparent); color: var(--c-positive); border-color: var(--c-positive); }
+.cc-action-btn.positive:hover { background: color-mix(in srgb, var(--c-positive) 25%, transparent); }
+.cc-action-btn.negative { background: color-mix(in srgb, var(--c-negative) 15%, transparent); color: var(--c-negative); border-color: var(--c-negative); }
+.cc-action-btn.negative:hover { background: color-mix(in srgb, var(--c-negative) 25%, transparent); }
+.cc-action-btn kbd {
+  font-family: var(--mono); font-size: 9px; padding: 1px 4px;
+  border: 1px solid currentColor; border-radius: 3px; opacity: 0.6;
+}
+.cc-hint {
+  font-size: 10px; color: var(--dim); text-align: center;
+}
+.cc-footer {
+  display: flex; gap: 8px; justify-content: center;
+  padding: 8px 20px; border-top: 1px solid var(--border);
+}
+.cc-results { padding: 16px 20px; text-align: center; }
+.cc-results-title { font-size: 13px; font-weight: 600; color: var(--bright); margin-bottom: 8px; }
+.cc-group-row {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 4px 0; font-size: 11px;
+}
+.cc-group-label { color: var(--dim); }
+.cc-group-count { font-family: var(--mono); font-weight: 600; color: var(--bright); }
 `

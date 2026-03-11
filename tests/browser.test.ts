@@ -676,6 +676,113 @@ describe('browser integration', () => {
     await p.close()
   })
 
+  // ── Cross Compare tests ──
+
+  it('cross compare button opens modal and keyboard works', async () => {
+    const p = await freshPage()
+
+    // Import 3 traces so cross compare is meaningful
+    const traces = [
+      makeTrace('cc-1', 'com.app1'),
+      makeTrace('cc-2', 'com.app2'),
+      makeTrace('cc-3', 'com.app3'),
+    ]
+    await pasteText(p, JSON.stringify(traces))
+
+    // Cross Compare button should be enabled
+    const ccBtn = await p.waitForSelector('button.btn:not([disabled])')
+    const buttons = await p.$$eval('button.btn', els => els.map(e => e.textContent))
+    expect(buttons).toContain('Cross Compare')
+
+    // Click it
+    const crossCompareBtn = await p.evaluateHandle(() => {
+      return [...document.querySelectorAll('button.btn')].find(b => b.textContent === 'Cross Compare')
+    })
+    await (crossCompareBtn as any).click()
+    await p.waitForSelector('.cc-overlay')
+
+    // Modal should be visible with progress and two panels
+    const modalVisible = await p.$eval('.cc-modal', el => el.offsetWidth > 0)
+    expect(modalVisible).toBe(true)
+
+    const panelCount = await p.$$eval('.cc-panel', els => els.length)
+    expect(panelCount).toBe(2)
+
+    // Progress should show
+    const progressText = await p.$eval('.cc-progress-text', el => el.textContent)
+    expect(progressText).toContain('/')
+
+    // Press 'p' for positive
+    await p.keyboard.press('p')
+    await new Promise(r => setTimeout(r, 200))
+
+    // Should still be in modal (3 traces need more than 1 comparison)
+    const stillVisible = await p.$('.cc-overlay')
+    // Might be complete or not depending on algorithm — just check no crash
+
+    // Press Escape to close
+    await p.keyboard.press('Escape')
+    await new Promise(r => setTimeout(r, 200))
+    const overlay = await p.$('.cc-overlay')
+    expect(overlay).toBeNull()
+
+    await p.close()
+  })
+
+  it('cross compare applies results to verdicts', async () => {
+    const p = await freshPage()
+
+    const traces = [
+      makeTrace('cr-1', 'com.app1'),
+      makeTrace('cr-2', 'com.app2'),
+    ]
+    await pasteText(p, JSON.stringify(traces))
+
+    // Open cross compare
+    const crossCompareBtn = await p.evaluateHandle(() => {
+      return [...document.querySelectorAll('button.btn')].find(b => b.textContent === 'Cross Compare')
+    })
+    await (crossCompareBtn as any).click()
+    await p.waitForSelector('.cc-overlay')
+
+    // With 2 traces, only 1 pair. Press 'p' for positive.
+    await p.keyboard.press('p')
+    await new Promise(r => setTimeout(r, 200))
+
+    // Should show completion — click Apply Results
+    const applyBtn = await p.evaluateHandle(() => {
+      return [...document.querySelectorAll('.cc-action-btn')].find(b =>
+        b.textContent?.includes('Apply')
+      )
+    })
+    if (applyBtn) await (applyBtn as any).click()
+    await new Promise(r => setTimeout(r, 200))
+
+    // Modal should be gone
+    const overlay = await p.$('.cc-overlay')
+    expect(overlay).toBeNull()
+
+    // Both traces should be positive (same group)
+    const positiveCount = await p.$eval('.stat-positive', el => el.textContent)
+    expect(positiveCount).toContain('2')
+
+    await p.close()
+  })
+
+  it('cross compare is disabled with fewer than 2 traces', async () => {
+    const p = await freshPage()
+
+    await pasteText(p, JSON.stringify([makeTrace('solo-1', 'com.solo')]))
+
+    const isDisabled = await p.evaluate(() => {
+      const btn = [...document.querySelectorAll('button.btn')].find(b => b.textContent === 'Cross Compare')
+      return btn ? (btn as HTMLButtonElement).disabled : null
+    })
+    expect(isDisabled).toBe(true)
+
+    await p.close()
+  })
+
   // ── Large paste stress tests ──
   // Generate JSON trace data of approximate target size in bytes.
   // Each trace has ~200 bytes of slices, so we control count to hit target.

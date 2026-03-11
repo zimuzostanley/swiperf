@@ -1,5 +1,5 @@
 import m from 'mithril'
-import { S, activeCluster, filteredTraces, filterTraces, setVerdict, updateSlider, updateGlobalSlider, getFilterableFields, getFieldValues, togglePropFilter, clearPropFilter, copyFilteredToNewTab } from '../state'
+import { S, activeCluster, filteredTraces, filterTraces, setVerdict, updateSlider, updateGlobalSlider, getFilterableFields, getFieldValues, togglePropFilter, clearPropFilter, copyFilteredToNewTab, getCrossCompareState, startCrossCompare } from '../state'
 import type { TraceState, Cluster } from '../state'
 import type { OverviewFilter } from '../models/types'
 import { traceExportRow, rowsToTsv, rowsToJson, buildTraceLink } from '../utils/export'
@@ -9,6 +9,7 @@ let openFilterDropdown: string | null = null
 let openExportMenu = false
 import { MiniTimeline } from './MiniTimeline'
 import { Summary } from './Summary'
+import { CrossCompareModal } from './CrossCompareModal'
 import { fmt_dur } from '../utils/format'
 
 const expanded = new Set<string>()
@@ -386,17 +387,27 @@ export const TraceList: m.Component = {
           disabled: cl.splitView || !filtered || filtered.length === 0,
           title: cl.splitView ? 'Switch to single view first' : 'Copy visible traces to a new tab',
         }, 'Copy to tab'),
+        m('button.btn', {
+          onclick: () => startCrossCompare(cl),
+          disabled: cl.traces.length < 2,
+          title: 'Compare traces in pairs to find groups',
+        }, 'Cross Compare'),
         renderExportDropdown(cl),
       ]),
     ])
 
+    const ccModal = getCrossCompareState() ? m(CrossCompareModal, { cl }) : null
+
     if (filtered) {
       // Normal single-panel view
-      return m('.section', [
-        m('.section-head', `Traces (${filtered.length}${filtered.length !== cl.traces.length ? '/' + cl.traces.length : ''})`),
-        toolbar,
-        renderCardList(cl, filtered),
-      ])
+      return [
+        m('.section', [
+          m('.section-head', `Traces (${filtered.length}${filtered.length !== cl.traces.length ? '/' + cl.traces.length : ''})`),
+          toolbar,
+          renderCardList(cl, filtered),
+        ]),
+        ccModal,
+      ]
     }
 
     // Split view
@@ -404,34 +415,37 @@ export const TraceList: m.Component = {
     const rightTraces = filterTraces(cl, cl.splitFilters[1])
     const ratio = cl.splitRatio
 
-    return m('.section', [
-      m('.section-head', 'Traces (split view)'),
-      toolbar,
-      m('.split-container', {
-        style: { cursor: _dragging ? 'col-resize' : '' },
-      }, [
-        m('.split-panel', {
-          style: { width: (ratio * 100).toFixed(1) + '%' },
+    return [
+      m('.section', [
+        m('.section-head', 'Traces (split view)'),
+        toolbar,
+        m('.split-container', {
+          style: { cursor: _dragging ? 'col-resize' : '' },
         }, [
-          m('.split-panel-header', [
-            renderFilterBar(cl, cl.splitFilters[0], f => { cl.splitFilters[0] = f }),
-            m('span.split-count', `${leftTraces.length}`),
+          m('.split-panel', {
+            style: { width: (ratio * 100).toFixed(1) + '%' },
+          }, [
+            m('.split-panel-header', [
+              renderFilterBar(cl, cl.splitFilters[0], f => { cl.splitFilters[0] = f }),
+              m('span.split-count', `${leftTraces.length}`),
+            ]),
+            m('.split-panel-body', renderCardList(cl, leftTraces)),
           ]),
-          m('.split-panel-body', renderCardList(cl, leftTraces)),
-        ]),
-        m('.split-divider', {
-          onmousedown: (e: MouseEvent) => onDividerDown(e, cl),
-        }),
-        m('.split-panel', {
-          style: { width: ((1 - ratio) * 100).toFixed(1) + '%' },
-        }, [
-          m('.split-panel-header', [
-            renderFilterBar(cl, cl.splitFilters[1], f => { cl.splitFilters[1] = f }),
-            m('span.split-count', `${rightTraces.length}`),
+          m('.split-divider', {
+            onmousedown: (e: MouseEvent) => onDividerDown(e, cl),
+          }),
+          m('.split-panel', {
+            style: { width: ((1 - ratio) * 100).toFixed(1) + '%' },
+          }, [
+            m('.split-panel-header', [
+              renderFilterBar(cl, cl.splitFilters[1], f => { cl.splitFilters[1] = f }),
+              m('span.split-count', `${rightTraces.length}`),
+            ]),
+            m('.split-panel-body', renderCardList(cl, rightTraces)),
           ]),
-          m('.split-panel-body', renderCardList(cl, rightTraces)),
         ]),
       ]),
-    ])
+      ccModal,
+    ]
   },
 }
