@@ -174,7 +174,12 @@ export function getProgress(state: CrossCompareState): { completed: number; tota
   for (let i = 0; i < roots.length; i++) {
     for (let j = i + 1; j < roots.length; j++) {
       total++
-      if (state.negativeEdges.has(edgeKey(roots[i], roots[j]))) resolved++
+      if (state.negativeEdges.has(edgeKey(roots[i], roots[j]))) {
+        resolved++
+      } else if (!findUncomparedPair(state, comps.get(roots[i])!, comps.get(roots[j])!)) {
+        // All individual pairs between these components were compared (skipped) — count as resolved
+        resolved++
+      }
     }
   }
   // Completed = resolved component pairs + merged pairs (no longer distinct)

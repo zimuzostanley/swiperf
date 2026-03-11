@@ -11,6 +11,7 @@ import { fmt_dur } from '../utils/format'
 
 let _keyHandler: ((e: KeyboardEvent) => void) | null = null
 let _ccSliderPct = 100
+let _lastPairKey: string | null = null
 
 function updateBothSliders(cl: Cluster, pct: number) {
   _ccSliderPct = pct
@@ -113,7 +114,7 @@ export const CrossCompareModal: m.Component<{ cl: Cluster }> = {
       if (state.isComplete) return
       if (e.key === 'p' || e.key === 'P') { recordCrossComparison('positive'); return }
       if (e.key === 'n' || e.key === 'N') { recordCrossComparison('negative'); return }
-      if (e.key === 'd' || e.key === 'D') { recordCrossComparison('skip'); return }
+      if ((e.key === 's' || e.key === 'S') && state.selectedSide) { recordCrossComparison('skip'); return }
       if (e.key === 'ArrowLeft') { state.selectedSide = 'left'; m.redraw(); return }
       if (e.key === 'ArrowRight') { state.selectedSide = 'right'; m.redraw(); return }
     }
@@ -132,8 +133,23 @@ export const CrossCompareModal: m.Component<{ cl: Cluster }> = {
 
     const progress = getProgress(state)
 
-    return m('.cc-overlay', { onclick: closeCrossCompare }, [
-      m('.cc-modal', { onclick: (e: Event) => e.stopPropagation() }, [
+    // Apply slider to new pairs when they load
+    const pairKey = state.currentPair ? state.currentPair[0] + '|' + state.currentPair[1] : null
+    if (pairKey && pairKey !== _lastPairKey) {
+      _lastPairKey = pairKey
+      if (_ccSliderPct < 100) updateBothSliders(cl, _ccSliderPct)
+    }
+
+    return m('.cc-overlay', { onclick: () => {
+      const s = getCrossCompareState()
+      if (s && s.selectedSide) { s.selectedSide = null; m.redraw() }
+      else closeCrossCompare()
+    } }, [
+      m('.cc-modal', { onclick: (e: Event) => {
+        e.stopPropagation()
+        const s = getCrossCompareState()
+        if (s && s.selectedSide) { s.selectedSide = null; m.redraw() }
+      } }, [
         // Header
         m('.cc-header', [
           m('span.cc-title', 'Cross Compare'),
@@ -174,8 +190,10 @@ export const CrossCompareModal: m.Component<{ cl: Cluster }> = {
                     onclick: () => recordCrossComparison('negative'),
                   }, ['Different ', m('kbd', 'N')]),
                   m('button.cc-action-btn', {
-                    onclick: () => recordCrossComparison('skip'),
-                  }, ['Skip ', m('kbd', 'D')]),
+                    onclick: () => { if (state.selectedSide) recordCrossComparison('skip') },
+                    disabled: !state.selectedSide,
+                    title: state.selectedSide ? 'Skip this pair' : 'Select a side first (arrow keys)',
+                  }, ['Skip ', m('kbd', 'S')]),
                 ]),
                 m('.cc-hint', '\u2190 \u2192 arrow keys to highlight a side \u00b7 Esc to close'),
                 m('.cc-footer', [
