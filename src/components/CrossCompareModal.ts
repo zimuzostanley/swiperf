@@ -3,6 +3,7 @@ import type { Cluster, TraceState } from '../state'
 import {
   getCrossCompareState, closeCrossCompare, recordCrossComparison,
   applyCrossCompareResults, resetCrossCompare, ensureCache, updateSlider,
+  undoCrossComparison,
 } from '../state'
 import { getProgress, getResults } from '../models/crossCompare'
 import { MiniTimeline } from './MiniTimeline'
@@ -121,6 +122,7 @@ export const CrossCompareModal: m.Component<{ cl: Cluster }> = {
       if (!state) return
       if (e.key === 'Escape') { closeCrossCompare(); return }
       if (state.isComplete) return
+      if (e.key === 'z' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); undoCrossComparison(); return }
       if (e.key === 'p' || e.key === 'P') { recordCrossComparison('positive'); return }
       if (e.key === 'n' || e.key === 'N') { recordCrossComparison('negative'); return }
       if ((e.key === 's' || e.key === 'S') && state.selectedSide) { recordCrossComparison('skip'); return }
@@ -203,8 +205,13 @@ export const CrossCompareModal: m.Component<{ cl: Cluster }> = {
                     disabled: !state.selectedSide,
                     title: state.selectedSide ? 'Skip this pair' : 'Select a side first (arrow keys)',
                   }, ['Skip ', m('kbd', 'S')]),
+                  m('button.cc-action-btn', {
+                    onclick: () => undoCrossComparison(),
+                    disabled: state.history.length === 0,
+                    title: 'Undo last comparison (Ctrl+Z)',
+                  }, ['Undo ', m('kbd', '\u2318Z')]),
                 ]),
-                m('.cc-hint', '\u2190 \u2192 arrow keys to highlight a side \u00b7 Esc to close'),
+                m('.cc-hint', '\u2190 \u2192 arrow keys to highlight a side \u00b7 Ctrl+Z to undo \u00b7 Esc to close'),
                 m('.cc-footer', [
                   m('button.cc-action-btn', {
                     onclick: () => applyCrossCompareResults(cl),

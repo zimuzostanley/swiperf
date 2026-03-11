@@ -4,7 +4,7 @@ import { build_merge_cache, get_compressed } from './models/compression'
 import type { CrossCompareState } from './models/crossCompare'
 import {
   createCrossCompareState, recordComparison as ccRecord,
-  nextPair, getResults as ccResults,
+  nextPair, getResults as ccResults, undoComparison as ccUndo,
 } from './models/crossCompare'
 
 export interface TraceState {
@@ -307,6 +307,12 @@ export function recordCrossComparison(result: 'positive' | 'negative' | 'skip'):
   _ccState.currentPair = nextPair(_ccState)
   if (!_ccState.currentPair) _ccState.isComplete = true
   _ccState.selectedSide = null
+  m.redraw()
+}
+
+export function undoCrossComparison(): void {
+  if (!_ccState || _ccState.history.length === 0) return
+  ccUndo(_ccState)
   m.redraw()
 }
 

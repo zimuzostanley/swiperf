@@ -66,12 +66,20 @@ export class UnionFind {
 
 export type ComparisonResult = 'positive' | 'negative' | 'skip'
 
+export interface ComparisonEntry {
+  keyA: string
+  keyB: string
+  result: ComparisonResult
+}
+
 export interface CrossCompareState {
   uf: UnionFind
   /** Negative edges between component roots (canonical edgeKey of roots). */
   negativeEdges: Set<string>
   /** All recorded comparisons (canonical edgeKey of trace keys). */
   comparisons: Map<string, ComparisonResult>
+  /** Ordered history for undo support. */
+  history: ComparisonEntry[]
   traceKeys: string[]
   currentPair: [string, string] | null
   selectedSide: 'left' | 'right' | null
@@ -83,6 +91,7 @@ export function createCrossCompareState(traceKeys: string[]): CrossCompareState 
     uf: new UnionFind(traceKeys),
     negativeEdges: new Set(),
     comparisons: new Map(),
+    history: [],
     traceKeys,
     currentPair: null,
     selectedSide: null,
@@ -103,6 +112,7 @@ export function recordComparison(
 ): void {
   const ek = edgeKey(keyA, keyB)
   state.comparisons.set(ek, result)
+  state.history.push({ keyA, keyB, result })
 
   if (result === 'positive') {
     // Before merging, transfer any negative edges to the new root
@@ -129,6 +139,24 @@ export function recordComparison(
     }
   }
   // 'skip' — recorded but no structural change
+}
+
+/** Undo the last comparison by replaying history minus the last entry. */
+export function undoComparison(state: CrossCompareState): void {
+  if (state.history.length === 0) return
+  const prev = state.history.slice(0, -1)
+  // Reset structural state
+  state.uf = new UnionFind(state.traceKeys)
+  state.negativeEdges.clear()
+  state.comparisons.clear()
+  state.history = []
+  // Replay
+  for (const entry of prev) {
+    recordComparison(state, entry.keyA, entry.keyB, entry.result)
+  }
+  state.currentPair = nextPair(state)
+  state.isComplete = !state.currentPair
+  state.selectedSide = null
 }
 
 /** Find the next most informative pair to compare. */
