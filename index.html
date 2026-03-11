@@ -3447,7 +3447,17 @@ function renderPanel(cl, key, side) {
     m$1(".cc-panel-header", [
       m$1("span.cc-panel-idx", `#${traceIndex(cl, key) + 1}`),
       m$1("span.cc-panel-pkg", ts.trace.package_name),
-      ts.trace.startup_dur ? m$1("span.cc-panel-dur", fmt_dur(ts.trace.startup_dur)) : null
+      ts.trace.startup_dur ? m$1("span.cc-panel-dur", fmt_dur(ts.trace.startup_dur)) : null,
+      (() => {
+        const href = buildTraceLink(ts.trace.trace_uuid, ts.trace.package_name);
+        return href ? m$1("a.trace-link", {
+          href,
+          target: "_blank",
+          rel: "noopener",
+          onclick: (e) => e.stopPropagation(),
+          title: "Open in trace viewer"
+        }, "↗") : null;
+      })()
     ]),
     m$1(MiniTimeline, { ts }),
     m$1(".cc-panel-detail", m$1(Summary, { ts }))
@@ -3972,7 +3982,7 @@ const TraceList = {
           onclick: () => startCrossCompare(cl),
           disabled: cl.traces.length < 2,
           title: "Compare traces in pairs to find groups"
-        }, "Cross Compare"),
+        }, "Compare"),
         renderExportDropdown()
       ])
     ]);
