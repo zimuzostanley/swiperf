@@ -1615,6 +1615,7 @@ function createCrossCompareState(traceKeys) {
     uf: new UnionFind(traceKeys),
     negativeEdges: /* @__PURE__ */ new Set(),
     comparisons: /* @__PURE__ */ new Map(),
+    history: [],
     traceKeys,
     currentPair: null,
     selectedSide: null,
@@ -1627,6 +1628,7 @@ function createCrossCompareState(traceKeys) {
 function recordComparison(state, keyA, keyB, result) {
   const ek = edgeKey(keyA, keyB);
   state.comparisons.set(ek, result);
+  state.history.push({ keyA, keyB, result });
   if (result === "positive") {
     const rootA = state.uf.find(keyA), rootB = state.uf.find(keyB);
     const toRekey = [];
@@ -1648,6 +1650,20 @@ function recordComparison(state, keyA, keyB, result) {
       state.negativeEdges.add(edgeKey(rootA, rootB));
     }
   }
+}
+function undoComparison(state) {
+  if (state.history.length === 0) return;
+  const prev = state.history.slice(0, -1);
+  state.uf = new UnionFind(state.traceKeys);
+  state.negativeEdges.clear();
+  state.comparisons.clear();
+  state.history = [];
+  for (const entry of prev) {
+    recordComparison(state, entry.keyA, entry.keyB, entry.result);
+  }
+  state.currentPair = nextPair(state);
+  state.isComplete = !state.currentPair;
+  state.selectedSide = null;
 }
 function nextPair(state) {
   const comps = state.uf.components();
@@ -1955,6 +1971,11 @@ function recordCrossComparison(result) {
   _ccState.currentPair = nextPair(_ccState);
   if (!_ccState.currentPair) _ccState.isComplete = true;
   _ccState.selectedSide = null;
+  m$1.redraw();
+}
+function undoCrossComparison() {
+  if (!_ccState || _ccState.history.length === 0) return;
+  undoComparison(_ccState);
   m$1.redraw();
 }
 function applyCrossCompareResults(cl) {
@@ -3505,6 +3526,11 @@ const CrossCompareModal = {
         return;
       }
       if (state.isComplete) return;
+      if (e.key === "z" && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        undoCrossComparison();
+        return;
+      }
       if (e.key === "p" || e.key === "P") {
         recordCrossComparison("positive");
         return;
@@ -3604,9 +3630,14 @@ const CrossCompareModal = {
               },
               disabled: !state.selectedSide,
               title: state.selectedSide ? "Skip this pair" : "Select a side first (arrow keys)"
-            }, ["Skip ", m$1("kbd", "S")])
+            }, ["Skip ", m$1("kbd", "S")]),
+            m$1("button.cc-action-btn", {
+              onclick: () => undoCrossComparison(),
+              disabled: state.history.length === 0,
+              title: "Undo last comparison (Ctrl+Z)"
+            }, ["Undo ", m$1("kbd", "⌘Z")])
           ]),
-          m$1(".cc-hint", "← → arrow keys to highlight a side · Esc to close"),
+          m$1(".cc-hint", "← → arrow keys to highlight a side · Ctrl+Z to undo · Esc to close"),
           m$1(".cc-footer", [
             m$1("button.cc-action-btn", {
               onclick: () => applyCrossCompareResults(cl)
