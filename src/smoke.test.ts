@@ -179,9 +179,9 @@ describe('smoke test — full app mount with dummy data', () => {
     addCluster('Test', [makeTrace('t1'), makeTrace('t2')])
     mount()
     expect(document.querySelectorAll('.filter-btn').length).toBe(5)
-    expect(document.querySelector('.stat-positive')).toBeTruthy()
-    expect(document.querySelector('.stat-negative')).toBeTruthy()
-    expect(document.querySelector('.stat-pending')).toBeTruthy()
+    expect(document.querySelector('.fc-positive')).toBeTruthy()
+    expect(document.querySelector('.fc-negative')).toBeTruthy()
+    expect(document.querySelector('.fc-pending')).toBeTruthy()
   })
 
   it('expanding a trace card shows detail without key errors', () => {

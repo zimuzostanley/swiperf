@@ -161,8 +161,8 @@ describe('browser integration', () => {
     const hasPositive = await p.$('.verdict-btn-sm.active-positive')
     expect(hasPositive).not.toBeNull()
 
-    // Verify stat pill updated
-    const statText = await p.$eval('.stat-positive', el => el.textContent)
+    // Verify filter count updated
+    const statText = await p.$eval('.fc-positive', el => el.textContent)
     expect(statText).toContain('1')
 
     await p.close()
@@ -763,7 +763,7 @@ describe('browser integration', () => {
     expect(overlay).toBeNull()
 
     // Both traces should be positive (same group)
-    const positiveCount = await p.$eval('.stat-positive', el => el.textContent)
+    const positiveCount = await p.$eval('.fc-positive', el => el.textContent)
     expect(positiveCount).toContain('2')
 
     await p.close()

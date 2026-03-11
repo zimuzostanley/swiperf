@@ -228,14 +228,14 @@ textarea.json-area:focus { border-color: var(--accent); }
    TRACE LIST — unified vertical view
    ======================================== */
 .list-toolbar {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 10px 16px; margin-bottom: 14px; flex-wrap: wrap; gap: 10px;
+  display: flex; align-items: center;
+  padding: 8px 16px; margin-bottom: 14px; gap: 10px;
 }
-.list-filters { display: flex; gap: 4px; }
+.list-filters { display: flex; gap: 4px; flex-shrink: 0; }
 .filter-btn {
-  font-family: var(--sans); font-size: 11px; font-weight: 500; padding: 4px 12px; border-radius: 5px;
+  font-family: var(--sans); font-size: 11px; font-weight: 500; padding: 4px 10px; border-radius: 5px;
   cursor: pointer; border: 1px solid var(--border2); background: var(--surface2); color: var(--label);
-  transition: all 0.15s; display: flex; align-items: center; gap: 6px;
+  transition: all 0.15s; display: flex; align-items: center; gap: 5px; white-space: nowrap;
 }
 .filter-btn:hover { background: var(--border2); color: var(--bright); }
 .filter-btn.active { background: var(--accent-bg); color: var(--accent); border-color: color-mix(in srgb, var(--accent) 30%, transparent); }
@@ -243,18 +243,12 @@ textarea.json-area:focus { border-color: var(--accent); }
   font-family: var(--mono); font-size: 9px; background: var(--surface); border-radius: 8px;
   padding: 0 5px; min-width: 18px; text-align: center;
 }
-.list-stats { display: flex; gap: 8px; align-items: center; }
-.list-actions { display: flex; gap: 8px; }
-
-/* Stat pills */
-.stat-pill {
-  font-family: var(--mono); font-size: 10px; font-weight: 500; padding: 2px 8px;
-  border-radius: 10px; white-space: nowrap;
-}
-.stat-positive { background: color-mix(in srgb, var(--c-positive) 15%, transparent); color: var(--c-positive); }
-.stat-negative { background: color-mix(in srgb, var(--c-negative) 15%, transparent); color: var(--c-negative); }
-.stat-pending { background: var(--surface2); color: var(--dim); }
-.stat-discard { background: var(--surface2); color: var(--muted); }
+.fc-positive { color: var(--c-positive); }
+.fc-negative { color: var(--c-negative); }
+.fc-pending { color: var(--dim); }
+.fc-discarded { color: var(--muted); }
+.fc-all { color: var(--label); }
+.list-actions { display: flex; gap: 6px; flex-shrink: 0; }
 
 /* Trace cards */
 .trace-list { display: flex; flex-direction: column; gap: 8px; }
@@ -295,8 +289,8 @@ textarea.json-area:focus { border-color: var(--accent); }
 .slider-label { font-size: 10px; color: var(--dim); white-space: nowrap; }
 .slider-num { font-family: var(--mono); font-size: 12px; font-weight: 500; color: var(--bright); min-width: 24px; }
 .slider-of { font-family: var(--mono); font-size: 10px; color: var(--muted); }
-.global-slider { padding: 0; }
-.global-slider input[type=range] { width: 120px; }
+.global-slider { padding: 0; flex: 1; min-width: 0; }
+.global-slider input[type=range] { flex: 1; min-width: 60px; }
 
 input[type=range] {
   -webkit-appearance: none; appearance: none; width: 200px; height: 2px; border-radius: 1px;

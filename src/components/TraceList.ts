@@ -193,7 +193,7 @@ function renderFilterBar(cl: Cluster, activeFilter: OverviewFilter, onSelect: (f
       onclick: () => onSelect(f.id),
     }, [
       f.label,
-      m('span.filter-count', String(filterCount(cl, f.id))),
+      m('span.filter-count.fc-' + f.id, String(filterCount(cl, f.id))),
     ])
   ))
 }
@@ -368,12 +368,6 @@ export const TraceList: m.Component = {
       cl.splitView
         ? m('.list-filters-label', 'Split View')
         : renderFilterBar(cl, cl.overviewFilter, f => { cl.overviewFilter = f }),
-      m('.list-stats', [
-        m('span.stat-pill.stat-positive', `${positive} +`),
-        m('span.stat-pill.stat-negative', `${negative} \u2212`),
-        m('span.stat-pill.stat-pending', `${pending} ?`),
-        discarded > 0 ? m('span.stat-pill.stat-discard', `${discarded} \u00d7`) : null,
-      ]),
       renderGlobalSlider(cl),
       m('.list-actions', [
         renderSortBtn(cl),
