@@ -116,7 +116,6 @@ export function recordComparison(
       }
     }
     state.uf.union(keyA, keyB)
-    const newRoot = state.uf.find(keyA)
     // Re-key negative edges to use new roots
     for (const [x, y] of toRekey) {
       state.negativeEdges.delete(edgeKey(x, y))
@@ -143,19 +142,13 @@ export function nextPair(state: CrossCompareState): [string, string] | null {
       const rootI = sorted[i][0], rootJ = sorted[j][0]
       // Already separated by a negative edge?
       if (state.negativeEdges.has(edgeKey(rootI, rootJ))) continue
-      // Pick representatives — first members of each component
-      const repI = sorted[i][1][0], repJ = sorted[j][1][0]
-      // Already directly compared?
-      if (state.comparisons.has(edgeKey(repI, repJ))) {
-        // Try other representatives from these components
-        const pair = findUncomparedPair(state, sorted[i][1], sorted[j][1])
-        if (pair) return pair
-        continue
-      }
-      return [repI, repJ]
+      // Find any uncompared pair between these two components
+      const pair = findUncomparedPair(state, sorted[i][1], sorted[j][1])
+      if (pair) return pair
+      // All individual pairs compared (some may have been skipped) — treat as unresolvable
     }
   }
-  return null // All resolved
+  return null // All resolved or all remaining pairs were skipped
 }
 
 /** Find any uncompared pair between two component member lists. */

@@ -11,12 +11,27 @@ import { fmt_dur } from '../utils/format'
 
 let _keyHandler: ((e: KeyboardEvent) => void) | null = null
 
+// Build lookup maps once per render cycle instead of O(n) scans per panel
+let _traceMap: Map<string, TraceState> | null = null
+let _indexMap: Map<string, number> | null = null
+let _mapClusterId: string | null = null
+
+function ensureMaps(cl: Cluster) {
+  if (_mapClusterId === cl.id && _traceMap) return
+  _traceMap = new Map()
+  _indexMap = new Map()
+  cl.traces.forEach((ts, i) => { _traceMap!.set(ts._key, ts); _indexMap!.set(ts._key, i) })
+  _mapClusterId = cl.id
+}
+
 function findTrace(cl: Cluster, key: string): TraceState | undefined {
-  return cl.traces.find(ts => ts._key === key)
+  ensureMaps(cl)
+  return _traceMap!.get(key)
 }
 
 function traceIndex(cl: Cluster, key: string): number {
-  return cl.traces.findIndex(ts => ts._key === key)
+  ensureMaps(cl)
+  return _indexMap!.get(key) ?? -1
 }
 
 function renderPanel(cl: Cluster, key: string, side: 'left' | 'right') {
@@ -74,6 +89,9 @@ function renderComplete(cl: Cluster) {
 export const CrossCompareModal: m.Component<{ cl: Cluster }> = {
   oncreate() {
     _keyHandler = (e: KeyboardEvent) => {
+      // Don't intercept keys when typing in inputs
+      const tag = (e.target as HTMLElement)?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA') return
       const state = getCrossCompareState()
       if (!state) return
       if (e.key === 'Escape') { closeCrossCompare(); return }

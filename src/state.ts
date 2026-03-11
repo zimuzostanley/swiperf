@@ -284,12 +284,13 @@ let _ccState: CrossCompareState | null = null
 export function getCrossCompareState(): CrossCompareState | null { return _ccState }
 
 export function startCrossCompare(cl: Cluster): void {
-  if (_ccState) {
-    // Resume if same trace set
+  const keys = cl.traces.map(ts => ts._key)
+  // Resume if trace set matches, otherwise start fresh
+  if (_ccState && _ccState.traceKeys.length === keys.length
+      && _ccState.traceKeys.every((k, i) => k === keys[i])) {
     m.redraw()
     return
   }
-  const keys = cl.traces.map(ts => ts._key)
   _ccState = createCrossCompareState(keys)
   m.redraw()
 }
