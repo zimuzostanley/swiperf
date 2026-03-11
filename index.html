@@ -1637,7 +1637,6 @@ function recordComparison(state, keyA, keyB, result) {
       }
     }
     state.uf.union(keyA, keyB);
-    state.uf.find(keyA);
     for (const [x, y] of toRekey) {
       state.negativeEdges.delete(edgeKey(x, y));
       const rx = state.uf.find(x), ry = state.uf.find(y);
@@ -1657,13 +1656,8 @@ function nextPair(state) {
     for (let j = i + 1; j < sorted.length; j++) {
       const rootI = sorted[i][0], rootJ = sorted[j][0];
       if (state.negativeEdges.has(edgeKey(rootI, rootJ))) continue;
-      const repI = sorted[i][1][0], repJ = sorted[j][1][0];
-      if (state.comparisons.has(edgeKey(repI, repJ))) {
-        const pair = findUncomparedPair(state, sorted[i][1], sorted[j][1]);
-        if (pair) return pair;
-        continue;
-      }
-      return [repI, repJ];
+      const pair = findUncomparedPair(state, sorted[i][1], sorted[j][1]);
+      if (pair) return pair;
     }
   }
   return null;
@@ -1938,11 +1932,11 @@ function getCrossCompareState() {
   return _ccState;
 }
 function startCrossCompare(cl) {
-  if (_ccState) {
+  const keys = cl.traces.map((ts) => ts._key);
+  if (_ccState && _ccState.traceKeys.length === keys.length && _ccState.traceKeys.every((k, i) => k === keys[i])) {
     m$1.redraw();
     return;
   }
-  const keys = cl.traces.map((ts) => ts._key);
   _ccState = createCrossCompareState(keys);
   m$1.redraw();
 }
@@ -3403,11 +3397,26 @@ const Summary = {
   }
 };
 let _keyHandler = null;
+let _traceMap = null;
+let _indexMap = null;
+let _mapClusterId = null;
+function ensureMaps(cl) {
+  if (_mapClusterId === cl.id && _traceMap) return;
+  _traceMap = /* @__PURE__ */ new Map();
+  _indexMap = /* @__PURE__ */ new Map();
+  cl.traces.forEach((ts, i) => {
+    _traceMap.set(ts._key, ts);
+    _indexMap.set(ts._key, i);
+  });
+  _mapClusterId = cl.id;
+}
 function findTrace(cl, key) {
-  return cl.traces.find((ts) => ts._key === key);
+  ensureMaps(cl);
+  return _traceMap.get(key);
 }
 function traceIndex(cl, key) {
-  return cl.traces.findIndex((ts) => ts._key === key);
+  ensureMaps(cl);
+  return _indexMap.get(key) ?? -1;
 }
 function renderPanel(cl, key, side) {
   const ts = findTrace(cl, key);
@@ -3457,6 +3466,9 @@ function renderComplete(cl) {
 const CrossCompareModal = {
   oncreate() {
     _keyHandler = (e) => {
+      var _a;
+      const tag = (_a = e.target) == null ? void 0 : _a.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA") return;
       const state = getCrossCompareState();
       if (!state) return;
       if (e.key === "Escape") {
