@@ -1153,16 +1153,23 @@ var request$2 = function($window, oncompletion) {
 };
 var mountRedraw$2 = mountRedraw$3;
 var request$1 = request$2(typeof window !== "undefined" ? window : null, mountRedraw$2.redraw);
-var validUtf8Encodings = /%(?:[0-7]|(?!c[01]|e0%[89]|ed%[ab]|f0%8|f4%[9ab])(?:c|d|(?:e|f[0-4]%[89ab])[\da-f]%[89ab])[\da-f]%[89ab])[\da-f]/gi;
-var decodeURIComponentSafe$1 = function(str) {
-  return String(str).replace(validUtf8Encodings, decodeURIComponent);
-};
+var decodeURIComponentSafe$1;
+var hasRequiredDecodeURIComponentSafe;
+function requireDecodeURIComponentSafe() {
+  if (hasRequiredDecodeURIComponentSafe) return decodeURIComponentSafe$1;
+  hasRequiredDecodeURIComponentSafe = 1;
+  var validUtf8Encodings = /%(?:[0-7]|(?!c[01]|e0%[89]|ed%[ab]|f0%8|f4%[9ab])(?:c|d|(?:e|f[0-4]%[89ab])[\da-f]%[89ab])[\da-f]%[89ab])[\da-f]/gi;
+  decodeURIComponentSafe$1 = function(str) {
+    return String(str).replace(validUtf8Encodings, decodeURIComponent);
+  };
+  return decodeURIComponentSafe$1;
+}
 var parse$1;
 var hasRequiredParse$1;
 function requireParse$1() {
   if (hasRequiredParse$1) return parse$1;
   hasRequiredParse$1 = 1;
-  var decodeURIComponentSafe2 = decodeURIComponentSafe$1;
+  var decodeURIComponentSafe2 = requireDecodeURIComponentSafe();
   parse$1 = function(string) {
     if (string === "" || string == null) return {};
     if (string.charAt(0) === "?") string = string.slice(1);
@@ -1282,7 +1289,7 @@ function requireCensor() {
 }
 var Vnode = requireVnode();
 var hyperscript$1 = hyperscript_1$1;
-var decodeURIComponentSafe = decodeURIComponentSafe$1;
+var decodeURIComponentSafe = requireDecodeURIComponentSafe();
 var buildPathname = requireBuild();
 var parsePathname = requireParse();
 var compileTemplate = compileTemplate$1;
@@ -3397,6 +3404,20 @@ const Summary = {
   }
 };
 let _keyHandler = null;
+let _ccSliderPct = 100;
+function updateBothSliders(cl, pct) {
+  _ccSliderPct = pct;
+  const state = getCrossCompareState();
+  if (!(state == null ? void 0 : state.currentPair)) return;
+  const frac = pct / 100;
+  for (const key of state.currentPair) {
+    const ts = findTrace(cl, key);
+    if (!ts) continue;
+    ensureCache(ts);
+    const target = Math.max(2, Math.round(2 + (ts.origN - 2) * frac));
+    updateSlider(ts, target);
+  }
+}
 let _traceMap = null;
 let _indexMap = null;
 let _mapClusterId = null;
@@ -3532,6 +3553,17 @@ const CrossCompareModal = {
             renderPanel(cl, state.currentPair[0], "left"),
             m$1(".cc-pair-divider", "vs"),
             renderPanel(cl, state.currentPair[1], "right")
+          ]),
+          m$1(".cc-slider", [
+            m$1("span.slider-label", "Detail"),
+            m$1("span.slider-num", _ccSliderPct + "%"),
+            m$1("input[type=range]", {
+              min: 1,
+              max: 100,
+              value: _ccSliderPct,
+              step: 1,
+              oninput: (e) => updateBothSliders(cl, +e.target.value)
+            })
           ]),
           m$1(".cc-actions", [
             m$1("button.cc-action-btn.positive", {
@@ -4204,7 +4236,7 @@ canvas { display: block; width: 100%; cursor: crosshair; }
 /* Tooltip */
 .tooltip {
   position: fixed; background: var(--surface); border: 1px solid var(--border2); border-radius: 7px;
-  padding: 11px 14px; font-size: 11px; line-height: 1; pointer-events: none; display: none; z-index: 9999;
+  padding: 11px 14px; font-size: 11px; line-height: 1; pointer-events: none; display: none; z-index: 10001;
   min-width: 280px; max-width: 520px; width: max-content;
   box-shadow: var(--shadow), 0 8px 24px rgba(0,0,0,0.15); transition: background 0.2s, border-color 0.2s;
 }
@@ -4589,8 +4621,13 @@ input[type=range]::-webkit-slider-thumb {
 .cc-action-btn.negative:hover { background: color-mix(in srgb, var(--c-negative) 25%, transparent); }
 .cc-action-btn kbd {
   font-family: var(--mono); font-size: 9px; padding: 1px 4px;
-  border: 1px solid currentColor; border-radius: 3px; opacity: 0.6;
+  border: 1px solid currentColor; border-radius: 3px; opacity: 0.7;
+  color: inherit;
 }
+.cc-slider {
+  display: flex; align-items: center; gap: 8px; justify-content: center; padding: 2px 0;
+}
+.cc-slider input[type=range] { width: 200px; }
 .cc-hint {
   font-size: 10px; color: var(--dim); text-align: center;
 }
