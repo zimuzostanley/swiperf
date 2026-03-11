@@ -2,7 +2,7 @@ import m from 'mithril'
 import type { Cluster, TraceState } from '../state'
 import {
   getCrossCompareState, closeCrossCompare, recordCrossComparison,
-  applyCrossCompareResults, resetCrossCompare, ensureCache,
+  applyCrossCompareResults, resetCrossCompare, ensureCache, updateSlider,
 } from '../state'
 import { getProgress, getResults } from '../models/crossCompare'
 import { MiniTimeline } from './MiniTimeline'
@@ -10,6 +10,21 @@ import { Summary } from './Summary'
 import { fmt_dur } from '../utils/format'
 
 let _keyHandler: ((e: KeyboardEvent) => void) | null = null
+let _ccSliderPct = 100
+
+function updateBothSliders(cl: Cluster, pct: number) {
+  _ccSliderPct = pct
+  const state = getCrossCompareState()
+  if (!state?.currentPair) return
+  const frac = pct / 100
+  for (const key of state.currentPair) {
+    const ts = findTrace(cl, key)
+    if (!ts) continue
+    ensureCache(ts)
+    const target = Math.max(2, Math.round(2 + (ts.origN - 2) * frac))
+    updateSlider(ts, target)
+  }
+}
 
 // Build lookup maps once per render cycle instead of O(n) scans per panel
 let _traceMap: Map<string, TraceState> | null = null
@@ -142,6 +157,14 @@ export const CrossCompareModal: m.Component<{ cl: Cluster }> = {
                   renderPanel(cl, state.currentPair[0], 'left'),
                   m('.cc-pair-divider', 'vs'),
                   renderPanel(cl, state.currentPair[1], 'right'),
+                ]),
+                m('.cc-slider', [
+                  m('span.slider-label', 'Detail'),
+                  m('span.slider-num', _ccSliderPct + '%'),
+                  m('input[type=range]', {
+                    min: 1, max: 100, value: _ccSliderPct, step: 1,
+                    oninput: (e: Event) => updateBothSliders(cl, +(e.target as HTMLInputElement).value),
+                  }),
                 ]),
                 m('.cc-actions', [
                   m('button.cc-action-btn.positive', {

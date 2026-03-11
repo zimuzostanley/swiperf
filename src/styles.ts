@@ -141,7 +141,7 @@ canvas { display: block; width: 100%; cursor: crosshair; }
 /* Tooltip */
 .tooltip {
   position: fixed; background: var(--surface); border: 1px solid var(--border2); border-radius: 7px;
-  padding: 11px 14px; font-size: 11px; line-height: 1; pointer-events: none; display: none; z-index: 9999;
+  padding: 11px 14px; font-size: 11px; line-height: 1; pointer-events: none; display: none; z-index: 10001;
   min-width: 280px; max-width: 520px; width: max-content;
   box-shadow: var(--shadow), 0 8px 24px rgba(0,0,0,0.15); transition: background 0.2s, border-color 0.2s;
 }
@@ -526,8 +526,13 @@ input[type=range]::-webkit-slider-thumb {
 .cc-action-btn.negative:hover { background: color-mix(in srgb, var(--c-negative) 25%, transparent); }
 .cc-action-btn kbd {
   font-family: var(--mono); font-size: 9px; padding: 1px 4px;
-  border: 1px solid currentColor; border-radius: 3px; opacity: 0.6;
+  border: 1px solid currentColor; border-radius: 3px; opacity: 0.7;
+  color: inherit;
 }
+.cc-slider {
+  display: flex; align-items: center; gap: 8px; justify-content: center; padding: 2px 0;
+}
+.cc-slider input[type=range] { width: 200px; }
 .cc-hint {
   font-size: 10px; color: var(--dim); text-align: center;
 }
