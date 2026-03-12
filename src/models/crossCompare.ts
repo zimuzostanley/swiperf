@@ -64,13 +64,11 @@ export class UnionFind {
 
 // ── Cross Compare State ──
 
-export type ComparisonResult = 'positive' | 'negative' | 'skip'
+export type ComparisonResult = 'positive' | 'negative'
 
-export interface ComparisonEntry {
-  keyA: string
-  keyB: string
-  result: ComparisonResult
-}
+export type HistoryEntry =
+  | { type: 'compare'; keyA: string; keyB: string; result: ComparisonResult }
+  | { type: 'discard'; key: string }
 
 export interface CrossCompareState {
   uf: UnionFind
@@ -78,8 +76,12 @@ export interface CrossCompareState {
   negativeEdges: Set<string>
   /** All recorded comparisons (canonical edgeKey of trace keys). */
   comparisons: Map<string, ComparisonResult>
+  /** Pairs temporarily skipped (will be shown again). */
+  skippedPairs: Set<string>
+  /** Traces removed from comparison. */
+  discardedKeys: Set<string>
   /** Ordered history for undo support. */
-  history: ComparisonEntry[]
+  history: HistoryEntry[]
   traceKeys: string[]
   currentPair: [string, string] | null
   selectedSide: 'left' | 'right' | null
@@ -91,6 +93,8 @@ export function createCrossCompareState(traceKeys: string[]): CrossCompareState 
     uf: new UnionFind(traceKeys),
     negativeEdges: new Set(),
     comparisons: new Map(),
+    skippedPairs: new Set(),
+    discardedKeys: new Set(),
     history: [],
     traceKeys,
     currentPair: null,
@@ -112,7 +116,8 @@ export function recordComparison(
 ): void {
   const ek = edgeKey(keyA, keyB)
   state.comparisons.set(ek, result)
-  state.history.push({ keyA, keyB, result })
+  state.skippedPairs.delete(ek)
+  state.history.push({ type: 'compare', keyA, keyB, result })
 
   if (result === 'positive') {
     // Before merging, transfer any negative edges to the new root
@@ -138,10 +143,21 @@ export function recordComparison(
       state.negativeEdges.add(edgeKey(rootA, rootB))
     }
   }
-  // 'skip' — recorded but no structural change
 }
 
-/** Undo the last comparison by replaying history minus the last entry. */
+/** Skip the current pair — will be shown again later. */
+export function skipCurrentPair(state: CrossCompareState): void {
+  if (!state.currentPair) return
+  state.skippedPairs.add(edgeKey(state.currentPair[0], state.currentPair[1]))
+}
+
+/** Discard a trace: remove from comparison entirely. */
+export function discardTrace(state: CrossCompareState, key: string): void {
+  state.discardedKeys.add(key)
+  state.history.push({ type: 'discard', key })
+}
+
+/** Undo the last action by replaying history minus the last entry. */
 export function undoComparison(state: CrossCompareState): void {
   if (state.history.length === 0) return
   const prev = state.history.slice(0, -1)
@@ -149,10 +165,16 @@ export function undoComparison(state: CrossCompareState): void {
   state.uf = new UnionFind(state.traceKeys)
   state.negativeEdges.clear()
   state.comparisons.clear()
+  state.skippedPairs.clear()
+  state.discardedKeys.clear()
   state.history = []
   // Replay
   for (const entry of prev) {
-    recordComparison(state, entry.keyA, entry.keyB, entry.result)
+    if (entry.type === 'compare') {
+      recordComparison(state, entry.keyA, entry.keyB, entry.result)
+    } else {
+      discardTrace(state, entry.key)
+    }
   }
   state.currentPair = nextPair(state)
   state.isComplete = !state.currentPair
@@ -161,22 +183,38 @@ export function undoComparison(state: CrossCompareState): void {
 
 /** Find the next most informative pair to compare. */
 export function nextPair(state: CrossCompareState): [string, string] | null {
-  const comps = state.uf.components()
-  // Sort components by size descending for maximum information gain
+  const comps = activeComponents(state)
   const sorted = [...comps.entries()].sort((a, b) => b[1].length - a[1].length)
 
+  // First pass: find an uncompared, non-skipped pair
+  let fallback: [string, string] | null = null
   for (let i = 0; i < sorted.length; i++) {
     for (let j = i + 1; j < sorted.length; j++) {
       const rootI = sorted[i][0], rootJ = sorted[j][0]
-      // Already separated by a negative edge?
       if (state.negativeEdges.has(edgeKey(rootI, rootJ))) continue
-      // Find any uncompared pair between these two components
-      const pair = findUncomparedPair(state, sorted[i][1], sorted[j][1])
+      const pair = findUncomparedPair(state, sorted[i][1], sorted[j][1], state.skippedPairs)
       if (pair) return pair
-      // All individual pairs compared (some may have been skipped) — treat as unresolvable
+      // Also look for skipped pairs as fallback
+      if (!fallback) {
+        const skipped = findUncomparedPair(state, sorted[i][1], sorted[j][1])
+        if (skipped) fallback = skipped
+      }
     }
   }
-  return null // All resolved or all remaining pairs were skipped
+  // If only skipped pairs remain, show them again
+  return fallback
+}
+
+/** Get components excluding discarded keys. */
+function activeComponents(state: CrossCompareState): Map<string, string[]> {
+  if (state.discardedKeys.size === 0) return state.uf.components()
+  const comps = state.uf.components()
+  const filtered = new Map<string, string[]>()
+  for (const [root, members] of comps) {
+    const active = members.filter(k => !state.discardedKeys.has(k))
+    if (active.length > 0) filtered.set(root, active)
+  }
+  return filtered
 }
 
 /** Find any uncompared pair between two component member lists. */
@@ -184,10 +222,12 @@ function findUncomparedPair(
   state: CrossCompareState,
   membersA: string[],
   membersB: string[],
+  exclude?: Set<string>,
 ): [string, string] | null {
   for (const a of membersA) {
     for (const b of membersB) {
-      if (!state.comparisons.has(edgeKey(a, b))) return [a, b]
+      const ek = edgeKey(a, b)
+      if (!state.comparisons.has(ek) && (!exclude || !exclude.has(ek))) return [a, b]
     }
   }
   return null
@@ -196,7 +236,7 @@ function findUncomparedPair(
 // ── Progress ──
 
 export function getProgress(state: CrossCompareState): { completed: number; total: number; pct: number } {
-  const comps = state.uf.components()
+  const comps = activeComponents(state)
   const roots = [...comps.keys()]
   let total = 0, resolved = 0
   for (let i = 0; i < roots.length; i++) {
@@ -204,16 +244,11 @@ export function getProgress(state: CrossCompareState): { completed: number; tota
       total++
       if (state.negativeEdges.has(edgeKey(roots[i], roots[j]))) {
         resolved++
-      } else if (!findUncomparedPair(state, comps.get(roots[i])!, comps.get(roots[j])!)) {
-        // All individual pairs between these components were compared (skipped) — count as resolved
-        resolved++
       }
     }
   }
-  // Completed = resolved component pairs + merged pairs (no longer distinct)
-  const n = state.traceKeys.length
+  const n = state.traceKeys.length - state.discardedKeys.size
   const maxPairs = n * (n - 1) / 2
-  // Pairs resolved by merging = maxPairs - remaining distinct pairs
   const mergedPairs = maxPairs - total
   const totalWork = maxPairs
   const completedWork = mergedPairs + resolved
@@ -229,10 +264,12 @@ export function getProgress(state: CrossCompareState): { completed: number; tota
 export interface CrossCompareResults {
   /** Groups sorted by size descending. Each group is an array of trace _keys. */
   groups: string[][]
+  /** Keys discarded during comparison. */
+  discarded: string[]
 }
 
 export function getResults(state: CrossCompareState): CrossCompareResults {
-  const comps = state.uf.components()
+  const comps = activeComponents(state)
   const groups = [...comps.values()].sort((a, b) => b.length - a.length)
-  return { groups }
+  return { groups, discarded: [...state.discardedKeys] }
 }

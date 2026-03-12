@@ -524,6 +524,8 @@ input[type=range]::-webkit-slider-thumb {
 .cc-action-btn.positive:hover { background: color-mix(in srgb, var(--c-positive) 25%, transparent); }
 .cc-action-btn.negative { background: color-mix(in srgb, var(--c-negative) 15%, transparent); color: var(--c-negative); border-color: var(--c-negative); }
 .cc-action-btn.negative:hover { background: color-mix(in srgb, var(--c-negative) 25%, transparent); }
+.cc-action-btn.discard { background: var(--surface2); color: var(--muted); border-color: var(--border2); }
+.cc-action-btn.discard:hover { background: var(--border2); color: var(--dim); }
 .cc-action-btn kbd {
   font-family: var(--mono); font-size: 9px; padding: 1px 4px;
   border: 1px solid currentColor; border-radius: 3px; opacity: 0.7;

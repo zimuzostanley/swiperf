@@ -5,6 +5,7 @@ import type { CrossCompareState } from './models/crossCompare'
 import {
   createCrossCompareState, recordComparison as ccRecord,
   nextPair, getResults as ccResults, undoComparison as ccUndo,
+  discardTrace as ccDiscard, skipCurrentPair as ccSkip,
 } from './models/crossCompare'
 
 export interface TraceState {
@@ -300,7 +301,7 @@ export function closeCrossCompare(): void {
   m.redraw()
 }
 
-export function recordCrossComparison(result: 'positive' | 'negative' | 'skip'): void {
+export function recordCrossComparison(result: 'positive' | 'negative'): void {
   if (!_ccState || !_ccState.currentPair) return
   const [a, b] = _ccState.currentPair
   ccRecord(_ccState, a, b, result)
@@ -310,9 +311,30 @@ export function recordCrossComparison(result: 'positive' | 'negative' | 'skip'):
   m.redraw()
 }
 
+export function skipCrossComparison(): void {
+  if (!_ccState || !_ccState.currentPair) return
+  ccSkip(_ccState)
+  _ccState.currentPair = nextPair(_ccState)
+  if (!_ccState.currentPair) _ccState.isComplete = true
+  _ccState.selectedSide = null
+  m.redraw()
+}
+
 export function undoCrossComparison(): void {
   if (!_ccState || _ccState.history.length === 0) return
   ccUndo(_ccState)
+  m.redraw()
+}
+
+export function discardCrossCompareTrace(cl: Cluster, side: 'left' | 'right'): void {
+  if (!_ccState || !_ccState.currentPair) return
+  const key = side === 'left' ? _ccState.currentPair[0] : _ccState.currentPair[1]
+  cl.verdicts.set(key, 'discard')
+  recomputeCounts(cl)
+  ccDiscard(_ccState, key)
+  _ccState.currentPair = nextPair(_ccState)
+  if (!_ccState.currentPair) _ccState.isComplete = true
+  _ccState.selectedSide = null
   m.redraw()
 }
 

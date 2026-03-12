@@ -3,7 +3,7 @@ import type { Cluster, TraceState } from '../state'
 import {
   getCrossCompareState, closeCrossCompare, recordCrossComparison,
   applyCrossCompareResults, resetCrossCompare, ensureCache, updateSlider,
-  undoCrossComparison,
+  undoCrossComparison, discardCrossCompareTrace, skipCrossComparison,
 } from '../state'
 import { getProgress, getResults } from '../models/crossCompare'
 import { MiniTimeline } from './MiniTimeline'
@@ -127,7 +127,7 @@ function cycleReview(delta: number, groupCount: number) {
 function renderReview(cl: Cluster) {
   const state = getCrossCompareState()
   if (!state) return null
-  const { groups } = getResults(state)
+  const { groups, discarded } = getResults(state)
 
   const pairings = buildPairings(groups.length)
   if (_reviewPairIdx >= pairings.length) _reviewPairIdx = 0
@@ -157,13 +157,15 @@ function renderReview(cl: Cluster) {
         )),
       ]),
     ]),
-    pairings.length > 1
-      ? m('.cc-review-nav', [
-          m('span.cc-hint', `Pairing ${_reviewPairIdx + 1} / ${pairings.length}`),
-          m('span.cc-hint', `Group ${posIdx + 1} vs ${negIdx >= 0 ? negIdx + 1 : '\u2014'} of ${groups.length}`),
-        ])
-      : null,
-    m('.cc-hint', '\u2190 \u2192 to cycle pairings'),
+    m('.cc-review-nav', [
+      pairings.length > 1
+        ? m('span.cc-hint', `Pairing ${_reviewPairIdx + 1} / ${pairings.length} \u00b7 Group ${posIdx + 1} vs ${negIdx >= 0 ? negIdx + 1 : '\u2014'} of ${groups.length}`)
+        : m('span.cc-hint', `${groups.length} group${groups.length !== 1 ? 's' : ''}`),
+      discarded.length > 0
+        ? m('span.cc-hint', `${discarded.length} discarded`)
+        : null,
+    ]),
+    pairings.length > 1 ? m('.cc-hint', '\u2190 \u2192 to cycle pairings') : null,
     m('.cc-footer', [
       m('button.cc-action-btn.positive', {
         onclick: () => applyCrossCompareResults(cl, posIdx, negIdx),
@@ -201,7 +203,8 @@ export const CrossCompareModal: m.Component<{ cl: Cluster }> = {
       }
       if (e.key === 'p' || e.key === 'P') { recordCrossComparison('positive'); return }
       if (e.key === 'n' || e.key === 'N') { recordCrossComparison('negative'); return }
-      if ((e.key === 's' || e.key === 'S') && state.selectedSide) { recordCrossComparison('skip'); return }
+      if (e.key === 's' || e.key === 'S') { skipCrossComparison(); return }
+      if ((e.key === 'd' || e.key === 'D') && state.selectedSide) { discardCrossCompareTrace(vnode.attrs.cl, state.selectedSide); return }
       if (e.key === 'ArrowLeft') { state.selectedSide = 'left'; m.redraw(); return }
       if (e.key === 'ArrowRight') { state.selectedSide = 'right'; m.redraw(); return }
     }
@@ -277,17 +280,20 @@ export const CrossCompareModal: m.Component<{ cl: Cluster }> = {
                     onclick: () => recordCrossComparison('negative'),
                   }, ['Negative ', m('kbd', 'N')]),
                   m('button.cc-action-btn', {
-                    onclick: () => { if (state.selectedSide) recordCrossComparison('skip') },
-                    disabled: !state.selectedSide,
-                    title: state.selectedSide ? 'Skip this pair' : 'Select a side first (arrow keys)',
+                    onclick: () => skipCrossComparison(),
                   }, ['Skip ', m('kbd', 'S')]),
+                  m('button.cc-action-btn.discard', {
+                    onclick: () => { if (state.selectedSide) discardCrossCompareTrace(cl, state.selectedSide) },
+                    disabled: !state.selectedSide,
+                    title: state.selectedSide ? 'Discard selected trace' : 'Select a side first (\u2190\u2192)',
+                  }, ['Discard ', m('kbd', 'D')]),
                   m('button.cc-action-btn', {
                     onclick: () => undoCrossComparison(),
                     disabled: state.history.length === 0,
-                    title: 'Undo last comparison (Ctrl+Z)',
+                    title: 'Undo (Ctrl+Z)',
                   }, ['Undo ', m('kbd', '\u2318Z')]),
                 ]),
-                m('.cc-hint', '\u2190 \u2192 arrow keys to highlight a side \u00b7 Ctrl+Z to undo \u00b7 Esc to close'),
+                m('.cc-hint', '\u2190 \u2192 select side \u00b7 Ctrl+Z undo \u00b7 Esc close'),
                 m('.cc-footer', [
                   m('button.cc-action-btn', {
                     onclick: () => applyCrossCompareResults(cl),
