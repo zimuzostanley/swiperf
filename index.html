@@ -45,10 +45,10 @@
 function getDefaultExportFromCjs(x) {
   return x && x.__esModule && Object.prototype.hasOwnProperty.call(x, "default") ? x["default"] : x;
 }
-var vnode;
+var vnode$1;
 var hasRequiredVnode;
 function requireVnode() {
-  if (hasRequiredVnode) return vnode;
+  if (hasRequiredVnode) return vnode$1;
   hasRequiredVnode = 1;
   function Vnode2(tag, key, attrs, children, text, dom) {
     return { tag, key, attrs, children, text, dom, is: void 0, domSize: void 0, state: void 0, events: void 0, instance: void 0 };
@@ -73,8 +73,8 @@ function requireVnode() {
     }
     return children;
   };
-  vnode = Vnode2;
-  return vnode;
+  vnode$1 = Vnode2;
+  return vnode$1;
 }
 var Vnode$6 = requireVnode();
 var hyperscriptVnode$2 = function(attrs, children) {
@@ -1615,6 +1615,8 @@ function createCrossCompareState(traceKeys) {
     uf: new UnionFind(traceKeys),
     negativeEdges: /* @__PURE__ */ new Set(),
     comparisons: /* @__PURE__ */ new Map(),
+    skippedPairs: /* @__PURE__ */ new Set(),
+    discardedKeys: /* @__PURE__ */ new Set(),
     history: [],
     traceKeys,
     currentPair: null,
@@ -1628,7 +1630,8 @@ function createCrossCompareState(traceKeys) {
 function recordComparison(state, keyA, keyB, result) {
   const ek = edgeKey(keyA, keyB);
   state.comparisons.set(ek, result);
-  state.history.push({ keyA, keyB, result });
+  state.skippedPairs.delete(ek);
+  state.history.push({ type: "compare", keyA, keyB, result });
   if (result === "positive") {
     const rootA = state.uf.find(keyA), rootB = state.uf.find(keyB);
     const toRekey = [];
@@ -1651,43 +1654,73 @@ function recordComparison(state, keyA, keyB, result) {
     }
   }
 }
+function skipCurrentPair(state) {
+  if (!state.currentPair) return;
+  state.skippedPairs.add(edgeKey(state.currentPair[0], state.currentPair[1]));
+}
+function discardTrace(state, key) {
+  state.discardedKeys.add(key);
+  state.history.push({ type: "discard", key });
+}
 function undoComparison(state) {
   if (state.history.length === 0) return;
   const prev = state.history.slice(0, -1);
   state.uf = new UnionFind(state.traceKeys);
   state.negativeEdges.clear();
   state.comparisons.clear();
+  state.skippedPairs.clear();
+  state.discardedKeys.clear();
   state.history = [];
   for (const entry of prev) {
-    recordComparison(state, entry.keyA, entry.keyB, entry.result);
+    if (entry.type === "compare") {
+      recordComparison(state, entry.keyA, entry.keyB, entry.result);
+    } else {
+      discardTrace(state, entry.key);
+    }
   }
   state.currentPair = nextPair(state);
   state.isComplete = !state.currentPair;
   state.selectedSide = null;
 }
 function nextPair(state) {
-  const comps = state.uf.components();
+  const comps = activeComponents(state);
   const sorted = [...comps.entries()].sort((a, b) => b[1].length - a[1].length);
+  let fallback = null;
   for (let i = 0; i < sorted.length; i++) {
     for (let j = i + 1; j < sorted.length; j++) {
       const rootI = sorted[i][0], rootJ = sorted[j][0];
       if (state.negativeEdges.has(edgeKey(rootI, rootJ))) continue;
-      const pair = findUncomparedPair(state, sorted[i][1], sorted[j][1]);
+      const pair = findUncomparedPair(state, sorted[i][1], sorted[j][1], state.skippedPairs);
       if (pair) return pair;
+      if (!fallback) {
+        const skipped = findUncomparedPair(state, sorted[i][1], sorted[j][1]);
+        if (skipped) fallback = skipped;
+      }
     }
   }
-  return null;
+  return fallback;
 }
-function findUncomparedPair(state, membersA, membersB) {
+function activeComponents(state) {
+  if (state.discardedKeys.size === 0) return state.uf.components();
+  const comps = state.uf.components();
+  const filtered = /* @__PURE__ */ new Map();
+  for (const [root, members] of comps) {
+    const active = members.filter((k) => !state.discardedKeys.has(k));
+    if (active.length > 0) filtered.set(root, active);
+  }
+  return filtered;
+}
+function findUncomparedPair(state, membersA, membersB, exclude) {
   for (const a of membersA) {
     for (const b of membersB) {
-      if (!state.comparisons.has(edgeKey(a, b))) return [a, b];
+      const ek = edgeKey(a, b);
+      if (!state.comparisons.has(ek) && (!exclude || !exclude.has(ek))) return [a, b];
     }
   }
   return null;
 }
 function getProgress(state) {
-  const comps = state.uf.components();
+  const comps = activeComponents(state);
   const roots = [...comps.keys()];
   let total = 0, resolved = 0;
   for (let i = 0; i < roots.length; i++) {
@@ -1695,12 +1728,10 @@ function getProgress(state) {
       total++;
       if (state.negativeEdges.has(edgeKey(roots[i], roots[j]))) {
         resolved++;
-      } else if (!findUncomparedPair(state, comps.get(roots[i]), comps.get(roots[j]))) {
-        resolved++;
       }
     }
   }
-  const n = state.traceKeys.length;
+  const n = state.traceKeys.length - state.discardedKeys.size;
   const maxPairs = n * (n - 1) / 2;
   const mergedPairs = maxPairs - total;
   const totalWork = maxPairs;
@@ -1712,9 +1743,9 @@ function getProgress(state) {
   };
 }
 function getResults(state) {
-  const comps = state.uf.components();
+  const comps = activeComponents(state);
   const groups = [...comps.values()].sort((a, b) => b.length - a.length);
-  return { groups };
+  return { groups, discarded: [...state.discardedKeys] };
 }
 function traceKey(t) {
   var _a;
@@ -1973,9 +2004,28 @@ function recordCrossComparison(result) {
   _ccState.selectedSide = null;
   m$1.redraw();
 }
+function skipCrossComparison() {
+  if (!_ccState || !_ccState.currentPair) return;
+  skipCurrentPair(_ccState);
+  _ccState.currentPair = nextPair(_ccState);
+  if (!_ccState.currentPair) _ccState.isComplete = true;
+  _ccState.selectedSide = null;
+  m$1.redraw();
+}
 function undoCrossComparison() {
   if (!_ccState || _ccState.history.length === 0) return;
   undoComparison(_ccState);
+  m$1.redraw();
+}
+function discardCrossCompareTrace(cl, side) {
+  if (!_ccState || !_ccState.currentPair) return;
+  const key = side === "left" ? _ccState.currentPair[0] : _ccState.currentPair[1];
+  cl.verdicts.set(key, "discard");
+  recomputeCounts(cl);
+  discardTrace(_ccState, key);
+  _ccState.currentPair = nextPair(_ccState);
+  if (!_ccState.currentPair) _ccState.isComplete = true;
+  _ccState.selectedSide = null;
   m$1.redraw();
 }
 function applyCrossCompareResults(cl, positiveIdx = 0, negativeIdx = 1) {
@@ -3524,7 +3574,7 @@ function cycleReview(delta, groupCount) {
 function renderReview(cl) {
   const state = getCrossCompareState();
   if (!state) return null;
-  const { groups } = getResults(state);
+  const { groups, discarded } = getResults(state);
   const pairings = buildPairings(groups.length);
   if (_reviewPairIdx >= pairings.length) _reviewPairIdx = 0;
   const [posIdx, negIdx] = pairings[_reviewPairIdx];
@@ -3551,11 +3601,11 @@ function renderReview(cl) {
         ))
       ])
     ]),
-    pairings.length > 1 ? m$1(".cc-review-nav", [
-      m$1("span.cc-hint", `Pairing ${_reviewPairIdx + 1} / ${pairings.length}`),
-      m$1("span.cc-hint", `Group ${posIdx + 1} vs ${negIdx >= 0 ? negIdx + 1 : "—"} of ${groups.length}`)
-    ]) : null,
-    m$1(".cc-hint", "← → to cycle pairings"),
+    m$1(".cc-review-nav", [
+      pairings.length > 1 ? m$1("span.cc-hint", `Pairing ${_reviewPairIdx + 1} / ${pairings.length} · Group ${posIdx + 1} vs ${negIdx >= 0 ? negIdx + 1 : "—"} of ${groups.length}`) : m$1("span.cc-hint", `${groups.length} group${groups.length !== 1 ? "s" : ""}`),
+      discarded.length > 0 ? m$1("span.cc-hint", `${discarded.length} discarded`) : null
+    ]),
+    pairings.length > 1 ? m$1(".cc-hint", "← → to cycle pairings") : null,
     m$1(".cc-footer", [
       m$1("button.cc-action-btn.positive", {
         onclick: () => applyCrossCompareResults(cl, posIdx, negIdx)
@@ -3610,8 +3660,12 @@ const CrossCompareModal = {
         recordCrossComparison("negative");
         return;
       }
-      if ((e.key === "s" || e.key === "S") && state.selectedSide) {
-        recordCrossComparison("skip");
+      if (e.key === "s" || e.key === "S") {
+        skipCrossComparison();
+        return;
+      }
+      if ((e.key === "d" || e.key === "D") && state.selectedSide) {
+        discardCrossCompareTrace(vnode.attrs.cl, state.selectedSide);
         return;
       }
       if (e.key === "ArrowLeft") {
@@ -3696,19 +3750,22 @@ const CrossCompareModal = {
               onclick: () => recordCrossComparison("negative")
             }, ["Negative ", m$1("kbd", "N")]),
             m$1("button.cc-action-btn", {
+              onclick: () => skipCrossComparison()
+            }, ["Skip ", m$1("kbd", "S")]),
+            m$1("button.cc-action-btn.discard", {
               onclick: () => {
-                if (state.selectedSide) recordCrossComparison("skip");
+                if (state.selectedSide) discardCrossCompareTrace(cl, state.selectedSide);
               },
               disabled: !state.selectedSide,
-              title: state.selectedSide ? "Skip this pair" : "Select a side first (arrow keys)"
-            }, ["Skip ", m$1("kbd", "S")]),
+              title: state.selectedSide ? "Discard selected trace" : "Select a side first (←→)"
+            }, ["Discard ", m$1("kbd", "D")]),
             m$1("button.cc-action-btn", {
               onclick: () => undoCrossComparison(),
               disabled: state.history.length === 0,
-              title: "Undo last comparison (Ctrl+Z)"
+              title: "Undo (Ctrl+Z)"
             }, ["Undo ", m$1("kbd", "⌘Z")])
           ]),
-          m$1(".cc-hint", "← → arrow keys to highlight a side · Ctrl+Z to undo · Esc to close"),
+          m$1(".cc-hint", "← → select side · Ctrl+Z undo · Esc close"),
           m$1(".cc-footer", [
             m$1("button.cc-action-btn", {
               onclick: () => applyCrossCompareResults(cl)
@@ -4751,6 +4808,8 @@ input[type=range]::-webkit-slider-thumb {
 .cc-action-btn.positive:hover { background: color-mix(in srgb, var(--c-positive) 25%, transparent); }
 .cc-action-btn.negative { background: color-mix(in srgb, var(--c-negative) 15%, transparent); color: var(--c-negative); border-color: var(--c-negative); }
 .cc-action-btn.negative:hover { background: color-mix(in srgb, var(--c-negative) 25%, transparent); }
+.cc-action-btn.discard { background: var(--surface2); color: var(--muted); border-color: var(--border2); }
+.cc-action-btn.discard:hover { background: var(--border2); color: var(--dim); }
 .cc-action-btn kbd {
   font-family: var(--mono); font-size: 9px; padding: 1px 4px;
   border: 1px solid currentColor; border-radius: 3px; opacity: 0.7;
