@@ -205,6 +205,32 @@ export function nextPair(state: CrossCompareState): [string, string] | null {
   return fallback
 }
 
+/** Find the next trace to compare against a specific anchor. */
+export function nextPairForAnchor(state: CrossCompareState, anchorKey: string): [string, string] | null {
+  if (state.discardedKeys.has(anchorKey)) return null
+  const comps = activeComponents(state)
+  const anchorRoot = state.uf.find(anchorKey)
+
+  // Sort other components by size descending
+  const sorted = [...comps.entries()]
+    .filter(([root]) => root !== anchorRoot)
+    .sort((a, b) => b[1].length - a[1].length)
+
+  // Also include members of anchor's own component that aren't the anchor
+  // (they're already positive, so skip them — only compare across components)
+
+  let fallback: [string, string] | null = null
+  for (const [root, members] of sorted) {
+    if (state.negativeEdges.has(edgeKey(anchorRoot, root))) continue
+    for (const other of members) {
+      const ek = edgeKey(anchorKey, other)
+      if (!state.comparisons.has(ek) && !state.skippedPairs.has(ek)) return [anchorKey, other]
+      if (!fallback && !state.comparisons.has(ek)) fallback = [anchorKey, other]
+    }
+  }
+  return fallback
+}
+
 /** Get components excluding discarded keys. */
 function activeComponents(state: CrossCompareState): Map<string, string[]> {
   if (state.discardedKeys.size === 0) return state.uf.components()

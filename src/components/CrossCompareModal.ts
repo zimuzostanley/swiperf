@@ -15,7 +15,11 @@ let _keyHandler: ((e: KeyboardEvent) => void) | null = null
 let _ccSliderPct = 100
 let _lastPairKey: string | null = null
 
-// Review screen state — index into the list of all [positive, negative] pairings
+// Anchor mode: when set, this trace stays on screen and others rotate against it
+let _anchorKey: string | null = null
+let _anchorSide: 'left' | 'right' | null = null
+
+// Review screen state
 let _reviewPairIdx = 0
 
 function updateBothSliders(cl: Cluster, pct: number) {
@@ -55,14 +59,64 @@ function traceIndex(cl: Cluster, key: string): number {
   return _indexMap!.get(key) ?? -1
 }
 
+// ── Anchor helpers ──
+
+function toggleAnchor(key: string, side: 'left' | 'right') {
+  if (_anchorKey === key && _anchorSide === side) {
+    // Deselect
+    _anchorKey = null
+    _anchorSide = null
+  } else {
+    _anchorKey = key
+    _anchorSide = side
+  }
+  const state = getCrossCompareState()
+  if (state) state.selectedSide = null
+  m.redraw()
+}
+
+function clearAnchor() {
+  _anchorKey = null
+  _anchorSide = null
+}
+
+/** After advancing, ensure anchor stays on the correct side of currentPair. */
+function ensureAnchorSide() {
+  const state = getCrossCompareState()
+  if (!_anchorKey || !state?.currentPair) return
+  const [a, b] = state.currentPair
+  if (_anchorSide === 'left' && b === _anchorKey && a !== _anchorKey) {
+    state.currentPair = [b, a]
+  } else if (_anchorSide === 'right' && a === _anchorKey && b !== _anchorKey) {
+    state.currentPair = [b, a]
+  } else if (a !== _anchorKey && b !== _anchorKey) {
+    // Anchor exhausted — pair came from tournament fallback
+    clearAnchor()
+  }
+}
+
+function discardSideForAnchor(): 'left' | 'right' | null {
+  if (_anchorSide === 'left') return 'right'
+  if (_anchorSide === 'right') return 'left'
+  return null
+}
+
+// ── Panel rendering ──
+
 function renderPanel(cl: Cluster, key: string, side: 'left' | 'right') {
   const ts = findTrace(cl, key)
   if (!ts) return m('.cc-panel', 'Trace not found')
   ensureCache(ts)
+  const isAnchor = _anchorKey === key && _anchorSide === side
   const state = getCrossCompareState()
-  const selected = state?.selectedSide === side
+  const isSelected = !_anchorKey && state?.selectedSide === side
 
-  return m('.cc-panel' + (selected ? '.selected' : ''), [
+  return m('.cc-panel' + (isAnchor ? '.anchored' : isSelected ? '.selected' : ''), {
+    onclick: (e: Event) => {
+      e.stopPropagation()
+      toggleAnchor(key, side)
+    },
+  }, [
     m('.cc-panel-header', [
       m('span.cc-panel-idx', `#${traceIndex(cl, key) + 1}`),
       m('span.cc-panel-pkg', ts.trace.package_name),
@@ -77,6 +131,7 @@ function renderPanel(cl: Cluster, key: string, side: 'left' | 'right') {
           title: 'Open in trace viewer',
         }, '\u2197') : null
       })(),
+      isAnchor ? m('span.cc-anchor-badge', 'anchor') : null,
     ]),
     m(MiniTimeline, { ts }),
     m('.cc-panel-detail', m(Summary, { ts })),
@@ -105,7 +160,8 @@ function renderReviewTraceRow(cl: Cluster, key: string) {
   ])
 }
 
-/** Build all [positiveIdx, negativeIdx] pairings for N groups. */
+// ── Review screen ──
+
 function buildPairings(n: number): [number, number][] {
   if (n < 2) return [[0, -1]]
   const pairs: [number, number][] = []
@@ -171,11 +227,11 @@ function renderReview(cl: Cluster) {
         onclick: () => applyCrossCompareResults(cl, posIdx, negIdx),
       }, 'Apply'),
       m('button.cc-action-btn', {
-        onclick: () => undoCrossComparison(),
+        onclick: () => { undoCrossComparison(_anchorKey ?? undefined); ensureAnchorSide() },
         disabled: state.history.length === 0,
       }, 'Undo'),
       m('button.cc-action-btn', {
-        onclick: () => resetCrossCompare(cl),
+        onclick: () => { resetCrossCompare(cl); clearAnchor() },
       }, 'Reset'),
       m('button.cc-action-btn', {
         onclick: closeCrossCompare,
@@ -184,29 +240,58 @@ function renderReview(cl: Cluster) {
   ])
 }
 
+// ── Main component ──
+
 export const CrossCompareModal: m.Component<{ cl: Cluster }> = {
-  oncreate() {
+  oncreate(vnode: m.VnodeDOM<{ cl: Cluster }>) {
+    const getCl = () => vnode.attrs.cl
     _keyHandler = (e: KeyboardEvent) => {
-      // Don't intercept keys when typing in inputs
       const tag = (e.target as HTMLElement)?.tagName
       if (tag === 'INPUT' || tag === 'TEXTAREA') return
       const state = getCrossCompareState()
       if (!state) return
       if (e.key === 'Escape') { closeCrossCompare(); return }
-      if (e.key === 'z' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); undoCrossComparison(); return }
+      if (e.key === 'z' && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault()
+        undoCrossComparison(_anchorKey ?? undefined)
+        ensureAnchorSide()
+        return
+      }
       if (state.isComplete) {
-        // Review screen: arrow keys cycle pairings
         const { groups } = getResults(state)
         if (e.key === 'ArrowLeft') { cycleReview(-1, groups.length); return }
         if (e.key === 'ArrowRight') { cycleReview(1, groups.length); return }
         return
       }
-      if (e.key === 'p' || e.key === 'P') { recordCrossComparison('positive'); return }
-      if (e.key === 'n' || e.key === 'N') { recordCrossComparison('negative'); return }
-      if (e.key === 's' || e.key === 'S') { skipCrossComparison(); return }
-      if ((e.key === 'd' || e.key === 'D') && state.selectedSide) { discardCrossCompareTrace(vnode.attrs.cl, state.selectedSide); return }
-      if (e.key === 'ArrowLeft') { state.selectedSide = 'left'; m.redraw(); return }
-      if (e.key === 'ArrowRight') { state.selectedSide = 'right'; m.redraw(); return }
+      // Comparison keys
+      if (e.key === 'p' || e.key === 'P') {
+        recordCrossComparison('positive', _anchorKey ?? undefined)
+        ensureAnchorSide()
+        return
+      }
+      if (e.key === 'n' || e.key === 'N') {
+        recordCrossComparison('negative', _anchorKey ?? undefined)
+        ensureAnchorSide()
+        return
+      }
+      if (e.key === 's' || e.key === 'S') {
+        skipCrossComparison(_anchorKey ?? undefined)
+        ensureAnchorSide()
+        return
+      }
+      if (e.key === 'd' || e.key === 'D') {
+        const side = _anchorKey ? discardSideForAnchor() : state.selectedSide
+        if (side) {
+          discardCrossCompareTrace(getCl(), side, _anchorKey ?? undefined)
+          ensureAnchorSide()
+        }
+        return
+      }
+      // Arrow keys: select side (non-anchor mode only)
+      if (!_anchorKey) {
+        if (e.key === 'ArrowLeft') { state.selectedSide = 'left'; m.redraw(); return }
+        if (e.key === 'ArrowRight') { state.selectedSide = 'right'; m.redraw(); return }
+      }
     }
     document.addEventListener('keydown', _keyHandler)
   },
@@ -230,15 +315,23 @@ export const CrossCompareModal: m.Component<{ cl: Cluster }> = {
       if (_ccSliderPct < 100) updateBothSliders(cl, _ccSliderPct)
     }
 
+    // Validate anchor is still in current pair
+    if (_anchorKey && state.currentPair && !state.currentPair.includes(_anchorKey)) {
+      clearAnchor()
+    }
+
+    const anchored = !!_anchorKey
+    const canDiscard = anchored || !!state.selectedSide
+
     return m('.cc-overlay', { onclick: () => {
-      const s = getCrossCompareState()
-      if (s && s.selectedSide) { s.selectedSide = null; m.redraw() }
+      if (_anchorKey) { clearAnchor(); m.redraw() }
+      else if (state.selectedSide) { state.selectedSide = null; m.redraw() }
       else closeCrossCompare()
     } }, [
       m('.cc-modal', { onclick: (e: Event) => {
         e.stopPropagation()
-        const s = getCrossCompareState()
-        if (s && s.selectedSide) { s.selectedSide = null; m.redraw() }
+        // Don't clear anchor/selection when clicking modal background —
+        // only panels and overlay handle that
       } }, [
         // Header
         m('.cc-header', [
@@ -275,32 +368,42 @@ export const CrossCompareModal: m.Component<{ cl: Cluster }> = {
                 ]),
                 m('.cc-actions', [
                   m('button.cc-action-btn.positive', {
-                    onclick: () => recordCrossComparison('positive'),
+                    onclick: () => { recordCrossComparison('positive', _anchorKey ?? undefined); ensureAnchorSide() },
                   }, ['Positive ', m('kbd', 'P')]),
                   m('button.cc-action-btn.negative', {
-                    onclick: () => recordCrossComparison('negative'),
+                    onclick: () => { recordCrossComparison('negative', _anchorKey ?? undefined); ensureAnchorSide() },
                   }, ['Negative ', m('kbd', 'N')]),
                   m('button.cc-action-btn', {
-                    onclick: () => skipCrossComparison(),
+                    onclick: () => { skipCrossComparison(_anchorKey ?? undefined); ensureAnchorSide() },
                   }, ['Skip ', m('kbd', 'S')]),
                   m('button.cc-action-btn.discard', {
-                    onclick: () => { if (state.selectedSide) discardCrossCompareTrace(cl, state.selectedSide) },
-                    disabled: !state.selectedSide,
-                    title: state.selectedSide ? 'Discard selected trace' : 'Select a side first (\u2190\u2192)',
+                    onclick: () => {
+                      const side = anchored ? discardSideForAnchor() : state.selectedSide
+                      if (side) { discardCrossCompareTrace(cl, side, _anchorKey ?? undefined); ensureAnchorSide() }
+                    },
+                    disabled: !canDiscard,
+                    title: anchored
+                      ? 'Discard the non-anchor trace'
+                      : state.selectedSide
+                        ? 'Discard selected trace'
+                        : 'Click a panel to anchor, or \u2190\u2192 to select',
                   }, ['Discard ', m('kbd', 'D')]),
                   m('button.cc-action-btn', {
-                    onclick: () => undoCrossComparison(),
+                    onclick: () => { undoCrossComparison(_anchorKey ?? undefined); ensureAnchorSide() },
                     disabled: state.history.length === 0,
                     title: 'Undo (Ctrl+Z)',
                   }, ['Undo ', m('kbd', '\u2318Z')]),
                 ]),
-                m('.cc-hint', '\u2190 \u2192 select side \u00b7 Ctrl+Z undo \u00b7 Esc close'),
+                m('.cc-hint', anchored
+                  ? `Anchored \u00b7 P/N/S/D apply to other trace \u00b7 click anchor to deselect`
+                  : 'Click a panel to anchor \u00b7 \u2190\u2192 to select for discard \u00b7 Esc close'
+                ),
                 m('.cc-footer', [
                   m('button.cc-action-btn', {
                     onclick: () => applyCrossCompareResults(cl),
                   }, 'Apply Current Results'),
                   m('button.cc-action-btn', {
-                    onclick: () => resetCrossCompare(cl),
+                    onclick: () => { resetCrossCompare(cl); clearAnchor() },
                   }, 'Reset'),
                 ]),
               ])

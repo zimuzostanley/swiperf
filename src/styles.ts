@@ -499,7 +499,14 @@ input[type=range]::-webkit-slider-thumb {
   padding: 10px; display: flex; flex-direction: column; gap: 6px;
   transition: border-color 0.15s; overflow: hidden;
 }
+.cc-panel { cursor: pointer; }
 .cc-panel.selected { border-color: var(--accent); }
+.cc-panel.anchored { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 5%, transparent); }
+.cc-anchor-badge {
+  font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;
+  color: var(--accent); background: var(--accent-bg); padding: 1px 5px; border-radius: 4px;
+  margin-left: auto;
+}
 .cc-panel-header {
   display: flex; align-items: center; gap: 8px;
 }

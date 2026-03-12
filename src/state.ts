@@ -4,7 +4,7 @@ import { build_merge_cache, get_compressed } from './models/compression'
 import type { CrossCompareState } from './models/crossCompare'
 import {
   createCrossCompareState, recordComparison as ccRecord,
-  nextPair, getResults as ccResults, undoComparison as ccUndo,
+  nextPair, nextPairForAnchor, getResults as ccResults, undoComparison as ccUndo,
   discardTrace as ccDiscard, skipCurrentPair as ccSkip,
 } from './models/crossCompare'
 
@@ -301,40 +301,54 @@ export function closeCrossCompare(): void {
   m.redraw()
 }
 
-export function recordCrossComparison(result: 'positive' | 'negative'): void {
+function advancePair(anchorKey?: string): void {
+  if (!_ccState) return
+  if (anchorKey && !_ccState.discardedKeys.has(anchorKey)) {
+    _ccState.currentPair = nextPairForAnchor(_ccState, anchorKey)
+    if (!_ccState.currentPair) _ccState.currentPair = nextPair(_ccState)
+  } else {
+    _ccState.currentPair = nextPair(_ccState)
+  }
+  if (!_ccState.currentPair) _ccState.isComplete = true
+  _ccState.selectedSide = null
+}
+
+export function recordCrossComparison(result: 'positive' | 'negative', anchorKey?: string): void {
   if (!_ccState || !_ccState.currentPair) return
   const [a, b] = _ccState.currentPair
   ccRecord(_ccState, a, b, result)
-  _ccState.currentPair = nextPair(_ccState)
-  if (!_ccState.currentPair) _ccState.isComplete = true
-  _ccState.selectedSide = null
+  advancePair(anchorKey)
   m.redraw()
 }
 
-export function skipCrossComparison(): void {
+export function skipCrossComparison(anchorKey?: string): void {
   if (!_ccState || !_ccState.currentPair) return
   ccSkip(_ccState)
-  _ccState.currentPair = nextPair(_ccState)
-  if (!_ccState.currentPair) _ccState.isComplete = true
-  _ccState.selectedSide = null
+  advancePair(anchorKey)
   m.redraw()
 }
 
-export function undoCrossComparison(): void {
+export function undoCrossComparison(anchorKey?: string): void {
   if (!_ccState || _ccState.history.length === 0) return
   ccUndo(_ccState)
+  // Re-advance with anchor if set
+  if (anchorKey && !_ccState.discardedKeys.has(anchorKey)) {
+    const pair = nextPairForAnchor(_ccState, anchorKey)
+    if (pair) {
+      _ccState.currentPair = pair
+      _ccState.isComplete = false
+    }
+  }
   m.redraw()
 }
 
-export function discardCrossCompareTrace(cl: Cluster, side: 'left' | 'right'): void {
+export function discardCrossCompareTrace(cl: Cluster, side: 'left' | 'right', anchorKey?: string): void {
   if (!_ccState || !_ccState.currentPair) return
   const key = side === 'left' ? _ccState.currentPair[0] : _ccState.currentPair[1]
   cl.verdicts.set(key, 'discard')
   recomputeCounts(cl)
   ccDiscard(_ccState, key)
-  _ccState.currentPair = nextPair(_ccState)
-  if (!_ccState.currentPair) _ccState.isComplete = true
-  _ccState.selectedSide = null
+  advancePair(anchorKey)
   m.redraw()
 }
 
