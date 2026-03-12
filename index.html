@@ -1978,14 +1978,14 @@ function undoCrossComparison() {
   undoComparison(_ccState);
   m$1.redraw();
 }
-function applyCrossCompareResults(cl) {
+function applyCrossCompareResults(cl, positiveIdx = 0, negativeIdx = 1) {
   if (!_ccState) return;
   const { groups } = getResults(_ccState);
-  if (groups.length >= 1) {
-    for (const key of groups[0]) cl.verdicts.set(key, "like");
+  if (positiveIdx >= 0 && positiveIdx < groups.length) {
+    for (const key of groups[positiveIdx]) cl.verdicts.set(key, "like");
   }
-  if (groups.length >= 2) {
-    for (const key of groups[1]) cl.verdicts.set(key, "dislike");
+  if (negativeIdx >= 0 && negativeIdx < groups.length) {
+    for (const key of groups[negativeIdx]) cl.verdicts.set(key, "dislike");
   }
   recomputeCounts(cl);
   _ccState = null;
@@ -3424,6 +3424,8 @@ const Summary = {
 let _keyHandler = null;
 let _ccSliderPct = 100;
 let _lastPairKey = null;
+let _reviewPositiveIdx = 0;
+let _reviewNegativeIdx = 1;
 function updateBothSliders(cl, pct) {
   _ccSliderPct = pct;
   const state = getCrossCompareState();
@@ -3484,26 +3486,74 @@ function renderPanel(cl, key, side) {
     m$1(".cc-panel-detail", m$1(Summary, { ts }))
   ]);
 }
-function renderComplete(cl) {
+function renderReviewTraceRow(cl, key) {
+  const ts = findTrace(cl, key);
+  if (!ts) return null;
+  ensureCache(ts);
+  const href = buildTraceLink(ts.trace.trace_uuid, ts.trace.package_name);
+  return m$1(".cc-review-row", [
+    m$1(".cc-review-row-header", [
+      m$1("span.cc-panel-idx", `#${traceIndex(cl, key) + 1}`),
+      m$1("span.cc-panel-pkg", ts.trace.package_name),
+      ts.trace.startup_dur ? m$1("span.cc-panel-dur", fmt_dur(ts.trace.startup_dur)) : null,
+      href ? m$1("a.trace-link", {
+        href,
+        target: "_blank",
+        rel: "noopener",
+        title: "Open in trace viewer"
+      }, "↗") : null
+    ]),
+    m$1(MiniTimeline, { ts })
+  ]);
+}
+function swapReviewAssignment(groupCount) {
+  if (groupCount < 2) return;
+  const tmp = _reviewPositiveIdx;
+  _reviewPositiveIdx = _reviewNegativeIdx;
+  _reviewNegativeIdx = tmp;
+  m$1.redraw();
+}
+function renderReview(cl) {
   const state = getCrossCompareState();
   if (!state) return null;
   const { groups } = getResults(state);
-  return m$1(".cc-results", [
-    m$1(".cc-results-title", "Comparison complete"),
-    m$1("p.cc-hint", `Found ${groups.length} group${groups.length !== 1 ? "s" : ""}`),
-    ...groups.slice(0, 5).map(
-      (group, i) => m$1(".cc-group-row", [
-        m$1(
-          "span.cc-group-label",
-          i === 0 ? "Largest (→ Positive)" : i === 1 ? "Second (→ Negative)" : `Group ${i + 1}`
-        ),
-        m$1("span.cc-group-count", `${group.length} trace${group.length !== 1 ? "s" : ""}`)
+  if (_reviewPositiveIdx >= groups.length) _reviewPositiveIdx = 0;
+  if (_reviewNegativeIdx >= groups.length || _reviewNegativeIdx === _reviewPositiveIdx) {
+    _reviewNegativeIdx = groups.length > 1 ? _reviewPositiveIdx === 0 ? 1 : 0 : -1;
+  }
+  const positiveGroup = groups[_reviewPositiveIdx] || [];
+  const negativeGroup = _reviewNegativeIdx >= 0 ? groups[_reviewNegativeIdx] || [] : [];
+  return m$1(".cc-review", [
+    m$1(".cc-review-split", [
+      m$1(".cc-review-panel", [
+        m$1(".cc-review-panel-header.negative", [
+          m$1("span", "Negative"),
+          m$1("span.cc-review-count", `${negativeGroup.length}`)
+        ]),
+        m$1(".cc-review-panel-body", negativeGroup.map(
+          (key) => renderReviewTraceRow(cl, key)
+        ))
+      ]),
+      m$1(".cc-review-panel", [
+        m$1(".cc-review-panel-header.positive", [
+          m$1("span", "Positive"),
+          m$1("span.cc-review-count", `${positiveGroup.length}`)
+        ]),
+        m$1(".cc-review-panel-body", positiveGroup.map(
+          (key) => renderReviewTraceRow(cl, key)
+        ))
       ])
-    ),
+    ]),
+    groups.length > 2 ? m$1(".cc-hint", `${groups.length - 2} other group${groups.length - 2 !== 1 ? "s" : ""} will be left unchanged`) : null,
+    m$1(".cc-hint", "← → to swap assignment"),
     m$1(".cc-footer", [
       m$1("button.cc-action-btn.positive", {
-        onclick: () => applyCrossCompareResults(cl)
-      }, "Apply Results"),
+        onclick: () => applyCrossCompareResults(cl, _reviewPositiveIdx, _reviewNegativeIdx)
+      }, "Apply"),
+      m$1("button.cc-action-btn", {
+        onclick: () => undoCrossComparison(),
+        disabled: state.history.length === 0
+      }, "Undo"),
       m$1("button.cc-action-btn", {
         onclick: () => resetCrossCompare(cl)
       }, "Reset"),
@@ -3525,10 +3575,17 @@ const CrossCompareModal = {
         closeCrossCompare();
         return;
       }
-      if (state.isComplete) return;
       if (e.key === "z" && (e.ctrlKey || e.metaKey)) {
         e.preventDefault();
         undoCrossComparison();
+        return;
+      }
+      if (state.isComplete) {
+        const { groups } = getResults(state);
+        if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+          swapReviewAssignment(groups.length);
+          return;
+        }
         return;
       }
       if (e.key === "p" || e.key === "P") {
@@ -3589,7 +3646,7 @@ const CrossCompareModal = {
       } }, [
         // Header
         m$1(".cc-header", [
-          m$1("span.cc-title", "Cross Compare"),
+          m$1("span.cc-title", "Compare"),
           m$1("button.cc-close", { onclick: closeCrossCompare, title: "Close (Esc)" }, "×")
         ]),
         // Progress bar
@@ -3600,7 +3657,7 @@ const CrossCompareModal = {
           ])
         ]),
         // Body
-        state.isComplete ? renderComplete(cl) : state.currentPair ? m$1(".cc-body", [
+        state.isComplete ? renderReview(cl) : state.currentPair ? m$1(".cc-body", [
           m$1(".cc-pair", [
             renderPanel(cl, state.currentPair[0], "left"),
             m$1(".cc-pair-divider", "vs"),
@@ -3620,10 +3677,10 @@ const CrossCompareModal = {
           m$1(".cc-actions", [
             m$1("button.cc-action-btn.positive", {
               onclick: () => recordCrossComparison("positive")
-            }, ["Similar ", m$1("kbd", "P")]),
+            }, ["Positive ", m$1("kbd", "P")]),
             m$1("button.cc-action-btn.negative", {
               onclick: () => recordCrossComparison("negative")
-            }, ["Different ", m$1("kbd", "N")]),
+            }, ["Negative ", m$1("kbd", "N")]),
             m$1("button.cc-action-btn", {
               onclick: () => {
                 if (state.selectedSide) recordCrossComparison("skip");
@@ -3640,7 +3697,7 @@ const CrossCompareModal = {
           m$1(".cc-hint", "← → arrow keys to highlight a side · Ctrl+Z to undo · Esc to close"),
           m$1(".cc-footer", [
             m$1("button.cc-action-btn", {
-              onclick: () => applyCrossCompareResults(cl)
+              onclick: () => applyCrossCompareResults(cl, _reviewPositiveIdx, _reviewNegativeIdx)
             }, "Apply Current Results"),
             m$1("button.cc-action-btn", {
               onclick: () => resetCrossCompare(cl)
@@ -4696,14 +4753,43 @@ input[type=range]::-webkit-slider-thumb {
   display: flex; gap: 8px; justify-content: center;
   padding: 8px 20px; border-top: 1px solid var(--border);
 }
-.cc-results { padding: 16px 20px; text-align: center; }
-.cc-results-title { font-size: 13px; font-weight: 600; color: var(--bright); margin-bottom: 8px; }
-.cc-group-row {
-  display: flex; align-items: center; justify-content: center; gap: 8px;
-  padding: 4px 0; font-size: 11px;
+/* Review screen */
+.cc-review { display: flex; flex-direction: column; gap: 8px; flex: 1; overflow: hidden; }
+.cc-review-split {
+  display: flex; gap: 12px; flex: 1; overflow: hidden; padding: 12px 20px 0;
 }
-.cc-group-label { color: var(--dim); }
-.cc-group-count { font-family: var(--mono); font-weight: 600; color: var(--bright); }
+.cc-review-panel {
+  flex: 1; display: flex; flex-direction: column; border: 1px solid var(--border);
+  border-radius: 8px; overflow: hidden; min-width: 0;
+}
+.cc-review-panel-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 12px; font-size: 11px; font-weight: 600;
+  border-bottom: 1px solid var(--border);
+}
+.cc-review-panel-header.positive {
+  background: color-mix(in srgb, var(--c-positive) 10%, transparent);
+  color: var(--c-positive);
+}
+.cc-review-panel-header.negative {
+  background: color-mix(in srgb, var(--c-negative) 10%, transparent);
+  color: var(--c-negative);
+}
+.cc-review-count {
+  font-family: var(--mono); font-size: 10px; padding: 1px 6px;
+  border-radius: 8px; background: var(--surface2);
+}
+.cc-review-panel-body {
+  flex: 1; overflow-y: auto; padding: 6px;
+  display: flex; flex-direction: column; gap: 4px;
+}
+.cc-review-row {
+  padding: 6px 8px; border-radius: 6px; border: 1px solid var(--border);
+  background: var(--surface2);
+}
+.cc-review-row-header {
+  display: flex; align-items: center; gap: 6px; margin-bottom: 2px;
+}
 `;
 const style = document.createElement("style");
 style.textContent = CSS;
