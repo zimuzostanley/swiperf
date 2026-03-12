@@ -45,10 +45,10 @@
 function getDefaultExportFromCjs(x) {
   return x && x.__esModule && Object.prototype.hasOwnProperty.call(x, "default") ? x["default"] : x;
 }
-var vnode$1;
+var vnode;
 var hasRequiredVnode;
 function requireVnode() {
-  if (hasRequiredVnode) return vnode$1;
+  if (hasRequiredVnode) return vnode;
   hasRequiredVnode = 1;
   function Vnode2(tag, key, attrs, children, text, dom) {
     return { tag, key, attrs, children, text, dom, is: void 0, domSize: void 0, state: void 0, events: void 0, instance: void 0 };
@@ -73,8 +73,8 @@ function requireVnode() {
     }
     return children;
   };
-  vnode$1 = Vnode2;
-  return vnode$1;
+  vnode = Vnode2;
+  return vnode;
 }
 var Vnode$6 = requireVnode();
 var hyperscriptVnode$2 = function(attrs, children) {
@@ -1700,6 +1700,22 @@ function nextPair(state) {
   }
   return fallback;
 }
+function nextPairForAnchor(state, anchorKey) {
+  if (state.discardedKeys.has(anchorKey)) return null;
+  const comps = activeComponents(state);
+  const anchorRoot = state.uf.find(anchorKey);
+  const sorted = [...comps.entries()].filter(([root]) => root !== anchorRoot).sort((a, b) => b[1].length - a[1].length);
+  let fallback = null;
+  for (const [root, members] of sorted) {
+    if (state.negativeEdges.has(edgeKey(anchorRoot, root))) continue;
+    for (const other of members) {
+      const ek = edgeKey(anchorKey, other);
+      if (!state.comparisons.has(ek) && !state.skippedPairs.has(ek)) return [anchorKey, other];
+      if (!fallback && !state.comparisons.has(ek)) fallback = [anchorKey, other];
+    }
+  }
+  return fallback;
+}
 function activeComponents(state) {
   if (state.discardedKeys.size === 0) return state.uf.components();
   const comps = state.uf.components();
@@ -1995,37 +2011,49 @@ function closeCrossCompare() {
   _ccState = null;
   m$1.redraw();
 }
-function recordCrossComparison(result) {
+function advancePair(anchorKey) {
+  if (!_ccState) return;
+  if (anchorKey && !_ccState.discardedKeys.has(anchorKey)) {
+    _ccState.currentPair = nextPairForAnchor(_ccState, anchorKey);
+    if (!_ccState.currentPair) _ccState.currentPair = nextPair(_ccState);
+  } else {
+    _ccState.currentPair = nextPair(_ccState);
+  }
+  if (!_ccState.currentPair) _ccState.isComplete = true;
+  _ccState.selectedSide = null;
+}
+function recordCrossComparison(result, anchorKey) {
   if (!_ccState || !_ccState.currentPair) return;
   const [a, b] = _ccState.currentPair;
   recordComparison(_ccState, a, b, result);
-  _ccState.currentPair = nextPair(_ccState);
-  if (!_ccState.currentPair) _ccState.isComplete = true;
-  _ccState.selectedSide = null;
+  advancePair(anchorKey);
   m$1.redraw();
 }
-function skipCrossComparison() {
+function skipCrossComparison(anchorKey) {
   if (!_ccState || !_ccState.currentPair) return;
   skipCurrentPair(_ccState);
-  _ccState.currentPair = nextPair(_ccState);
-  if (!_ccState.currentPair) _ccState.isComplete = true;
-  _ccState.selectedSide = null;
+  advancePair(anchorKey);
   m$1.redraw();
 }
-function undoCrossComparison() {
+function undoCrossComparison(anchorKey) {
   if (!_ccState || _ccState.history.length === 0) return;
   undoComparison(_ccState);
+  if (anchorKey && !_ccState.discardedKeys.has(anchorKey)) {
+    const pair = nextPairForAnchor(_ccState, anchorKey);
+    if (pair) {
+      _ccState.currentPair = pair;
+      _ccState.isComplete = false;
+    }
+  }
   m$1.redraw();
 }
-function discardCrossCompareTrace(cl, side) {
+function discardCrossCompareTrace(cl, side, anchorKey) {
   if (!_ccState || !_ccState.currentPair) return;
   const key = side === "left" ? _ccState.currentPair[0] : _ccState.currentPair[1];
   cl.verdicts.set(key, "discard");
   recomputeCounts(cl);
   discardTrace(_ccState, key);
-  _ccState.currentPair = nextPair(_ccState);
-  if (!_ccState.currentPair) _ccState.isComplete = true;
-  _ccState.selectedSide = null;
+  advancePair(anchorKey);
   m$1.redraw();
 }
 function applyCrossCompareResults(cl, positiveIdx = 0, negativeIdx = 1) {
@@ -3476,6 +3504,8 @@ const Summary = {
 let _keyHandler = null;
 let _ccSliderPct = 100;
 let _lastPairKey = null;
+let _anchorKey = null;
+let _anchorSide = null;
 let _reviewPairIdx = 0;
 function updateBothSliders(cl, pct) {
   _ccSliderPct = pct;
@@ -3511,13 +3541,52 @@ function traceIndex(cl, key) {
   ensureMaps(cl);
   return _indexMap.get(key) ?? -1;
 }
+function toggleAnchor(key, side) {
+  if (_anchorKey === key && _anchorSide === side) {
+    _anchorKey = null;
+    _anchorSide = null;
+  } else {
+    _anchorKey = key;
+    _anchorSide = side;
+  }
+  const state = getCrossCompareState();
+  if (state) state.selectedSide = null;
+  m$1.redraw();
+}
+function clearAnchor() {
+  _anchorKey = null;
+  _anchorSide = null;
+}
+function ensureAnchorSide() {
+  const state = getCrossCompareState();
+  if (!_anchorKey || !(state == null ? void 0 : state.currentPair)) return;
+  const [a, b] = state.currentPair;
+  if (_anchorSide === "left" && b === _anchorKey && a !== _anchorKey) {
+    state.currentPair = [b, a];
+  } else if (_anchorSide === "right" && a === _anchorKey && b !== _anchorKey) {
+    state.currentPair = [b, a];
+  } else if (a !== _anchorKey && b !== _anchorKey) {
+    clearAnchor();
+  }
+}
+function discardSideForAnchor() {
+  if (_anchorSide === "left") return "right";
+  if (_anchorSide === "right") return "left";
+  return null;
+}
 function renderPanel(cl, key, side) {
   const ts = findTrace(cl, key);
   if (!ts) return m$1(".cc-panel", "Trace not found");
   ensureCache(ts);
+  const isAnchor = _anchorKey === key && _anchorSide === side;
   const state = getCrossCompareState();
-  const selected = (state == null ? void 0 : state.selectedSide) === side;
-  return m$1(".cc-panel" + (selected ? ".selected" : ""), [
+  const isSelected = !_anchorKey && (state == null ? void 0 : state.selectedSide) === side;
+  return m$1(".cc-panel" + (isAnchor ? ".anchored" : isSelected ? ".selected" : ""), {
+    onclick: (e) => {
+      e.stopPropagation();
+      toggleAnchor(key, side);
+    }
+  }, [
     m$1(".cc-panel-header", [
       m$1("span.cc-panel-idx", `#${traceIndex(cl, key) + 1}`),
       m$1("span.cc-panel-pkg", ts.trace.package_name),
@@ -3531,7 +3600,8 @@ function renderPanel(cl, key, side) {
           onclick: (e) => e.stopPropagation(),
           title: "Open in trace viewer"
         }, "↗") : null;
-      })()
+      })(),
+      isAnchor ? m$1("span.cc-anchor-badge", "anchor") : null
     ]),
     m$1(MiniTimeline, { ts }),
     m$1(".cc-panel-detail", m$1(Summary, { ts }))
@@ -3613,11 +3683,17 @@ function renderReview(cl) {
         onclick: () => applyCrossCompareResults(cl, posIdx, negIdx)
       }, "Apply"),
       m$1("button.cc-action-btn", {
-        onclick: () => undoCrossComparison(),
+        onclick: () => {
+          undoCrossComparison(_anchorKey ?? void 0);
+          ensureAnchorSide();
+        },
         disabled: state.history.length === 0
       }, "Undo"),
       m$1("button.cc-action-btn", {
-        onclick: () => resetCrossCompare(cl)
+        onclick: () => {
+          resetCrossCompare(cl);
+          clearAnchor();
+        }
       }, "Reset"),
       m$1("button.cc-action-btn", {
         onclick: closeCrossCompare
@@ -3626,7 +3702,8 @@ function renderReview(cl) {
   ]);
 }
 const CrossCompareModal = {
-  oncreate() {
+  oncreate(vnode2) {
+    const getCl = () => vnode2.attrs.cl;
     _keyHandler = (e) => {
       var _a;
       const tag = (_a = e.target) == null ? void 0 : _a.tagName;
@@ -3639,7 +3716,8 @@ const CrossCompareModal = {
       }
       if (e.key === "z" && (e.ctrlKey || e.metaKey)) {
         e.preventDefault();
-        undoCrossComparison();
+        undoCrossComparison(_anchorKey ?? void 0);
+        ensureAnchorSide();
         return;
       }
       if (state.isComplete) {
@@ -3655,30 +3733,39 @@ const CrossCompareModal = {
         return;
       }
       if (e.key === "p" || e.key === "P") {
-        recordCrossComparison("positive");
+        recordCrossComparison("positive", _anchorKey ?? void 0);
+        ensureAnchorSide();
         return;
       }
       if (e.key === "n" || e.key === "N") {
-        recordCrossComparison("negative");
+        recordCrossComparison("negative", _anchorKey ?? void 0);
+        ensureAnchorSide();
         return;
       }
       if (e.key === "s" || e.key === "S") {
-        skipCrossComparison();
+        skipCrossComparison(_anchorKey ?? void 0);
+        ensureAnchorSide();
         return;
       }
-      if ((e.key === "d" || e.key === "D") && state.selectedSide) {
-        discardCrossCompareTrace(vnode.attrs.cl, state.selectedSide);
+      if (e.key === "d" || e.key === "D") {
+        const side = _anchorKey ? discardSideForAnchor() : state.selectedSide;
+        if (side) {
+          discardCrossCompareTrace(getCl(), side, _anchorKey ?? void 0);
+          ensureAnchorSide();
+        }
         return;
       }
-      if (e.key === "ArrowLeft") {
-        state.selectedSide = "left";
-        m$1.redraw();
-        return;
-      }
-      if (e.key === "ArrowRight") {
-        state.selectedSide = "right";
-        m$1.redraw();
-        return;
+      if (!_anchorKey) {
+        if (e.key === "ArrowLeft") {
+          state.selectedSide = "left";
+          m$1.redraw();
+          return;
+        }
+        if (e.key === "ArrowRight") {
+          state.selectedSide = "right";
+          m$1.redraw();
+          return;
+        }
       }
     };
     document.addEventListener("keydown", _keyHandler);
@@ -3699,20 +3786,22 @@ const CrossCompareModal = {
       _lastPairKey = pairKey;
       if (_ccSliderPct < 100) updateBothSliders(cl, _ccSliderPct);
     }
+    if (_anchorKey && state.currentPair && !state.currentPair.includes(_anchorKey)) {
+      clearAnchor();
+    }
+    const anchored = !!_anchorKey;
+    const canDiscard = anchored || !!state.selectedSide;
     return m$1(".cc-overlay", { onclick: () => {
-      const s = getCrossCompareState();
-      if (s && s.selectedSide) {
-        s.selectedSide = null;
+      if (_anchorKey) {
+        clearAnchor();
+        m$1.redraw();
+      } else if (state.selectedSide) {
+        state.selectedSide = null;
         m$1.redraw();
       } else closeCrossCompare();
     } }, [
       m$1(".cc-modal", { onclick: (e) => {
         e.stopPropagation();
-        const s = getCrossCompareState();
-        if (s && s.selectedSide) {
-          s.selectedSide = null;
-          m$1.redraw();
-        }
       } }, [
         // Header
         m$1(".cc-header", [
@@ -3747,34 +3836,56 @@ const CrossCompareModal = {
           ]),
           m$1(".cc-actions", [
             m$1("button.cc-action-btn.positive", {
-              onclick: () => recordCrossComparison("positive")
+              onclick: () => {
+                recordCrossComparison("positive", _anchorKey ?? void 0);
+                ensureAnchorSide();
+              }
             }, ["Positive ", m$1("kbd", "P")]),
             m$1("button.cc-action-btn.negative", {
-              onclick: () => recordCrossComparison("negative")
+              onclick: () => {
+                recordCrossComparison("negative", _anchorKey ?? void 0);
+                ensureAnchorSide();
+              }
             }, ["Negative ", m$1("kbd", "N")]),
             m$1("button.cc-action-btn", {
-              onclick: () => skipCrossComparison()
+              onclick: () => {
+                skipCrossComparison(_anchorKey ?? void 0);
+                ensureAnchorSide();
+              }
             }, ["Skip ", m$1("kbd", "S")]),
             m$1("button.cc-action-btn.discard", {
               onclick: () => {
-                if (state.selectedSide) discardCrossCompareTrace(cl, state.selectedSide);
+                const side = anchored ? discardSideForAnchor() : state.selectedSide;
+                if (side) {
+                  discardCrossCompareTrace(cl, side, _anchorKey ?? void 0);
+                  ensureAnchorSide();
+                }
               },
-              disabled: !state.selectedSide,
-              title: state.selectedSide ? "Discard selected trace" : "Select a side first (←→)"
+              disabled: !canDiscard,
+              title: anchored ? "Discard the non-anchor trace" : state.selectedSide ? "Discard selected trace" : "Click a panel to anchor, or ←→ to select"
             }, ["Discard ", m$1("kbd", "D")]),
             m$1("button.cc-action-btn", {
-              onclick: () => undoCrossComparison(),
+              onclick: () => {
+                undoCrossComparison(_anchorKey ?? void 0);
+                ensureAnchorSide();
+              },
               disabled: state.history.length === 0,
               title: "Undo (Ctrl+Z)"
             }, ["Undo ", m$1("kbd", "⌘Z")])
           ]),
-          m$1(".cc-hint", "← → select side · Ctrl+Z undo · Esc close"),
+          m$1(
+            ".cc-hint",
+            anchored ? `Anchored · P/N/S/D apply to other trace · click anchor to deselect` : "Click a panel to anchor · ←→ to select for discard · Esc close"
+          ),
           m$1(".cc-footer", [
             m$1("button.cc-action-btn", {
               onclick: () => applyCrossCompareResults(cl)
             }, "Apply Current Results"),
             m$1("button.cc-action-btn", {
-              onclick: () => resetCrossCompare(cl)
+              onclick: () => {
+                resetCrossCompare(cl);
+                clearAnchor();
+              }
             }, "Reset")
           ])
         ]) : null
@@ -4786,7 +4897,14 @@ input[type=range]::-webkit-slider-thumb {
   padding: 10px; display: flex; flex-direction: column; gap: 6px;
   transition: border-color 0.15s; overflow: hidden;
 }
+.cc-panel { cursor: pointer; }
 .cc-panel.selected { border-color: var(--accent); }
+.cc-panel.anchored { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 5%, transparent); }
+.cc-anchor-badge {
+  font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;
+  color: var(--accent); background: var(--accent-bg); padding: 1px 5px; border-radius: 4px;
+  margin-left: auto;
+}
 .cc-panel-header {
   display: flex; align-items: center; gap: 8px;
 }
