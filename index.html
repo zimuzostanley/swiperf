@@ -3674,7 +3674,7 @@ function renderReview(cl) {
       ])
     ]),
     m$1(".cc-review-nav", [
-      pairings.length > 1 ? m$1("span.cc-hint", `Pairing ${_reviewPairIdx + 1} / ${pairings.length} · Group ${posIdx + 1} vs ${negIdx >= 0 ? negIdx + 1 : "—"} of ${groups.length}`) : m$1("span.cc-hint", `${groups.length} group${groups.length !== 1 ? "s" : ""}`),
+      pairings.length > 1 ? m$1("span.cc-hint", `Pairing ${_reviewPairIdx + 1} / ${pairings.length}`) : m$1("span.cc-hint", `${groups.length} group${groups.length !== 1 ? "s" : ""}`),
       discarded.length > 0 ? m$1("span.cc-hint", `${discarded.length} discarded`) : null
     ]),
     pairings.length > 1 ? m$1(".cc-hint", "← → to cycle pairings") : null,
