@@ -215,7 +215,7 @@ function renderReview(cl: Cluster) {
     ]),
     m('.cc-review-nav', [
       pairings.length > 1
-        ? m('span.cc-hint', `Pairing ${_reviewPairIdx + 1} / ${pairings.length} \u00b7 Group ${posIdx + 1} vs ${negIdx >= 0 ? negIdx + 1 : '\u2014'} of ${groups.length}`)
+        ? m('span.cc-hint', `Pairing ${_reviewPairIdx + 1} / ${pairings.length}`)
         : m('span.cc-hint', `${groups.length} group${groups.length !== 1 ? 's' : ''}`),
       discarded.length > 0
         ? m('span.cc-hint', `${discarded.length} discarded`)
