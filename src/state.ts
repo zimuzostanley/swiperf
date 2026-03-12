@@ -316,15 +316,14 @@ export function undoCrossComparison(): void {
   m.redraw()
 }
 
-export function applyCrossCompareResults(cl: Cluster): void {
+export function applyCrossCompareResults(cl: Cluster, positiveIdx = 0, negativeIdx = 1): void {
   if (!_ccState) return
   const { groups } = ccResults(_ccState)
-  // Largest group → 'like', second largest → 'dislike', rest unchanged
-  if (groups.length >= 1) {
-    for (const key of groups[0]) cl.verdicts.set(key, 'like')
+  if (positiveIdx >= 0 && positiveIdx < groups.length) {
+    for (const key of groups[positiveIdx]) cl.verdicts.set(key, 'like')
   }
-  if (groups.length >= 2) {
-    for (const key of groups[1]) cl.verdicts.set(key, 'dislike')
+  if (negativeIdx >= 0 && negativeIdx < groups.length) {
+    for (const key of groups[negativeIdx]) cl.verdicts.set(key, 'dislike')
   }
   recomputeCounts(cl)
   _ccState = null

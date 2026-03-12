@@ -540,12 +540,41 @@ input[type=range]::-webkit-slider-thumb {
   display: flex; gap: 8px; justify-content: center;
   padding: 8px 20px; border-top: 1px solid var(--border);
 }
-.cc-results { padding: 16px 20px; text-align: center; }
-.cc-results-title { font-size: 13px; font-weight: 600; color: var(--bright); margin-bottom: 8px; }
-.cc-group-row {
-  display: flex; align-items: center; justify-content: center; gap: 8px;
-  padding: 4px 0; font-size: 11px;
+/* Review screen */
+.cc-review { display: flex; flex-direction: column; gap: 8px; flex: 1; overflow: hidden; }
+.cc-review-split {
+  display: flex; gap: 12px; flex: 1; overflow: hidden; padding: 12px 20px 0;
 }
-.cc-group-label { color: var(--dim); }
-.cc-group-count { font-family: var(--mono); font-weight: 600; color: var(--bright); }
+.cc-review-panel {
+  flex: 1; display: flex; flex-direction: column; border: 1px solid var(--border);
+  border-radius: 8px; overflow: hidden; min-width: 0;
+}
+.cc-review-panel-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 12px; font-size: 11px; font-weight: 600;
+  border-bottom: 1px solid var(--border);
+}
+.cc-review-panel-header.positive {
+  background: color-mix(in srgb, var(--c-positive) 10%, transparent);
+  color: var(--c-positive);
+}
+.cc-review-panel-header.negative {
+  background: color-mix(in srgb, var(--c-negative) 10%, transparent);
+  color: var(--c-negative);
+}
+.cc-review-count {
+  font-family: var(--mono); font-size: 10px; padding: 1px 6px;
+  border-radius: 8px; background: var(--surface2);
+}
+.cc-review-panel-body {
+  flex: 1; overflow-y: auto; padding: 6px;
+  display: flex; flex-direction: column; gap: 4px;
+}
+.cc-review-row {
+  padding: 6px 8px; border-radius: 6px; border: 1px solid var(--border);
+  background: var(--surface2);
+}
+.cc-review-row-header {
+  display: flex; align-items: center; gap: 6px; margin-bottom: 2px;
+}
 `

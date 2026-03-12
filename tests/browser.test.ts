@@ -747,16 +747,18 @@ describe('browser integration', () => {
 
     // With 2 traces, only 1 pair. Press 'p' for positive.
     await p.keyboard.press('p')
-    await new Promise(r => setTimeout(r, 200))
+    // Wait for review screen to appear
+    await p.waitForSelector('.cc-review', { timeout: 2000 })
 
-    // Should show completion — click Apply Results
-    const applyBtn = await p.evaluateHandle(() => {
-      return [...document.querySelectorAll('.cc-action-btn')].find(b =>
+    // Click Apply on the review screen
+    await p.evaluate(() => {
+      const btn = [...document.querySelectorAll('.cc-action-btn')].find(b =>
         b.textContent?.includes('Apply')
-      )
+      ) as HTMLElement | undefined
+      btn?.click()
     })
-    if (applyBtn) await (applyBtn as any).click()
-    await new Promise(r => setTimeout(r, 200))
+    // Wait for mithril redraw to remove the modal
+    await p.waitForFunction(() => !document.querySelector('.cc-overlay'), { timeout: 2000 })
 
     // Modal should be gone
     const overlay = await p.$('.cc-overlay')
