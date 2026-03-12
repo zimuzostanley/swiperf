@@ -2039,6 +2039,8 @@ function applyCrossCompareResults(cl, positiveIdx = 0, negativeIdx = 1) {
   }
   recomputeCounts(cl);
   _ccState = null;
+  cl.splitView = true;
+  cl.splitFilters = ["negative", "positive"];
   m$1.redraw();
 }
 function resetCrossCompare(cl) {
@@ -3739,7 +3741,8 @@ const CrossCompareModal = {
               max: 100,
               value: _ccSliderPct,
               step: 1,
-              oninput: (e) => updateBothSliders(cl, +e.target.value)
+              oninput: (e) => updateBothSliders(cl, +e.target.value),
+              onchange: (e) => e.target.blur()
             })
           ]),
           m$1(".cc-actions", [
