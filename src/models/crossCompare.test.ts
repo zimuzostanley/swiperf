@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   UnionFind, edgeKey, createCrossCompareState, recordComparison,
-  nextPair, getProgress, getResults,
+  nextPair, getProgress, getResults, skipCurrentPair,
 } from './crossCompare'
 
 // ── UnionFind ──
@@ -105,10 +105,12 @@ describe('recordComparison', () => {
     expect(state.uf.connected('a', 'b')).toBe(false)
   })
 
-  it('skip records comparison but no structural change', () => {
+  it('skip adds to skippedPairs without recording comparison', () => {
     const state = createCrossCompareState(['a', 'b'])
-    recordComparison(state, 'a', 'b', 'skip')
-    expect(state.comparisons.size).toBe(1)
+    state.currentPair = ['a', 'b']
+    skipCurrentPair(state)
+    expect(state.comparisons.size).toBe(0)
+    expect(state.skippedPairs.size).toBe(1)
     expect(state.uf.connected('a', 'b')).toBe(false)
     expect(state.negativeEdges.size).toBe(0)
   })
@@ -315,14 +317,12 @@ describe('end-to-end cross compare', () => {
     expect(groups[0].length).toBe(4)
   })
 
-  it('skip does not prevent revisiting the pair', () => {
+  it('skipped pair reappears when no other pairs available', () => {
     const state = createCrossCompareState(['a', 'b'])
-    recordComparison(state, 'a', 'b', 'skip')
-    // Skip was recorded but pair is still unresolved
-    // nextPair should still return null since the only pair was compared (even if skipped)
-    // The skip records the comparison — it won't come back automatically
+    state.currentPair = ['a', 'b']
+    skipCurrentPair(state)
+    // Skipped pair should reappear as fallback
     state.currentPair = nextPair(state)
-    // With only 2 traces and 1 skip, no more reps to try
-    expect(state.currentPair).toBeNull()
+    expect(state.currentPair).toEqual(['a', 'b'])
   })
 })
