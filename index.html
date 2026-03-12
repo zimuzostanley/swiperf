@@ -3424,8 +3424,7 @@ const Summary = {
 let _keyHandler = null;
 let _ccSliderPct = 100;
 let _lastPairKey = null;
-let _reviewPositiveIdx = 0;
-let _reviewNegativeIdx = 1;
+let _reviewPairIdx = 0;
 function updateBothSliders(cl, pct) {
   _ccSliderPct = pct;
   const state = getCrossCompareState();
@@ -3506,23 +3505,31 @@ function renderReviewTraceRow(cl, key) {
     m$1(MiniTimeline, { ts })
   ]);
 }
-function swapReviewAssignment(groupCount) {
-  if (groupCount < 2) return;
-  const tmp = _reviewPositiveIdx;
-  _reviewPositiveIdx = _reviewNegativeIdx;
-  _reviewNegativeIdx = tmp;
+function buildPairings(n) {
+  if (n < 2) return [[0, -1]];
+  const pairs = [];
+  for (let p = 0; p < n; p++) {
+    for (let neg = 0; neg < n; neg++) {
+      if (neg !== p) pairs.push([p, neg]);
+    }
+  }
+  return pairs;
+}
+function cycleReview(delta, groupCount) {
+  const pairings = buildPairings(groupCount);
+  if (pairings.length <= 1) return;
+  _reviewPairIdx = ((_reviewPairIdx + delta) % pairings.length + pairings.length) % pairings.length;
   m$1.redraw();
 }
 function renderReview(cl) {
   const state = getCrossCompareState();
   if (!state) return null;
   const { groups } = getResults(state);
-  if (_reviewPositiveIdx >= groups.length) _reviewPositiveIdx = 0;
-  if (_reviewNegativeIdx >= groups.length || _reviewNegativeIdx === _reviewPositiveIdx) {
-    _reviewNegativeIdx = groups.length > 1 ? _reviewPositiveIdx === 0 ? 1 : 0 : -1;
-  }
-  const positiveGroup = groups[_reviewPositiveIdx] || [];
-  const negativeGroup = _reviewNegativeIdx >= 0 ? groups[_reviewNegativeIdx] || [] : [];
+  const pairings = buildPairings(groups.length);
+  if (_reviewPairIdx >= pairings.length) _reviewPairIdx = 0;
+  const [posIdx, negIdx] = pairings[_reviewPairIdx];
+  const positiveGroup = groups[posIdx] || [];
+  const negativeGroup = negIdx >= 0 ? groups[negIdx] || [] : [];
   return m$1(".cc-review", [
     m$1(".cc-review-split", [
       m$1(".cc-review-panel", [
@@ -3544,11 +3551,14 @@ function renderReview(cl) {
         ))
       ])
     ]),
-    groups.length > 2 ? m$1(".cc-hint", `${groups.length - 2} other group${groups.length - 2 !== 1 ? "s" : ""} will be left unchanged`) : null,
-    m$1(".cc-hint", "← → to swap assignment"),
+    pairings.length > 1 ? m$1(".cc-review-nav", [
+      m$1("span.cc-hint", `Pairing ${_reviewPairIdx + 1} / ${pairings.length}`),
+      m$1("span.cc-hint", `Group ${posIdx + 1} vs ${negIdx >= 0 ? negIdx + 1 : "—"} of ${groups.length}`)
+    ]) : null,
+    m$1(".cc-hint", "← → to cycle pairings"),
     m$1(".cc-footer", [
       m$1("button.cc-action-btn.positive", {
-        onclick: () => applyCrossCompareResults(cl, _reviewPositiveIdx, _reviewNegativeIdx)
+        onclick: () => applyCrossCompareResults(cl, posIdx, negIdx)
       }, "Apply"),
       m$1("button.cc-action-btn", {
         onclick: () => undoCrossComparison(),
@@ -3582,8 +3592,12 @@ const CrossCompareModal = {
       }
       if (state.isComplete) {
         const { groups } = getResults(state);
-        if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
-          swapReviewAssignment(groups.length);
+        if (e.key === "ArrowLeft") {
+          cycleReview(-1, groups.length);
+          return;
+        }
+        if (e.key === "ArrowRight") {
+          cycleReview(1, groups.length);
           return;
         }
         return;
@@ -3697,7 +3711,7 @@ const CrossCompareModal = {
           m$1(".cc-hint", "← → arrow keys to highlight a side · Ctrl+Z to undo · Esc to close"),
           m$1(".cc-footer", [
             m$1("button.cc-action-btn", {
-              onclick: () => applyCrossCompareResults(cl, _reviewPositiveIdx, _reviewNegativeIdx)
+              onclick: () => applyCrossCompareResults(cl)
             }, "Apply Current Results"),
             m$1("button.cc-action-btn", {
               onclick: () => resetCrossCompare(cl)
@@ -4789,6 +4803,10 @@ input[type=range]::-webkit-slider-thumb {
 }
 .cc-review-row-header {
   display: flex; align-items: center; gap: 6px; margin-bottom: 2px;
+}
+.cc-review-nav {
+  display: flex; align-items: center; justify-content: center; gap: 12px;
+  padding: 2px 0;
 }
 `;
 const style = document.createElement("style");
