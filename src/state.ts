@@ -349,6 +349,9 @@ export function applyCrossCompareResults(cl: Cluster, positiveIdx = 0, negativeI
   }
   recomputeCounts(cl)
   _ccState = null
+  // Switch to split view: negative left, positive right
+  cl.splitView = true
+  cl.splitFilters = ['negative', 'positive']
   m.redraw()
 }
 

@@ -270,6 +270,7 @@ export const CrossCompareModal: m.Component<{ cl: Cluster }> = {
                   m('input[type=range]', {
                     min: 1, max: 100, value: _ccSliderPct, step: 1,
                     oninput: (e: Event) => updateBothSliders(cl, +(e.target as HTMLInputElement).value),
+                    onchange: (e: Event) => (e.target as HTMLElement).blur(),
                   }),
                 ]),
                 m('.cc-actions', [
