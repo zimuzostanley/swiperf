@@ -15,9 +15,8 @@ let _keyHandler: ((e: KeyboardEvent) => void) | null = null
 let _ccSliderPct = 100
 let _lastPairKey: string | null = null
 
-// Review screen state
-let _reviewPositiveIdx = 0
-let _reviewNegativeIdx = 1
+// Review screen state — index into the list of all [positive, negative] pairings
+let _reviewPairIdx = 0
 
 function updateBothSliders(cl: Cluster, pct: number) {
   _ccSliderPct = pct
@@ -106,11 +105,22 @@ function renderReviewTraceRow(cl: Cluster, key: string) {
   ])
 }
 
-function swapReviewAssignment(groupCount: number) {
-  if (groupCount < 2) return
-  const tmp = _reviewPositiveIdx
-  _reviewPositiveIdx = _reviewNegativeIdx
-  _reviewNegativeIdx = tmp
+/** Build all [positiveIdx, negativeIdx] pairings for N groups. */
+function buildPairings(n: number): [number, number][] {
+  if (n < 2) return [[0, -1]]
+  const pairs: [number, number][] = []
+  for (let p = 0; p < n; p++) {
+    for (let neg = 0; neg < n; neg++) {
+      if (neg !== p) pairs.push([p, neg])
+    }
+  }
+  return pairs
+}
+
+function cycleReview(delta: number, groupCount: number) {
+  const pairings = buildPairings(groupCount)
+  if (pairings.length <= 1) return
+  _reviewPairIdx = ((_reviewPairIdx + delta) % pairings.length + pairings.length) % pairings.length
   m.redraw()
 }
 
@@ -119,14 +129,12 @@ function renderReview(cl: Cluster) {
   if (!state) return null
   const { groups } = getResults(state)
 
-  // Reset indices if out of range
-  if (_reviewPositiveIdx >= groups.length) _reviewPositiveIdx = 0
-  if (_reviewNegativeIdx >= groups.length || _reviewNegativeIdx === _reviewPositiveIdx) {
-    _reviewNegativeIdx = groups.length > 1 ? (_reviewPositiveIdx === 0 ? 1 : 0) : -1
-  }
+  const pairings = buildPairings(groups.length)
+  if (_reviewPairIdx >= pairings.length) _reviewPairIdx = 0
+  const [posIdx, negIdx] = pairings[_reviewPairIdx]
 
-  const positiveGroup = groups[_reviewPositiveIdx] || []
-  const negativeGroup = _reviewNegativeIdx >= 0 ? (groups[_reviewNegativeIdx] || []) : []
+  const positiveGroup = groups[posIdx] || []
+  const negativeGroup = negIdx >= 0 ? (groups[negIdx] || []) : []
 
   return m('.cc-review', [
     m('.cc-review-split', [
@@ -149,13 +157,16 @@ function renderReview(cl: Cluster) {
         )),
       ]),
     ]),
-    groups.length > 2
-      ? m('.cc-hint', `${groups.length - 2} other group${groups.length - 2 !== 1 ? 's' : ''} will be left unchanged`)
+    pairings.length > 1
+      ? m('.cc-review-nav', [
+          m('span.cc-hint', `Pairing ${_reviewPairIdx + 1} / ${pairings.length}`),
+          m('span.cc-hint', `Group ${posIdx + 1} vs ${negIdx >= 0 ? negIdx + 1 : '\u2014'} of ${groups.length}`),
+        ])
       : null,
-    m('.cc-hint', '\u2190 \u2192 to swap assignment'),
+    m('.cc-hint', '\u2190 \u2192 to cycle pairings'),
     m('.cc-footer', [
       m('button.cc-action-btn.positive', {
-        onclick: () => applyCrossCompareResults(cl, _reviewPositiveIdx, _reviewNegativeIdx),
+        onclick: () => applyCrossCompareResults(cl, posIdx, negIdx),
       }, 'Apply'),
       m('button.cc-action-btn', {
         onclick: () => undoCrossComparison(),
@@ -182,12 +193,10 @@ export const CrossCompareModal: m.Component<{ cl: Cluster }> = {
       if (e.key === 'Escape') { closeCrossCompare(); return }
       if (e.key === 'z' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); undoCrossComparison(); return }
       if (state.isComplete) {
-        // Review screen: arrow keys swap assignment
+        // Review screen: arrow keys cycle pairings
         const { groups } = getResults(state)
-        if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
-          swapReviewAssignment(groups.length)
-          return
-        }
+        if (e.key === 'ArrowLeft') { cycleReview(-1, groups.length); return }
+        if (e.key === 'ArrowRight') { cycleReview(1, groups.length); return }
         return
       }
       if (e.key === 'p' || e.key === 'P') { recordCrossComparison('positive'); return }
@@ -281,7 +290,7 @@ export const CrossCompareModal: m.Component<{ cl: Cluster }> = {
                 m('.cc-hint', '\u2190 \u2192 arrow keys to highlight a side \u00b7 Ctrl+Z to undo \u00b7 Esc to close'),
                 m('.cc-footer', [
                   m('button.cc-action-btn', {
-                    onclick: () => applyCrossCompareResults(cl, _reviewPositiveIdx, _reviewNegativeIdx),
+                    onclick: () => applyCrossCompareResults(cl),
                   }, 'Apply Current Results'),
                   m('button.cc-action-btn', {
                     onclick: () => resetCrossCompare(cl),

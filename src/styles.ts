@@ -577,4 +577,8 @@ input[type=range]::-webkit-slider-thumb {
 .cc-review-row-header {
   display: flex; align-items: center; gap: 6px; margin-bottom: 2px;
 }
+.cc-review-nav {
+  display: flex; align-items: center; justify-content: center; gap: 12px;
+  padding: 2px 0;
+}
 `
