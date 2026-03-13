@@ -301,11 +301,23 @@ export function closeCrossCompare(): void {
   m.redraw()
 }
 
+function isPureAnchor(anchorKey: string): boolean {
+  if (!_ccState || _ccState.history.length === 0) return false
+  return _ccState.history.every(e =>
+    e.type === 'discard' || e.keyA === anchorKey || e.keyB === anchorKey
+  )
+}
+
 function advancePair(anchorKey?: string): void {
   if (!_ccState) return
   if (anchorKey && !_ccState.discardedKeys.has(anchorKey)) {
     _ccState.currentPair = nextPairForAnchor(_ccState, anchorKey)
-    if (!_ccState.currentPair) _ccState.currentPair = nextPair(_ccState)
+    if (!_ccState.currentPair) {
+      // Pure anchor session: all comparisons involved the anchor → done
+      if (!isPureAnchor(anchorKey)) {
+        _ccState.currentPair = nextPair(_ccState)
+      }
+    }
   } else {
     _ccState.currentPair = nextPair(_ccState)
   }
@@ -358,7 +370,13 @@ export function applyCrossCompareResults(cl: Cluster, positiveIdx = 0, negativeI
   if (positiveIdx >= 0 && positiveIdx < groups.length) {
     for (const key of groups[positiveIdx]) cl.verdicts.set(key, 'like')
   }
-  if (negativeIdx >= 0 && negativeIdx < groups.length) {
+  if (negativeIdx === -1) {
+    // All groups except positive → negative
+    for (let i = 0; i < groups.length; i++) {
+      if (i === positiveIdx) continue
+      for (const key of groups[i]) cl.verdicts.set(key, 'dislike')
+    }
+  } else if (negativeIdx >= 0 && negativeIdx < groups.length) {
     for (const key of groups[negativeIdx]) cl.verdicts.set(key, 'dislike')
   }
   recomputeCounts(cl)

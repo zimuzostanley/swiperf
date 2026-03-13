@@ -192,12 +192,28 @@ function renderReview(cl: Cluster) {
   if (!state) return null
   const { groups, discarded } = getResults(state)
 
-  const pairings = buildPairings(groups.length)
-  if (_reviewPairIdx >= pairings.length) _reviewPairIdx = 0
-  const [posIdx, negIdx] = pairings[_reviewPairIdx]
+  // Pure anchor: anchor's group = positive, all others combined = negative
+  let positiveGroup: string[]
+  let negativeGroup: string[]
+  let posIdx: number
+  let negIdx: number
+  let pairings: [number, number][]
+  const pureAnchor = _anchorKey && groups.some(g => g.includes(_anchorKey!))
 
-  const positiveGroup = groups[posIdx] || []
-  const negativeGroup = negIdx >= 0 ? (groups[negIdx] || []) : []
+  if (pureAnchor) {
+    const anchorGroupIdx = groups.findIndex(g => g.includes(_anchorKey!))
+    positiveGroup = groups[anchorGroupIdx]
+    negativeGroup = groups.flatMap((g, i) => i === anchorGroupIdx ? [] : g)
+    posIdx = anchorGroupIdx
+    negIdx = -1  // special: means "all others"
+    pairings = [[posIdx, negIdx]]
+  } else {
+    pairings = buildPairings(groups.length)
+    if (_reviewPairIdx >= pairings.length) _reviewPairIdx = 0
+    ;[posIdx, negIdx] = pairings[_reviewPairIdx]
+    positiveGroup = groups[posIdx] || []
+    negativeGroup = negIdx >= 0 ? (groups[negIdx] || []) : []
+  }
 
   return m('.cc-review', [
     m('.cc-review-split', [
@@ -223,7 +239,7 @@ function renderReview(cl: Cluster) {
     m('.cc-review-nav', [
       pairings.length > 1
         ? m('span.cc-hint', `Pairing ${_reviewPairIdx + 1} / ${pairings.length}`)
-        : m('span.cc-hint', `${groups.length} group${groups.length !== 1 ? 's' : ''}`),
+        : null,
       discarded.length > 0
         ? m('span.cc-hint', `${discarded.length} discarded`)
         : null,
