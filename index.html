@@ -3663,26 +3663,11 @@ function renderReview(cl) {
   const state = getCrossCompareState();
   if (!state) return null;
   const { groups, discarded } = getResults(state);
-  let positiveGroup;
-  let negativeGroup;
-  let posIdx;
-  let negIdx;
-  let pairings;
-  const pureAnchor = _anchorKey && groups.some((g) => g.includes(_anchorKey));
-  if (pureAnchor) {
-    const anchorGroupIdx = groups.findIndex((g) => g.includes(_anchorKey));
-    positiveGroup = groups[anchorGroupIdx];
-    negativeGroup = [];
-    posIdx = anchorGroupIdx;
-    negIdx = -1;
-    pairings = [[posIdx, negIdx]];
-  } else {
-    pairings = buildPairings(groups.length);
-    if (_reviewPairIdx >= pairings.length) _reviewPairIdx = 0;
-    [posIdx, negIdx] = pairings[_reviewPairIdx];
-    positiveGroup = groups[posIdx] || [];
-    negativeGroup = negIdx >= 0 ? groups[negIdx] || [] : [];
-  }
+  const pairings = buildPairings(groups.length);
+  if (_reviewPairIdx >= pairings.length) _reviewPairIdx = 0;
+  const [posIdx, negIdx] = pairings[_reviewPairIdx];
+  const positiveGroup = groups[posIdx] || [];
+  const negativeGroup = negIdx >= 0 ? groups[negIdx] || [] : [];
   return m$1(".cc-review", [
     m$1(".cc-review-split", [
       m$1(".cc-review-panel", [
