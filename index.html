@@ -2072,7 +2072,12 @@ function applyCrossCompareResults(cl, positiveIdx = 0, negativeIdx = 1) {
   if (positiveIdx >= 0 && positiveIdx < groups.length) {
     for (const key of groups[positiveIdx]) cl.verdicts.set(key, "like");
   }
-  if (negativeIdx >= 0 && negativeIdx < groups.length) {
+  if (negativeIdx === -1) {
+    for (let i = 0; i < groups.length; i++) {
+      if (i === positiveIdx) continue;
+      for (const key of groups[i]) cl.verdicts.set(key, "dislike");
+    }
+  } else if (negativeIdx >= 0 && negativeIdx < groups.length) {
     for (const key of groups[negativeIdx]) cl.verdicts.set(key, "dislike");
   }
   recomputeCounts(cl);
@@ -3663,11 +3668,26 @@ function renderReview(cl) {
   const state = getCrossCompareState();
   if (!state) return null;
   const { groups, discarded } = getResults(state);
-  const pairings = buildPairings(groups.length);
-  if (_reviewPairIdx >= pairings.length) _reviewPairIdx = 0;
-  const [posIdx, negIdx] = pairings[_reviewPairIdx];
-  const positiveGroup = groups[posIdx] || [];
-  const negativeGroup = negIdx >= 0 ? groups[negIdx] || [] : [];
+  const pureAnchor = _anchorKey && groups.some((g) => g.includes(_anchorKey));
+  let positiveGroup;
+  let negativeGroup;
+  let pairings;
+  let posIdx;
+  let negIdx;
+  if (pureAnchor) {
+    const ai = groups.findIndex((g) => g.includes(_anchorKey));
+    positiveGroup = groups[ai];
+    negativeGroup = groups.flatMap((g, i) => i === ai ? [] : g);
+    posIdx = ai;
+    negIdx = -1;
+    pairings = [[posIdx, negIdx]];
+  } else {
+    pairings = buildPairings(groups.length);
+    if (_reviewPairIdx >= pairings.length) _reviewPairIdx = 0;
+    [posIdx, negIdx] = pairings[_reviewPairIdx];
+    positiveGroup = groups[posIdx] || [];
+    negativeGroup = negIdx >= 0 ? groups[negIdx] || [] : [];
+  }
   return m$1(".cc-review", [
     m$1(".cc-review-split", [
       m$1(".cc-review-panel", [
