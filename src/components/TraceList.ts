@@ -65,6 +65,15 @@ function doExport(scope: 'tab' | 'all', format: 'json' | 'tsv') {
   openExportMenu = false
 }
 
+function doCopy(scope: 'tab' | 'all') {
+  const cl = activeCluster()
+  if (!cl) return
+  const clusters = scope === 'tab' ? [cl] : S.clusters
+  const rows = buildRows(clusters)
+  navigator.clipboard.writeText(rowsToTsv(rows))
+  openExportMenu = false
+}
+
 function renderGlobalSlider(cl: Cluster) {
   return m('.trace-slider.global-slider', [
     m('span.slider-label', 'All'),
@@ -265,6 +274,9 @@ function renderExportDropdown(cl: Cluster) {
     }, [
       m('.export-section-label', 'This tab'),
       m('button.export-item', {
+        onclick: () => doCopy('tab'),
+      }, 'Copy'),
+      m('button.export-item', {
         onclick: () => doExport('tab', 'json'),
       }, 'JSON'),
       m('button.export-item', {
@@ -272,6 +284,9 @@ function renderExportDropdown(cl: Cluster) {
       }, 'TSV'),
       S.clusters.length > 1 ? [
         m('.export-section-label', 'All tabs'),
+        m('button.export-item', {
+          onclick: () => doCopy('all'),
+        }, 'Copy'),
         m('button.export-item', {
           onclick: () => doExport('all', 'json'),
         }, 'JSON'),

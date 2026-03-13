@@ -520,6 +520,7 @@ describe('browser integration', () => {
     const items = await p.$$eval('.export-item', els =>
       els.map(el => el.textContent),
     )
+    expect(items).toContain('Copy')
     expect(items).toContain('JSON')
     expect(items).toContain('TSV')
 

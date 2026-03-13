@@ -5,7 +5,7 @@ import {
   applyCrossCompareResults, resetCrossCompare, ensureCache, updateSlider,
   undoCrossComparison, discardCrossCompareTrace, skipCrossComparison,
 } from '../state'
-import { getProgress, getResults } from '../models/crossCompare'
+import { getProgress, getResults, CrossCompareState } from '../models/crossCompare'
 import { MiniTimeline } from './MiniTimeline'
 import { Summary } from './Summary'
 import { fmt_dur } from '../utils/format'
@@ -84,15 +84,21 @@ function clearAnchor() {
 function ensureAnchorSide() {
   const state = getCrossCompareState()
   if (!_anchorKey || !state?.currentPair) return
+  // Clear anchor if anchor trace was discarded
+  if (state.discardedKeys.has(_anchorKey)) { clearAnchor(); return }
   const [a, b] = state.currentPair
+  // Only swap if anchor is actually in this pair
   if (_anchorSide === 'left' && b === _anchorKey && a !== _anchorKey) {
     state.currentPair = [b, a]
   } else if (_anchorSide === 'right' && a === _anchorKey && b !== _anchorKey) {
     state.currentPair = [b, a]
-  } else if (a !== _anchorKey && b !== _anchorKey) {
-    // Anchor exhausted — pair came from tournament fallback
-    clearAnchor()
   }
+  // If anchor isn't in pair (tournament fallback), leave anchor set — it's a user preference
+}
+
+/** Whether the anchor trace is in the current pair. */
+function anchorActive(state: CrossCompareState | null): boolean {
+  return !!_anchorKey && !!state?.currentPair && state.currentPair.includes(_anchorKey)
 }
 
 function discardSideForAnchor(): 'left' | 'right' | null {
@@ -107,9 +113,10 @@ function renderPanel(cl: Cluster, key: string, side: 'left' | 'right') {
   const ts = findTrace(cl, key)
   if (!ts) return m('.cc-panel', 'Trace not found')
   ensureCache(ts)
-  const isAnchor = _anchorKey === key && _anchorSide === side
+  const isAnchor = _anchorKey === key
   const state = getCrossCompareState()
-  const isSelected = !_anchorKey && state?.selectedSide === side
+  const aa = anchorActive(state)
+  const isSelected = !aa && state?.selectedSide === side
 
   return m('.cc-panel' + (isAnchor ? '.anchored' : isSelected ? '.selected' : ''), {
     onclick: (e: Event) => {
@@ -263,32 +270,34 @@ export const CrossCompareModal: m.Component<{ cl: Cluster }> = {
         if (e.key === 'ArrowRight') { cycleReview(1, groups.length); return }
         return
       }
-      // Comparison keys
+      // Comparison keys — pass anchorKey so advancePair tries anchor-first
+      const ak = _anchorKey ?? undefined
+      const aa = anchorActive(state)
       if (e.key === 'p' || e.key === 'P') {
-        recordCrossComparison('positive', _anchorKey ?? undefined)
+        recordCrossComparison('positive', ak)
         ensureAnchorSide()
         return
       }
       if (e.key === 'n' || e.key === 'N') {
-        recordCrossComparison('negative', _anchorKey ?? undefined)
+        recordCrossComparison('negative', ak)
         ensureAnchorSide()
         return
       }
       if (e.key === 's' || e.key === 'S') {
-        skipCrossComparison(_anchorKey ?? undefined)
+        skipCrossComparison(ak)
         ensureAnchorSide()
         return
       }
       if (e.key === 'd' || e.key === 'D') {
-        const side = _anchorKey ? discardSideForAnchor() : state.selectedSide
+        const side = aa ? discardSideForAnchor() : state.selectedSide
         if (side) {
-          discardCrossCompareTrace(getCl(), side, _anchorKey ?? undefined)
+          discardCrossCompareTrace(getCl(), side, ak)
           ensureAnchorSide()
         }
         return
       }
-      // Arrow keys: select side (non-anchor mode only)
-      if (!_anchorKey) {
+      // Arrow keys: select side when anchor not active in current pair
+      if (!aa) {
         if (e.key === 'ArrowLeft') { state.selectedSide = 'left'; m.redraw(); return }
         if (e.key === 'ArrowRight') { state.selectedSide = 'right'; m.redraw(); return }
       }
@@ -315,13 +324,11 @@ export const CrossCompareModal: m.Component<{ cl: Cluster }> = {
       if (_ccSliderPct < 100) updateBothSliders(cl, _ccSliderPct)
     }
 
-    // Validate anchor is still in current pair
-    if (_anchorKey && state.currentPair && !state.currentPair.includes(_anchorKey)) {
-      clearAnchor()
-    }
+    // Clear anchor if discarded
+    if (_anchorKey && state.discardedKeys.has(_anchorKey)) clearAnchor()
 
-    const anchored = !!_anchorKey
-    const canDiscard = anchored || !!state.selectedSide
+    const active = anchorActive(state)
+    const canDiscard = active || !!state.selectedSide
 
     return m('.cc-overlay', { onclick: () => {
       if (_anchorKey) { clearAnchor(); m.redraw() }
@@ -378,11 +385,11 @@ export const CrossCompareModal: m.Component<{ cl: Cluster }> = {
                   }, ['Skip ', m('kbd', 'S')]),
                   m('button.cc-action-btn.discard', {
                     onclick: () => {
-                      const side = anchored ? discardSideForAnchor() : state.selectedSide
+                      const side = active ? discardSideForAnchor() : state.selectedSide
                       if (side) { discardCrossCompareTrace(cl, side, _anchorKey ?? undefined); ensureAnchorSide() }
                     },
                     disabled: !canDiscard,
-                    title: anchored
+                    title: active
                       ? 'Discard the non-anchor trace'
                       : state.selectedSide
                         ? 'Discard selected trace'
@@ -394,9 +401,11 @@ export const CrossCompareModal: m.Component<{ cl: Cluster }> = {
                     title: 'Undo (Ctrl+Z)',
                   }, ['Undo ', m('kbd', '\u2318Z')]),
                 ]),
-                m('.cc-hint', anchored
+                m('.cc-hint', active
                   ? `Anchored \u00b7 P/N/S/D apply to other trace \u00b7 click anchor to deselect`
-                  : 'Click a panel to anchor \u00b7 \u2190\u2192 to select for discard \u00b7 Esc close'
+                  : _anchorKey
+                    ? `Anchor set (not in this pair) \u00b7 \u2190\u2192 to select \u00b7 click panel to re-anchor`
+                    : 'Click a panel to anchor \u00b7 \u2190\u2192 to select for discard \u00b7 Esc close'
                 ),
                 m('.cc-footer', [
                   m('button.cc-action-btn', {
