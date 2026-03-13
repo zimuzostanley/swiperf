@@ -192,11 +192,28 @@ function renderReview(cl: Cluster) {
   if (!state) return null
   const { groups, discarded } = getResults(state)
 
-  const pairings = buildPairings(groups.length)
-  if (_reviewPairIdx >= pairings.length) _reviewPairIdx = 0
-  const [posIdx, negIdx] = pairings[_reviewPairIdx]
-  const positiveGroup = groups[posIdx] || []
-  const negativeGroup = negIdx >= 0 ? (groups[negIdx] || []) : []
+  // Pure anchor: anchor's group vs all others combined. Two groups, no cycling.
+  const pureAnchor = _anchorKey && groups.some(g => g.includes(_anchorKey!))
+  let positiveGroup: string[]
+  let negativeGroup: string[]
+  let pairings: [number, number][]
+  let posIdx: number
+  let negIdx: number
+
+  if (pureAnchor) {
+    const ai = groups.findIndex(g => g.includes(_anchorKey!))
+    positiveGroup = groups[ai]
+    negativeGroup = groups.flatMap((g, i) => i === ai ? [] : g)
+    posIdx = ai
+    negIdx = -1
+    pairings = [[posIdx, negIdx]]
+  } else {
+    pairings = buildPairings(groups.length)
+    if (_reviewPairIdx >= pairings.length) _reviewPairIdx = 0
+    ;[posIdx, negIdx] = pairings[_reviewPairIdx]
+    positiveGroup = groups[posIdx] || []
+    negativeGroup = negIdx >= 0 ? (groups[negIdx] || []) : []
+  }
 
   return m('.cc-review', [
     m('.cc-review-split', [

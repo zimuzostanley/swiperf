@@ -786,6 +786,84 @@ describe('browser integration', () => {
     await p.close()
   })
 
+  it('anchor mode: positives and negatives form correct groups', async () => {
+    const p = await freshPage()
+
+    // 5 traces
+    const traces = [
+      makeTrace('anc-1', 'com.a1'),
+      makeTrace('anc-2', 'com.a2'),
+      makeTrace('anc-3', 'com.a3'),
+      makeTrace('anc-4', 'com.a4'),
+      makeTrace('anc-5', 'com.a5'),
+    ]
+    await pasteText(p, JSON.stringify(traces))
+
+    // Open compare modal
+    await p.evaluate(() => {
+      const btn = [...document.querySelectorAll('button.btn')].find(b => b.textContent === 'Compare')
+      ;(btn as HTMLElement)?.click()
+    })
+    await p.waitForSelector('.cc-overlay')
+
+    // Blur any focused input so keyboard events reach the handler
+    await p.evaluate(() => (document.activeElement as HTMLElement)?.blur())
+
+    // Click left panel to set anchor
+    await p.evaluate(() => {
+      const panel = document.querySelector('.cc-panel') as HTMLElement
+      panel?.click()
+    })
+    await new Promise(r => setTimeout(r, 200))
+
+    // Verify anchor badge appears
+    const hasBadge = await p.$('.cc-anchor-badge')
+    expect(hasBadge).not.toBeNull()
+
+    // Press P twice (2 positives with anchor), N twice (2 negatives)
+    await p.keyboard.press('p')
+    await new Promise(r => setTimeout(r, 200))
+    await p.keyboard.press('p')
+    await new Promise(r => setTimeout(r, 200))
+    await p.keyboard.press('n')
+    await new Promise(r => setTimeout(r, 200))
+    await p.keyboard.press('n')
+    await new Promise(r => setTimeout(r, 200))
+
+    // Should be on review screen now (pure anchor, all 4 comparisons done)
+    const review = await p.$('.cc-review')
+    expect(review).not.toBeNull()
+
+    // Check review shows positive and negative groups
+    const counts = await p.$$eval('.cc-review-count', els => els.map(e => e.textContent))
+    // Anchor + 2 positives = 3 positive, 2 negative
+    expect(counts).toContain('3')
+    expect(counts).toContain('2')
+
+    // Should be 1 pairing (no cycling hint)
+    const cycleHint = await p.evaluate(() =>
+      document.querySelector('.cc-hint')?.textContent?.includes('cycle')
+    )
+    expect(cycleHint).toBeFalsy()
+
+    // Apply
+    await p.evaluate(() => {
+      const btn = [...document.querySelectorAll('.cc-action-btn')].find(b =>
+        b.textContent?.includes('Apply')
+      ) as HTMLElement | undefined
+      btn?.click()
+    })
+    await p.waitForFunction(() => !document.querySelector('.cc-overlay'), { timeout: 2000 })
+
+    // Check verdicts: 3 positive, 2 negative
+    const posCount = await p.$eval('.fc-positive', el => el.textContent)
+    const negCount = await p.$eval('.fc-negative', el => el.textContent)
+    expect(posCount).toContain('3')
+    expect(negCount).toContain('2')
+
+    await p.close()
+  })
+
   // ── Large paste stress tests ──
   // Generate JSON trace data of approximate target size in bytes.
   // Each trace has ~200 bytes of slices, so we control count to hit target.

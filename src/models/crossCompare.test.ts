@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   UnionFind, edgeKey, createCrossCompareState, recordComparison,
-  nextPair, getProgress, getResults, skipCurrentPair,
+  nextPair, nextPairForAnchor, getProgress, getResults, skipCurrentPair,
 } from './crossCompare'
 
 // ── UnionFind ──
@@ -324,5 +324,47 @@ describe('end-to-end cross compare', () => {
     // Skipped pair should reappear as fallback
     state.currentPair = nextPair(state)
     expect(state.currentPair).toEqual(['a', 'b'])
+  })
+
+  it('anchor mode: positives merge, negatives separate, all pairs exhausted', () => {
+    const state = createCrossCompareState(['anchor', 'b', 'c', 'd', 'e'])
+    const anchorKey = 'anchor'
+
+    // Simulate anchor mode: always compare anchor vs others
+    // anchor vs b → positive
+    state.currentPair = [anchorKey, 'b']
+    recordComparison(state, anchorKey, 'b', 'positive')
+    let pair = nextPairForAnchor(state, anchorKey)
+    expect(pair).not.toBeNull()
+    expect(pair![0]).toBe(anchorKey)
+
+    // anchor vs c → positive
+    state.currentPair = pair!
+    recordComparison(state, anchorKey, pair![1], 'positive')
+    pair = nextPairForAnchor(state, anchorKey)
+    expect(pair).not.toBeNull()
+
+    // anchor vs next → negative
+    state.currentPair = pair!
+    recordComparison(state, anchorKey, pair![1], 'negative')
+    pair = nextPairForAnchor(state, anchorKey)
+    expect(pair).not.toBeNull()
+
+    // anchor vs last → negative
+    state.currentPair = pair!
+    recordComparison(state, anchorKey, pair![1], 'negative')
+    pair = nextPairForAnchor(state, anchorKey)
+    // All anchor pairs exhausted
+    expect(pair).toBeNull()
+
+    const { groups } = getResults(state)
+    // anchor's component has anchor + 2 positives
+    const anchorGroup = groups.find(g => g.includes(anchorKey))!
+    expect(anchorGroup.length).toBe(3)
+    // The 2 negatives are in separate groups (never compared with each other)
+    const otherGroups = groups.filter(g => !g.includes(anchorKey))
+    expect(otherGroups.length).toBe(2)
+    // Combined they have 2 members
+    expect(otherGroups.flat().length).toBe(2)
   })
 })
