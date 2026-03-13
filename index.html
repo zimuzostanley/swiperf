@@ -2011,11 +2011,21 @@ function closeCrossCompare() {
   _ccState = null;
   m$1.redraw();
 }
+function isPureAnchor(anchorKey) {
+  if (!_ccState || _ccState.history.length === 0) return false;
+  return _ccState.history.every(
+    (e) => e.type === "discard" || e.keyA === anchorKey || e.keyB === anchorKey
+  );
+}
 function advancePair(anchorKey) {
   if (!_ccState) return;
   if (anchorKey && !_ccState.discardedKeys.has(anchorKey)) {
     _ccState.currentPair = nextPairForAnchor(_ccState, anchorKey);
-    if (!_ccState.currentPair) _ccState.currentPair = nextPair(_ccState);
+    if (!_ccState.currentPair) {
+      if (!isPureAnchor(anchorKey)) {
+        _ccState.currentPair = nextPair(_ccState);
+      }
+    }
   } else {
     _ccState.currentPair = nextPair(_ccState);
   }
@@ -2062,7 +2072,12 @@ function applyCrossCompareResults(cl, positiveIdx = 0, negativeIdx = 1) {
   if (positiveIdx >= 0 && positiveIdx < groups.length) {
     for (const key of groups[positiveIdx]) cl.verdicts.set(key, "like");
   }
-  if (negativeIdx >= 0 && negativeIdx < groups.length) {
+  if (negativeIdx === -1) {
+    for (let i = 0; i < groups.length; i++) {
+      if (i === positiveIdx) continue;
+      for (const key of groups[i]) cl.verdicts.set(key, "dislike");
+    }
+  } else if (negativeIdx >= 0 && negativeIdx < groups.length) {
     for (const key of groups[negativeIdx]) cl.verdicts.set(key, "dislike");
   }
   recomputeCounts(cl);
@@ -3653,11 +3668,26 @@ function renderReview(cl) {
   const state = getCrossCompareState();
   if (!state) return null;
   const { groups, discarded } = getResults(state);
-  const pairings = buildPairings(groups.length);
-  if (_reviewPairIdx >= pairings.length) _reviewPairIdx = 0;
-  const [posIdx, negIdx] = pairings[_reviewPairIdx];
-  const positiveGroup = groups[posIdx] || [];
-  const negativeGroup = negIdx >= 0 ? groups[negIdx] || [] : [];
+  let positiveGroup;
+  let negativeGroup;
+  let posIdx;
+  let negIdx;
+  let pairings;
+  const pureAnchor = _anchorKey && groups.some((g) => g.includes(_anchorKey));
+  if (pureAnchor) {
+    const anchorGroupIdx = groups.findIndex((g) => g.includes(_anchorKey));
+    positiveGroup = groups[anchorGroupIdx];
+    negativeGroup = groups.flatMap((g, i) => i === anchorGroupIdx ? [] : g);
+    posIdx = anchorGroupIdx;
+    negIdx = -1;
+    pairings = [[posIdx, negIdx]];
+  } else {
+    pairings = buildPairings(groups.length);
+    if (_reviewPairIdx >= pairings.length) _reviewPairIdx = 0;
+    [posIdx, negIdx] = pairings[_reviewPairIdx];
+    positiveGroup = groups[posIdx] || [];
+    negativeGroup = negIdx >= 0 ? groups[negIdx] || [] : [];
+  }
   return m$1(".cc-review", [
     m$1(".cc-review-split", [
       m$1(".cc-review-panel", [
@@ -3680,7 +3710,7 @@ function renderReview(cl) {
       ])
     ]),
     m$1(".cc-review-nav", [
-      pairings.length > 1 ? m$1("span.cc-hint", `Pairing ${_reviewPairIdx + 1} / ${pairings.length}`) : m$1("span.cc-hint", `${groups.length} group${groups.length !== 1 ? "s" : ""}`),
+      pairings.length > 1 ? m$1("span.cc-hint", `Pairing ${_reviewPairIdx + 1} / ${pairings.length}`) : null,
       discarded.length > 0 ? m$1("span.cc-hint", `${discarded.length} discarded`) : null
     ]),
     pairings.length > 1 ? m$1(".cc-hint", "← → to cycle pairings") : null,
