@@ -3560,14 +3560,19 @@ function clearAnchor() {
 function ensureAnchorSide() {
   const state = getCrossCompareState();
   if (!_anchorKey || !(state == null ? void 0 : state.currentPair)) return;
+  if (state.discardedKeys.has(_anchorKey)) {
+    clearAnchor();
+    return;
+  }
   const [a, b] = state.currentPair;
   if (_anchorSide === "left" && b === _anchorKey && a !== _anchorKey) {
     state.currentPair = [b, a];
   } else if (_anchorSide === "right" && a === _anchorKey && b !== _anchorKey) {
     state.currentPair = [b, a];
-  } else if (a !== _anchorKey && b !== _anchorKey) {
-    clearAnchor();
   }
+}
+function anchorActive(state) {
+  return !!_anchorKey && !!(state == null ? void 0 : state.currentPair) && state.currentPair.includes(_anchorKey);
 }
 function discardSideForAnchor() {
   if (_anchorSide === "left") return "right";
@@ -3578,9 +3583,10 @@ function renderPanel(cl, key, side) {
   const ts = findTrace(cl, key);
   if (!ts) return m$1(".cc-panel", "Trace not found");
   ensureCache(ts);
-  const isAnchor = _anchorKey === key && _anchorSide === side;
+  const isAnchor = _anchorKey === key;
   const state = getCrossCompareState();
-  const isSelected = !_anchorKey && (state == null ? void 0 : state.selectedSide) === side;
+  const aa = anchorActive(state);
+  const isSelected = !aa && (state == null ? void 0 : state.selectedSide) === side;
   return m$1(".cc-panel" + (isAnchor ? ".anchored" : isSelected ? ".selected" : ""), {
     onclick: (e) => {
       e.stopPropagation();
@@ -3732,30 +3738,32 @@ const CrossCompareModal = {
         }
         return;
       }
+      const ak = _anchorKey ?? void 0;
+      const aa = anchorActive(state);
       if (e.key === "p" || e.key === "P") {
-        recordCrossComparison("positive", _anchorKey ?? void 0);
+        recordCrossComparison("positive", ak);
         ensureAnchorSide();
         return;
       }
       if (e.key === "n" || e.key === "N") {
-        recordCrossComparison("negative", _anchorKey ?? void 0);
+        recordCrossComparison("negative", ak);
         ensureAnchorSide();
         return;
       }
       if (e.key === "s" || e.key === "S") {
-        skipCrossComparison(_anchorKey ?? void 0);
+        skipCrossComparison(ak);
         ensureAnchorSide();
         return;
       }
       if (e.key === "d" || e.key === "D") {
-        const side = _anchorKey ? discardSideForAnchor() : state.selectedSide;
+        const side = aa ? discardSideForAnchor() : state.selectedSide;
         if (side) {
-          discardCrossCompareTrace(getCl(), side, _anchorKey ?? void 0);
+          discardCrossCompareTrace(getCl(), side, ak);
           ensureAnchorSide();
         }
         return;
       }
-      if (!_anchorKey) {
+      if (!aa) {
         if (e.key === "ArrowLeft") {
           state.selectedSide = "left";
           m$1.redraw();
@@ -3786,11 +3794,9 @@ const CrossCompareModal = {
       _lastPairKey = pairKey;
       if (_ccSliderPct < 100) updateBothSliders(cl, _ccSliderPct);
     }
-    if (_anchorKey && state.currentPair && !state.currentPair.includes(_anchorKey)) {
-      clearAnchor();
-    }
-    const anchored = !!_anchorKey;
-    const canDiscard = anchored || !!state.selectedSide;
+    if (_anchorKey && state.discardedKeys.has(_anchorKey)) clearAnchor();
+    const active = anchorActive(state);
+    const canDiscard = active || !!state.selectedSide;
     return m$1(".cc-overlay", { onclick: () => {
       if (_anchorKey) {
         clearAnchor();
@@ -3855,14 +3861,14 @@ const CrossCompareModal = {
             }, ["Skip ", m$1("kbd", "S")]),
             m$1("button.cc-action-btn.discard", {
               onclick: () => {
-                const side = anchored ? discardSideForAnchor() : state.selectedSide;
+                const side = active ? discardSideForAnchor() : state.selectedSide;
                 if (side) {
                   discardCrossCompareTrace(cl, side, _anchorKey ?? void 0);
                   ensureAnchorSide();
                 }
               },
               disabled: !canDiscard,
-              title: anchored ? "Discard the non-anchor trace" : state.selectedSide ? "Discard selected trace" : "Click a panel to anchor, or ←→ to select"
+              title: active ? "Discard the non-anchor trace" : state.selectedSide ? "Discard selected trace" : "Click a panel to anchor, or ←→ to select"
             }, ["Discard ", m$1("kbd", "D")]),
             m$1("button.cc-action-btn", {
               onclick: () => {
@@ -3875,7 +3881,7 @@ const CrossCompareModal = {
           ]),
           m$1(
             ".cc-hint",
-            anchored ? `Anchored · P/N/S/D apply to other trace · click anchor to deselect` : "Click a panel to anchor · ←→ to select for discard · Esc close"
+            active ? `Anchored · P/N/S/D apply to other trace · click anchor to deselect` : _anchorKey ? `Anchor set (not in this pair) · ←→ to select · click panel to re-anchor` : "Click a panel to anchor · ←→ to select for discard · Esc close"
           ),
           m$1(".cc-footer", [
             m$1("button.cc-action-btn", {
@@ -3940,6 +3946,14 @@ function doExport(scope, format) {
   } else {
     downloadFile(rowsToTsv(rows), `${safeStem}-${date}.tsv`, "text/tab-separated-values");
   }
+  openExportMenu = false;
+}
+function doCopy(scope) {
+  const cl = activeCluster();
+  if (!cl) return;
+  const clusters = scope === "tab" ? [cl] : S.clusters;
+  const rows = buildRows(clusters);
+  navigator.clipboard.writeText(rowsToTsv(rows));
   openExportMenu = false;
 }
 function renderGlobalSlider(cl) {
@@ -4142,6 +4156,9 @@ function renderExportDropdown(cl) {
     }, [
       m$1(".export-section-label", "This tab"),
       m$1("button.export-item", {
+        onclick: () => doCopy("tab")
+      }, "Copy"),
+      m$1("button.export-item", {
         onclick: () => doExport("tab", "json")
       }, "JSON"),
       m$1("button.export-item", {
@@ -4149,6 +4166,9 @@ function renderExportDropdown(cl) {
       }, "TSV"),
       S.clusters.length > 1 ? [
         m$1(".export-section-label", "All tabs"),
+        m$1("button.export-item", {
+          onclick: () => doCopy("all")
+        }, "Copy"),
         m$1("button.export-item", {
           onclick: () => doExport("all", "json")
         }, "JSON"),
