@@ -203,9 +203,9 @@ function renderReview(cl: Cluster) {
   if (pureAnchor) {
     const anchorGroupIdx = groups.findIndex(g => g.includes(_anchorKey!))
     positiveGroup = groups[anchorGroupIdx]
-    negativeGroup = groups.flatMap((g, i) => i === anchorGroupIdx ? [] : g)
+    negativeGroup = []
     posIdx = anchorGroupIdx
-    negIdx = -1  // special: means "all others"
+    negIdx = -1  // no negative group — others stay pending
     pairings = [[posIdx, negIdx]]
   } else {
     pairings = buildPairings(groups.length)

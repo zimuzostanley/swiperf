@@ -370,13 +370,7 @@ export function applyCrossCompareResults(cl: Cluster, positiveIdx = 0, negativeI
   if (positiveIdx >= 0 && positiveIdx < groups.length) {
     for (const key of groups[positiveIdx]) cl.verdicts.set(key, 'like')
   }
-  if (negativeIdx === -1) {
-    // All groups except positive → negative
-    for (let i = 0; i < groups.length; i++) {
-      if (i === positiveIdx) continue
-      for (const key of groups[i]) cl.verdicts.set(key, 'dislike')
-    }
-  } else if (negativeIdx >= 0 && negativeIdx < groups.length) {
+  if (negativeIdx >= 0 && negativeIdx < groups.length) {
     for (const key of groups[negativeIdx]) cl.verdicts.set(key, 'dislike')
   }
   recomputeCounts(cl)
