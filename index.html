@@ -2072,12 +2072,7 @@ function applyCrossCompareResults(cl, positiveIdx = 0, negativeIdx = 1) {
   if (positiveIdx >= 0 && positiveIdx < groups.length) {
     for (const key of groups[positiveIdx]) cl.verdicts.set(key, "like");
   }
-  if (negativeIdx === -1) {
-    for (let i = 0; i < groups.length; i++) {
-      if (i === positiveIdx) continue;
-      for (const key of groups[i]) cl.verdicts.set(key, "dislike");
-    }
-  } else if (negativeIdx >= 0 && negativeIdx < groups.length) {
+  if (negativeIdx >= 0 && negativeIdx < groups.length) {
     for (const key of groups[negativeIdx]) cl.verdicts.set(key, "dislike");
   }
   recomputeCounts(cl);
@@ -3677,7 +3672,7 @@ function renderReview(cl) {
   if (pureAnchor) {
     const anchorGroupIdx = groups.findIndex((g) => g.includes(_anchorKey));
     positiveGroup = groups[anchorGroupIdx];
-    negativeGroup = groups.flatMap((g, i) => i === anchorGroupIdx ? [] : g);
+    negativeGroup = [];
     posIdx = anchorGroupIdx;
     negIdx = -1;
     pairings = [[posIdx, negIdx]];
