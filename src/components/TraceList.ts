@@ -403,7 +403,10 @@ export const TraceList: m.Component = {
         }, 'Compare'),
         m('button.btn', {
           onclick: () => {
-            const uuids = cl.traces.map(ts => ts.trace.trace_uuid).filter(Boolean)
+            const visible = cl.splitView
+              ? [...filterTraces(cl, cl.splitFilters[0]), ...filterTraces(cl, cl.splitFilters[1])]
+              : filtered || []
+            const uuids = visible.map(ts => ts.trace.trace_uuid).filter(Boolean)
             if (uuids.length === 0) return
             const filters = [{ column: 'trace_uuid', operator: 'in', value: JSON.stringify(uuids) }]
             const encoded = encodeURIComponent(JSON.stringify(filters))
@@ -411,7 +414,7 @@ export const TraceList: m.Component = {
             window.open(url, '_blank')
           },
           disabled: cl.traces.length === 0,
-          title: 'Open traces in Brush',
+          title: 'Open visible traces in Brush',
         }, 'Open in Brush'),
         renderExportDropdown(cl),
       ]),
