@@ -401,6 +401,18 @@ export const TraceList: m.Component = {
           disabled: cl.traces.length < 2,
           title: 'Compare traces in pairs to find groups',
         }, 'Compare'),
+        m('button.btn', {
+          onclick: () => {
+            const uuids = cl.traces.map(ts => ts.trace.trace_uuid).filter(Boolean)
+            if (uuids.length === 0) return
+            const filters = [{ column: 'trace_uuid', operator: 'in', value: JSON.stringify(uuids) }]
+            const encoded = encodeURIComponent(JSON.stringify(filters))
+            const url = `https://brush.corp.google.com/?filters=${encoded}&metric_id=android_startup&charts=gallery&gallerySvgColumn=svg&galleryMetricColumn=dur_ms&galleryMetricNameColumn=process_name`
+            window.open(url, '_blank')
+          },
+          disabled: cl.traces.length === 0,
+          title: 'Open traces in Brush',
+        }, 'Open in Brush'),
         renderExportDropdown(cl),
       ]),
     ])
