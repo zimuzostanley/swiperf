@@ -78,6 +78,35 @@ function tsvEscape(v: unknown): string {
   return String(v).replace(/[\t\n\r]/g, ' ')
 }
 
+/** Build a Sheets HYPERLINK formula that opens all trace UUIDs in Brush. */
+function brushFormula(dataRows: number, uuidCol: string, linkCol: string): string {
+  const lastRow = dataRows + 1 // +1 for header
+  const range = `${uuidCol}2:${uuidCol}${lastRow}`
+  return `=IF(COUNTA(${range})=0, "No UUIDs found",` +
+    ` HYPERLINK(` +
+    `"https://brush.corp.google.com/?filters=" &` +
+    ` ENCODEURL(` +
+    `"[{" & CHAR(34) & "column" & CHAR(34) & ":" & CHAR(34) & "trace_uuid" & CHAR(34) &` +
+    ` "," & CHAR(34) & "operator" & CHAR(34) & ":" & CHAR(34) & "in" & CHAR(34) &` +
+    ` "," & CHAR(34) & "value" & CHAR(34) & ":" & CHAR(34) & "[" & CHAR(92) & CHAR(34) &` +
+    ` TEXTJOIN(CHAR(92) & CHAR(34) & "," & CHAR(92) & CHAR(34), TRUE, FILTER(${range}, ${range}<>"")) &` +
+    ` CHAR(92) & CHAR(34) & "]" & CHAR(34) & "}]"` +
+    `) &` +
+    ` "&metric_id=android_startup&charts=gallery&gallerySvgColumn=svg&galleryMetricColumn=dur_ms&galleryMetricNameColumn=process_name",` +
+    ` "Open in Brush"))`
+}
+
+/** Column index to spreadsheet letter (0=A, 1=B, ..., 25=Z, 26=AA). */
+function colLetter(idx: number): string {
+  let s = ''
+  let n = idx
+  while (n >= 0) {
+    s = String.fromCharCode(65 + (n % 26)) + s
+    n = Math.floor(n / 26) - 1
+  }
+  return s
+}
+
 /** Convert rows to TSV string with stable column order. */
 export function rowsToTsv(rows: ExportRow[]): string {
   if (rows.length === 0) return ''
@@ -91,6 +120,17 @@ export function rowsToTsv(rows: ExportRow[]): string {
   const cols = [...FIXED_COLS, ...[...extraCols].sort()]
   const header = cols.join('\t')
   const lines = rows.map(row => cols.map(c => tsvEscape(row[c])).join('\t'))
+
+  // Append a formula row with Brush hyperlink in the link column
+  const linkIdx = cols.indexOf('link')
+  const uuidIdx = cols.indexOf('trace_uuid')
+  if (linkIdx >= 0 && uuidIdx >= 0) {
+    const formulaCells = cols.map((_, i) =>
+      i === linkIdx ? brushFormula(rows.length, colLetter(uuidIdx), colLetter(linkIdx)) : ''
+    )
+    return header + '\n' + lines.join('\n') + '\n' + formulaCells.join('\t')
+  }
+
   return header + '\n' + lines.join('\n')
 }
 

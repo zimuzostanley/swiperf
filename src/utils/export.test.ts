@@ -82,10 +82,12 @@ describe('rowsToTsv', () => {
     ]
     const tsv = rowsToTsv(rows)
     const lines = tsv.split('\n')
-    expect(lines.length).toBe(3) // header + 2 rows
+    expect(lines.length).toBe(4) // header + 2 rows + Brush formula row
     expect(lines[0]).toBe('trace_uuid\tpackage_name\tstartup_dur\ttab_name\tverdict\tlink')
     expect(lines[1]).toContain('u1')
     expect(lines[1]).toContain('positive')
+    expect(lines[3]).toContain('HYPERLINK')
+    expect(lines[3]).toContain('brush.corp.google.com')
   })
 
   it('includes extra columns sorted after fixed columns', () => {
