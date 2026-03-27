@@ -188,7 +188,15 @@ fun MainScreen(
                 }
             }
 
-            if (!hasData) {
+            if (!hasData && loading) {
+                // ── Restoring state ──
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+                }
+            } else if (!hasData) {
                 // ── Empty state ──
                 EmptyImportArea(loading = loading, onOpenFile = { filePicker.launch(arrayOf("application/json", "text/*", "*/*")) }, onPasteText = onPasteText)
             } else {

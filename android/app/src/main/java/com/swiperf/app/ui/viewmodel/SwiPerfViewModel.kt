@@ -45,7 +45,7 @@ class SwiPerfViewModel(app: Application) : AndroidViewModel(app) {
     private val _importMsg = MutableStateFlow<Pair<String, Boolean>?>(null) // text, isOk
     val importMsg: StateFlow<Pair<String, Boolean>?> = _importMsg.asStateFlow()
 
-    private val _loading = MutableStateFlow(false)
+    private val _loading = MutableStateFlow(true) // Start true — restoring state
     val loading: StateFlow<Boolean> = _loading.asStateFlow()
 
     private val _loadProgress = MutableStateFlow<String?>(null)
@@ -84,6 +84,7 @@ class SwiPerfViewModel(app: Application) : AndroidViewModel(app) {
                     }
                 }
             } catch (_: Exception) {}
+            _loading.value = false
             refreshSessions()
         }
     }
