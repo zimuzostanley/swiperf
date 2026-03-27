@@ -36,6 +36,7 @@ import com.swiperf.app.ui.util.Format
 fun TraceCard(
     packageName: String,
     startupDur: Long,
+    cosineSimilarity: String? = null,
     index: Int,
     verdict: Verdict?,
     seq: List<MergedSlice>,
@@ -159,6 +160,17 @@ fun TraceCard(
                 Text("#${index + 1}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.width(6.dp))
                 Text(packageName, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                if (cosineSimilarity != null) {
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        cosineSimilarity,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier
+                            .background(MaterialTheme.colorScheme.surfaceContainerHigh, RoundedCornerShape(3.dp))
+                            .padding(horizontal = 5.dp, vertical = 1.dp)
+                    )
+                }
                 if (startupDur > 0) {
                     Spacer(Modifier.width(6.dp))
                     Text(Format.fmtDur(startupDur), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)

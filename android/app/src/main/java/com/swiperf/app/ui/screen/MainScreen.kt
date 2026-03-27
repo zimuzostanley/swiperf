@@ -261,6 +261,7 @@ fun MainScreen(
                     TraceCard(
                         packageName = pinnedTrace.trace.packageName,
                         startupDur = pinnedTrace.trace.startupDur,
+                        cosineSimilarity = cosineTag(pinnedTrace.trace.extra),
                         index = indexMap[pinnedTrace.key] ?: 0,
                         verdict = pVerdict,
                         seq = pSeq,
@@ -292,6 +293,7 @@ fun MainScreen(
                         TraceCard(
                             packageName = ts.trace.packageName,
                             startupDur = ts.trace.startupDur,
+                            cosineSimilarity = cosineTag(ts.trace.extra),
                             index = indexMap[ts.key] ?: 0,
                             verdict = v,
                             seq = s,
@@ -486,4 +488,14 @@ private fun PasteSheet(onPaste: (String) -> Unit, onDismiss: () -> Unit) {
             }
         }
     }
+}
+
+private fun cosineTag(extra: Map<String, Any?>?): String? {
+    val raw = extra?.get("cosine_similarity") ?: extra?.get("Cosine Similarity") ?: return null
+    val n = when (raw) {
+        is Number -> raw.toDouble()
+        is String -> raw.toDoubleOrNull() ?: return null
+        else -> return null
+    }
+    return "%.2f".format(n)
 }
