@@ -20,7 +20,7 @@ fun CompressionSlider(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 2.dp),
+            .padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
@@ -39,9 +39,7 @@ fun CompressionSlider(
             value = value,
             onValueChange = onValueChange,
             valueRange = range,
-            modifier = Modifier
-                .weight(1f)
-                .height(20.dp)
+            modifier = Modifier.weight(1f)
         )
         if (suffix != null) {
             Text(

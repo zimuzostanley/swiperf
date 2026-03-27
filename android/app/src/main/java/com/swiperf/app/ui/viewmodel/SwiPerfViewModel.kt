@@ -92,6 +92,8 @@ class SwiPerfViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun notifyChange() {
         _stateVersion.value++
+        // Force _clusters to re-emit so activeCluster recomposes
+        _clusters.value = _clusters.value.toList()
         scheduleAutoSave()
     }
 
