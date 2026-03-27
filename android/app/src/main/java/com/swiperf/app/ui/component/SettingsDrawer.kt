@@ -80,28 +80,42 @@ fun SettingsSheet(
 
             // Save session
             if (hasData) {
+                var showSaveDialog by remember { mutableStateOf(false) }
                 Text("Session", style = MaterialTheme.typography.titleMedium)
                 Spacer(Modifier.height(8.dp))
-                var sessionName by remember { mutableStateOf(clusterName) }
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                OutlinedButton(
+                    onClick = { showSaveDialog = true },
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    OutlinedTextField(
-                        value = sessionName,
-                        onValueChange = { sessionName = it },
-                        modifier = Modifier.weight(1f),
-                        singleLine = true,
-                        textStyle = MaterialTheme.typography.bodyMedium,
-                        placeholder = { Text("Session name", style = MaterialTheme.typography.bodySmall) },
-                        shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
+                    Icon(Icons.Default.Save, null, Modifier.size(16.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Save Current Session")
+                }
+
+                if (showSaveDialog) {
+                    var name by remember { mutableStateOf(clusterName) }
+                    AlertDialog(
+                        onDismissRequest = { showSaveDialog = false },
+                        title = { Text("Save Session") },
+                        text = {
+                            OutlinedTextField(
+                                value = name,
+                                onValueChange = { name = it },
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true,
+                                placeholder = { Text("Session name") },
+                                shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
+                            )
+                        },
+                        confirmButton = {
+                            Button(onClick = { onSaveSession(name.ifBlank { clusterName }); showSaveDialog = false }) {
+                                Text("Save")
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { showSaveDialog = false }) { Text("Cancel") }
+                        }
                     )
-                    OutlinedButton(onClick = { onSaveSession(sessionName.ifBlank { clusterName }) }) {
-                        Icon(Icons.Default.Save, null, Modifier.size(16.dp))
-                        Spacer(Modifier.width(4.dp))
-                        Text("Save")
-                    }
                 }
 
                 Spacer(Modifier.height(16.dp))
