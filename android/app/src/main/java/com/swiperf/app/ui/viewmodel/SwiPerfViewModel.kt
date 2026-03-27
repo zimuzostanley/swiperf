@@ -3,7 +3,6 @@ package com.swiperf.app.ui.viewmodel
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.swiperf.app.data.compare.*
 import com.swiperf.app.data.export.ExportHelper
 import com.swiperf.app.data.model.*
 import com.swiperf.app.data.parse.TraceParser
@@ -52,14 +51,9 @@ class SwiPerfViewModel(app: Application) : AndroidViewModel(app) {
     private val _loadProgress = MutableStateFlow<String?>(null)
     val loadProgress: StateFlow<String?> = _loadProgress.asStateFlow()
 
-    // ── Compare ──
-    private var _ccState: CrossCompareState? = null
-    private val _ccVersion = MutableStateFlow(0L)
-    val crossCompareState: StateFlow<CrossCompareState?> = _ccVersion.map { _ccState }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
-
-    private val _anchorKey = MutableStateFlow<String?>(null)
-    val anchorKey: StateFlow<String?> = _anchorKey.asStateFlow()
+    // ── Pin ──
+    private val _pinnedKey = MutableStateFlow<String?>(null)
+    val pinnedKey: StateFlow<String?> = _pinnedKey.asStateFlow()
 
     // ── Theme ──
     private val _themeMode = MutableStateFlow(ThemePrefs.load(app))
@@ -298,8 +292,7 @@ class SwiPerfViewModel(app: Application) : AndroidViewModel(app) {
             _clusters.value = emptyList()
             _activeClusterId.value = null
             _currentSessionId.value = null
-            _ccState = null; emitCc()
-            _anchorKey.value = null
+            _pinnedKey.value = null
             refreshSessions()
         }
     }
@@ -344,125 +337,14 @@ class SwiPerfViewModel(app: Application) : AndroidViewModel(app) {
         ThemePrefs.save(ctx, mode)
     }
 
-    // ── Cross Compare ──
+    // ── Pin ──
 
-    private fun emitCc() { _ccVersion.value++ }
-
-    fun startCrossCompare() {
-        val cl = activeCluster.value ?: return
-        if (cl.traces.size < 2) return
-        val keys = cl.traces.map { it.key }
-        if (_ccState != null && _ccState!!.traceKeys == keys) { emitCc(); return }
-        _ccState = CrossCompare.createState(keys)
-        _anchorKey.value = null
-        emitCc()
+    fun togglePin(key: String) {
+        _pinnedKey.value = if (_pinnedKey.value == key) null else key
     }
 
-    fun setAnchor(key: String) {
-        _anchorKey.value = key
-        val state = _ccState ?: return
-        val pair = CrossCompare.nextPairForAnchor(state, key)
-        if (pair != null) { state.currentPair = pair; state.isComplete = false }
-        emitCc()
-        notifyChange()
-    }
-
-    fun recordComparison(result: ComparisonResult) {
-        val state = _ccState ?: return
-        val pair = state.currentPair ?: return
-        CrossCompare.recordComparison(state, pair.first, pair.second, result)
-        advancePair(state)
-        emitCc()
-        notifyChange()
-    }
-
-    fun skipComparison() {
-        val state = _ccState ?: return
-        CrossCompare.skipCurrentPair(state)
-        advancePair(state)
-        emitCc()
-        notifyChange()
-    }
-
-    fun undoComparison() {
-        val state = _ccState ?: return
-        if (state.history.isEmpty()) return
-        CrossCompare.undoComparison(state)
-        val anchor = _anchorKey.value
-        if (anchor != null && anchor !in state.discardedKeys) {
-            val pair = CrossCompare.nextPairForAnchor(state, anchor)
-            if (pair != null) { state.currentPair = pair; state.isComplete = false }
-        }
-        emitCc()
-        notifyChange()
-    }
-
-    fun discardCompareTrace(side: Side) {
-        val state = _ccState ?: return
-        val pair = state.currentPair ?: return
-        val cl = activeCluster.value ?: return
-        val key = if (side == Side.LEFT) pair.first else pair.second
-        cl.setVerdict(key, Verdict.DISCARD)
-        CrossCompare.discardTrace(state, key)
-        advancePair(state)
-        emitCc()
-        notifyChange()
-    }
-
-    fun applyCrossCompareResults(positiveIdx: Int = 0, negativeIdx: Int = -1) {
-        val state = _ccState ?: return
-        val cl = activeCluster.value ?: return
-        val results = CrossCompare.getResults(state)
-
-        if (positiveIdx in results.groups.indices) {
-            for (key in results.groups[positiveIdx]) cl.verdicts[key] = Verdict.LIKE
-        }
-        if (negativeIdx == -1) {
-            for (i in results.groups.indices) {
-                if (i == positiveIdx) continue
-                for (key in results.groups[i]) cl.verdicts[key] = Verdict.DISLIKE
-            }
-        } else if (negativeIdx in results.groups.indices) {
-            for (key in results.groups[negativeIdx]) cl.verdicts[key] = Verdict.DISLIKE
-        }
-        cl.recomputeCounts()
-        _ccState = null
-        _anchorKey.value = null
-        emitCc()
-        notifyChange()
-    }
-
-    fun resetCrossCompare() {
-        val cl = activeCluster.value ?: return
-        _ccState = CrossCompare.createState(cl.traces.map { it.key })
-        _anchorKey.value = null
-        emitCc()
-        notifyChange()
-    }
-
-    fun closeCrossCompare() {
-        _ccState = null
-        _anchorKey.value = null
-        emitCc()
-    }
-
-    private fun advancePair(state: CrossCompareState) {
-        val anchor = _anchorKey.value
-        if (anchor != null && anchor !in state.discardedKeys) {
-            state.currentPair = CrossCompare.nextPairForAnchor(state, anchor)
-            if (state.currentPair == null) {
-                // Check if pure anchor session
-                val isPureAnchor = state.history.all { entry ->
-                    entry is HistoryEntry.Discard ||
-                    (entry is HistoryEntry.Compare && (entry.keyA == anchor || entry.keyB == anchor))
-                }
-                if (!isPureAnchor) state.currentPair = CrossCompare.nextPair(state)
-            }
-        } else {
-            state.currentPair = CrossCompare.nextPair(state)
-        }
-        if (state.currentPair == null) state.isComplete = true
-        state.selectedSide = null
+    fun clearPin() {
+        _pinnedKey.value = null
     }
 
     // ── Export ──

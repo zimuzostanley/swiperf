@@ -17,8 +17,6 @@ import com.swiperf.app.ui.viewmodel.SwiPerfViewModel
 
 sealed class Route(val route: String) {
     data object Main : Route("main")
-    data object Compare : Route("compare")
-    data object CompareReview : Route("compare_review")
 }
 
 @Composable
@@ -35,8 +33,7 @@ fun SwiPerfApp(vm: SwiPerfViewModel = viewModel()) {
     val loading by vm.loading.collectAsState()
     val loadProgress by vm.loadProgress.collectAsState()
     val importMsg by vm.importMsg.collectAsState()
-    val ccState by vm.crossCompareState.collectAsState()
-    val anchorKey by vm.anchorKey.collectAsState()
+    val pinnedKey by vm.pinnedKey.collectAsState()
     val stateVersion by vm.stateVersion.collectAsState()
 
     fun importFile(uri: Uri) {
@@ -74,10 +71,8 @@ fun SwiPerfApp(vm: SwiPerfViewModel = viewModel()) {
                 onSliderChange = { ts, v -> vm.updateSlider(ts, v) },
                 onGlobalSliderChange = vm::updateGlobalSlider,
                 onToggleSort = vm::toggleSort,
-                onStartCompare = {
-                    vm.startCrossCompare()
-                    navController.navigate(Route.Compare.route)
-                },
+                pinnedKey = pinnedKey,
+                onTogglePin = vm::togglePin,
                 onSaveSession = { name -> vm.saveSession(name) },
                 onImportFile = ::importFile,
                 onPasteText = { text -> vm.importText(text, "Paste") },
@@ -94,61 +89,5 @@ fun SwiPerfApp(vm: SwiPerfViewModel = viewModel()) {
             )
         }
 
-        composable(Route.Compare.route) {
-            val currentCcState = ccState
-            val currentCluster = activeCluster
-            if (currentCcState != null && currentCluster != null) {
-                CompareScreen(
-                    cluster = currentCluster,
-                    ccState = currentCcState,
-                    anchorKey = anchorKey,
-                    onSetAnchor = vm::setAnchor,
-                    onRecordComparison = vm::recordComparison,
-                    onSkip = vm::skipComparison,
-                    onUndo = vm::undoComparison,
-                    onClose = {
-                        vm.closeCrossCompare()
-                        navController.popBackStack()
-                    },
-                    onNavigateToReview = {
-                        navController.navigate(Route.CompareReview.route) {
-                            popUpTo(Route.Compare.route) { inclusive = true }
-                        }
-                    }
-                )
-            }
-        }
-
-        composable(Route.CompareReview.route) {
-            val currentCcState = ccState
-            val currentCluster = activeCluster
-            if (currentCcState != null && currentCluster != null) {
-                CompareReviewScreen(
-                    cluster = currentCluster,
-                    ccState = currentCcState,
-                    anchorKey = anchorKey,
-                    onApply = { posIdx, negIdx ->
-                        vm.applyCrossCompareResults(posIdx, negIdx)
-                        navController.navigate(Route.Main.route) {
-                            popUpTo(0) { inclusive = true }
-                            launchSingleTop = true
-                        }
-                    },
-                    onReset = {
-                        vm.resetCrossCompare()
-                        navController.navigate(Route.Compare.route) {
-                            popUpTo(Route.CompareReview.route) { inclusive = true }
-                        }
-                    },
-                    onClose = {
-                        vm.closeCrossCompare()
-                        navController.navigate(Route.Main.route) {
-                            popUpTo(0) { inclusive = true }
-                            launchSingleTop = true
-                        }
-                    }
-                )
-            }
-        }
     }
 }

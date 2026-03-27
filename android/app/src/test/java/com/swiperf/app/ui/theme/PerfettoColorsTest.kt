@@ -6,16 +6,16 @@ import org.junit.Test
 class PerfettoColorsTest {
 
     @Test
-    fun perfettoHash_matchesKnownValues() {
-        // These values are verified against the JavaScript implementation
-        // perfetto_hash uses 0x811c9dc5 & 0xfffffff (28-bit init mask)
-        val h1 = PerfettoColors.perfettoHash("bindApplication", 360)
-        val h2 = PerfettoColors.perfettoHash("activityStart", 360)
-        // Values should be deterministic
-        assertEquals(h1, PerfettoColors.perfettoHash("bindApplication", 360))
-        assertEquals(h2, PerfettoColors.perfettoHash("activityStart", 360))
-        // Different strings should (usually) produce different values
-        assertNotEquals(h1, h2)
+    fun perfettoHash_matchesJavaScriptExactly() {
+        // Verified against: node -e "function perfetto_hash(s,m){let h=0x811c9dc5&0xfffffff;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=(h*16777619)&0xffffffff}return Math.abs(h)%m}"
+        assertEquals(40, PerfettoColors.perfettoHash("binder transaction", 360))
+        assertEquals(218, PerfettoColors.perfettoHash("bindApplication", 360))
+        assertEquals(216, PerfettoColors.perfettoHash("activityStart", 360))
+        assertEquals(220, PerfettoColors.perfettoHash("inflate", 360))
+        assertEquals(74, PerfettoColors.perfettoHash("Choreographer#doFrame", 360))
+        assertEquals(112, PerfettoColors.perfettoHash("Lock contention", 360))
+        assertEquals(142, PerfettoColors.perfettoHash("monitor contention", 360))
+        assertEquals(272, PerfettoColors.perfettoHash("measure", 360))
     }
 
     @Test

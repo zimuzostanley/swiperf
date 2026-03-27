@@ -122,15 +122,22 @@ object PerfettoColors {
     // Note: Perfetto uses 0xfffffff (28-bit mask) for the initial value,
     // NOT 0xffffffff. This produces different results from standard FNV-1a.
     fun perfettoHash(s: String, max: Int): Int {
-        var h = 0x811c9dc5L and 0xfffffffL  // 28-bit init, matching Perfetto
+        // Must match JavaScript's (h * 16777619) & 0xffffffff exactly.
+        // JS uses 64-bit floats (53-bit mantissa) so large multiplications lose
+        // precision. We simulate this by doing the multiply in Double, then
+        // converting back — matching the exact bit pattern JS produces.
+        var h = (0x811c9dc5L and 0xfffffffL).toDouble()  // 28-bit init
         for (ch in s) {
-            h = h xor ch.code.toLong()
-            h = (h * 16777619L) and 0xffffffffL
+            h = (h.toLong() xor ch.code.toLong()).toDouble()
+            // JS: (h * 16777619) & 0xffffffff — float64 multiply then bitwise AND
+            val mult = h * 16777619.0
+            // JS & 0xffffffff: convert to signed 32-bit integer
+            h = (mult.toLong() and 0xffffffffL).let {
+                // Reinterpret as signed 32-bit (JS |0 semantics)
+                if (it > Int.MAX_VALUE) (it - 0x100000000L).toDouble() else it.toDouble()
+            }
         }
-        // Match JS exactly: h is unsigned 32-bit in Long, convert to signed Int, then abs
-        val signed = h.toInt()  // reinterpret as signed 32-bit (may be negative)
-        val absVal = if (signed == Int.MIN_VALUE) Int.MAX_VALUE.toLong() else abs(signed).toLong()
-        return (absVal % max).toInt()
+        return (abs(h.toInt()) % max)
     }
 
     private val nameColorCache = mutableMapOf<String, Color>()

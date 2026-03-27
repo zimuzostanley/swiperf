@@ -55,7 +55,8 @@ fun MainScreen(
     onSliderChange: (TraceState, Int) -> Unit,
     onGlobalSliderChange: (Int) -> Unit,
     onToggleSort: () -> Unit,
-    onStartCompare: () -> Unit,
+    pinnedKey: String?,
+    onTogglePin: (String) -> Unit,
     onSaveSession: (String) -> Unit,
     onImportFile: (Uri) -> Unit,
     onPasteText: (String) -> Unit,
@@ -80,7 +81,7 @@ fun MainScreen(
     var showPaste by remember { mutableStateOf(false) }
     var renameClusterId by remember { mutableStateOf<String?>(null) }
     var longPressClusterId by remember { mutableStateOf<String?>(null) }
-    var showBreakdown by remember { mutableStateOf<TraceState?>(null) }
+    var showBreakdown by remember { mutableStateOf<Pair<TraceState, Int>?>(null) }
     var showSliceDetail by remember { mutableStateOf<Pair<MergedSlice, Long>?>(null) }
     var sliceDetailDismissCallback by remember { mutableStateOf<(() -> Unit)?>(null) }
     var pendingSaveContent by remember { mutableStateOf<Pair<String, String>?>(null) }
@@ -128,9 +129,6 @@ fun MainScreen(
                         Icon(Icons.Default.Add, "Import")
                     }
                     if (hasData && cl != null) {
-                        IconButton(onClick = onStartCompare, enabled = cl.traces.size >= 2) {
-                            Icon(Icons.Default.Compare, "Compare")
-                        }
                         IconButton(onClick = { showExport = true }) {
                             Icon(Icons.Default.Share, "Export")
                         }
@@ -246,8 +244,31 @@ fun MainScreen(
                 // Read verdicts keyed on version
                 val verdicts = remember(stateVersion) { c.verdicts.toMap() }
 
+                // Pinned trace (rendered above the scrollable list)
+                val pinnedTrace = if (pinnedKey != null) filteredTraces.find { it.key == pinnedKey } else null
+                val unpinnedTraces = if (pinnedKey != null) filteredTraces.filter { it.key != pinnedKey } else filteredTraces
+
+                if (pinnedTrace != null) {
+                    pinnedTrace.ensureCache()
+                    TraceCard(
+                        traceState = pinnedTrace,
+                        index = indexMap[pinnedTrace.key] ?: 0,
+                        verdict = verdicts[pinnedTrace.key],
+                        version = stateVersion,
+                        onVerdictChange = { v -> onSetVerdict(pinnedTrace.key, v) },
+                        onCardClick = { showBreakdown = pinnedTrace to (indexMap[pinnedTrace.key] ?: 0) },
+                        onSliderChange = { v -> onSliderChange(pinnedTrace, v) },
+                        onSliceTap = { slice, onDismiss ->
+                            showSliceDetail = slice to pinnedTrace.totalDur
+                            sliceDetailDismissCallback = onDismiss
+                        },
+                        isPinned = true,
+                        onTogglePin = { onTogglePin(pinnedTrace.key) }
+                    )
+                }
+
                 LazyColumn(modifier = Modifier.weight(1f), contentPadding = PaddingValues(bottom = 8.dp)) {
-                    itemsIndexed(items = filteredTraces, key = { _, ts -> ts.key }) { _, ts ->
+                    itemsIndexed(items = unpinnedTraces, key = { _, ts -> ts.key }) { _, ts ->
                         ts.ensureCache()
                         TraceCard(
                             traceState = ts,
@@ -255,15 +276,17 @@ fun MainScreen(
                             verdict = verdicts[ts.key],
                             version = stateVersion,
                             onVerdictChange = { v -> onSetVerdict(ts.key, v) },
-                            onCardClick = { showBreakdown = ts },
+                            onCardClick = { showBreakdown = ts to (indexMap[ts.key] ?: 0) },
                             onSliderChange = { v -> onSliderChange(ts, v) },
                             onSliceTap = { slice, onDismiss ->
                                 showSliceDetail = slice to ts.totalDur
                                 sliceDetailDismissCallback = onDismiss
-                            }
+                            },
+                            isPinned = false,
+                            onTogglePin = { onTogglePin(ts.key) }
                         )
                     }
-                    if (filteredTraces.isEmpty()) {
+                    if (unpinnedTraces.isEmpty() && pinnedTrace == null) {
                         item {
                             Box(Modifier.fillMaxWidth().padding(48.dp), contentAlignment = Alignment.Center) {
                                 Text("No traces match this filter", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -324,7 +347,7 @@ fun MainScreen(
     if (showPaste) {
         PasteSheet(onPaste = { text -> onPasteText(text); showPaste = false }, onDismiss = { showPaste = false })
     }
-    showBreakdown?.let { ts -> BreakdownSheet(traceState = ts, onDismiss = { showBreakdown = null }) }
+    showBreakdown?.let { (ts, idx) -> BreakdownSheet(traceState = ts, index = idx, onDismiss = { showBreakdown = null }) }
     showSliceDetail?.let { (slice, totalDur) ->
         SliceDetailSheet(slice = slice, totalDur = totalDur, onDismiss = {
             showSliceDetail = null

@@ -7,6 +7,9 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.PushPin
+import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -35,6 +38,8 @@ fun TraceCard(
     onCardClick: () -> Unit,
     onSliderChange: (Int) -> Unit,
     onSliceTap: (MergedSlice, onDismiss: () -> Unit) -> Unit,
+    isPinned: Boolean = false,
+    onTogglePin: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val accentColor by animateColorAsState(
@@ -72,6 +77,15 @@ fun TraceCard(
     ) {
         // Header
         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            if (onTogglePin != null) {
+                Icon(
+                    if (isPinned) Icons.Default.PushPin else Icons.Outlined.PushPin,
+                    null,
+                    modifier = Modifier.size(16.dp).clickable { onTogglePin() },
+                    tint = if (isPinned) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                )
+                Spacer(Modifier.width(4.dp))
+            }
             Text("#${index + 1}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.width(6.dp))
             Text(traceState.trace.packageName, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
@@ -83,18 +97,19 @@ fun TraceCard(
             VerdictButtons(currentVerdict = verdict, onVerdict = onVerdictChange)
         }
 
-        // Timeline — keyed on version so it re-renders when slider changes
-        key(version) {
-            MiniTimeline(
-                traceState = traceState,
-                highlightIndex = highlightIdx,
-                onSliceTapped = { idx, slice ->
-                    highlightIdx = idx
-                    onSliceTap(slice) { highlightIdx = null }
-                },
-                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(4.dp))
-            )
-        }
+        // Timeline — seq/totalDur passed directly so Compose detects changes
+        val seq = remember(version) { traceState.currentSeq }
+        val totalDur = remember(version) { traceState.totalDur }
+        MiniTimeline(
+            seq = seq,
+            totalDur = totalDur,
+            highlightIndex = highlightIdx,
+            onSliceTapped = { idx, slice ->
+                highlightIdx = idx
+                onSliceTap(slice) { highlightIdx = null }
+            },
+            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(4.dp))
+        )
 
         // Slider
         if (traceState.origN > 2) {

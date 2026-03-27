@@ -8,25 +8,22 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import com.swiperf.app.data.model.MergedSlice
-import com.swiperf.app.data.model.TraceState
 import com.swiperf.app.ui.theme.LocalIsDarkTheme
 import com.swiperf.app.ui.theme.PerfettoColors
 
 @Composable
 fun MiniTimeline(
-    traceState: TraceState,
+    seq: List<MergedSlice>,
+    totalDur: Long,
     modifier: Modifier = Modifier,
     highlightIndex: Int? = null,
     onSliceTapped: ((Int, MergedSlice) -> Unit)? = null
 ) {
     val isDark = LocalIsDarkTheme.current
-    val seq = traceState.currentSeq
-    val totalDur = traceState.totalDur
     val density = LocalDensity.current
     val minWidth = with(density) { 0.5.dp.toPx() }
     val stateRowH = with(density) { 12.dp.toPx() }
