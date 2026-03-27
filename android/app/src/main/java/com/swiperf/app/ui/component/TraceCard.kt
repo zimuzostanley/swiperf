@@ -63,7 +63,9 @@ fun TraceCard(
     val shape = RoundedCornerShape(6.dp)
 
     // Swipe to vote
+    val density = androidx.compose.ui.platform.LocalDensity.current
     val dismissState = rememberSwipeToDismissBoxState(
+        positionalThreshold = { totalDistance -> totalDistance * 0.4f }, // 40% of width — significant intentional swipe needed
         confirmValueChange = { dismissValue ->
             when (dismissValue) {
                 SwipeToDismissBoxValue.StartToEnd -> {
