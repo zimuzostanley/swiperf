@@ -12,6 +12,7 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -48,6 +49,7 @@ fun MainScreen(
     importMsg: Pair<String, Boolean>?,
     onSwitchCluster: (String) -> Unit,
     onRemoveCluster: (String) -> Unit,
+    onRenameCluster: (String, String) -> Unit,
     onSetOverviewFilter: (OverviewFilter) -> Unit,
     onSetVerdict: (String, Verdict) -> Unit,
     onSliderChange: (TraceState, Int) -> Unit,
@@ -76,6 +78,7 @@ fun MainScreen(
     var showSettings by remember { mutableStateOf(false) }
     var showExport by remember { mutableStateOf(false) }
     var showPaste by remember { mutableStateOf(false) }
+    var renameClusterId by remember { mutableStateOf<String?>(null) }
     var showBreakdown by remember { mutableStateOf<TraceState?>(null) }
     var showSliceDetail by remember { mutableStateOf<Pair<MergedSlice, Long>?>(null) }
     var sliceDetailDismissCallback by remember { mutableStateOf<(() -> Unit)?>(null) }
@@ -190,8 +193,21 @@ fun MainScreen(
                         edgePadding = 12.dp
                     ) {
                         clusters.forEach { c ->
-                            Tab(selected = c.id == cl!!.id, onClick = { onSwitchCluster(c.id) }) {
-                                Text("${c.name} (${c.traces.size})", modifier = Modifier.padding(12.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Tab(
+                                selected = c.id == cl!!.id,
+                                onClick = { onSwitchCluster(c.id) }
+                            ) {
+                                Text(
+                                    "${c.name} (${c.traces.size})",
+                                    modifier = Modifier
+                                        .padding(12.dp)
+                                        .combinedClickable(
+                                            onClick = { onSwitchCluster(c.id) },
+                                            onDoubleClick = { renameClusterId = c.id }
+                                        ),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
                             }
                         }
                     }
@@ -246,6 +262,32 @@ fun MainScreen(
                 }
             }
         }
+    }
+
+    // ── Rename cluster dialog ──
+    renameClusterId?.let { id ->
+        val current = clusters.find { it.id == id }?.name ?: ""
+        var name by remember(id) { mutableStateOf(current) }
+        AlertDialog(
+            onDismissRequest = { renameClusterId = null },
+            title = { Text("Rename tab") },
+            text = {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    placeholder = { Text("Tab name") },
+                    shape = RoundedCornerShape(4.dp)
+                )
+            },
+            confirmButton = {
+                Button(onClick = { onRenameCluster(id, name); renameClusterId = null }) { Text("Rename") }
+            },
+            dismissButton = {
+                TextButton(onClick = { renameClusterId = null }) { Text("Cancel") }
+            }
+        )
     }
 
     // ── Sheets ──

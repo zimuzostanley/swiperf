@@ -68,6 +68,7 @@ fun SwiPerfApp(vm: SwiPerfViewModel = viewModel()) {
                 importMsg = importMsg,
                 onSwitchCluster = vm::switchCluster,
                 onRemoveCluster = vm::removeCluster,
+                onRenameCluster = vm::renameCluster,
                 onSetOverviewFilter = vm::setOverviewFilter,
                 onSetVerdict = { key, v -> vm.setVerdict(key, v) },
                 onSliderChange = { ts, v -> vm.updateSlider(ts, v) },
