@@ -78,6 +78,9 @@ fun CompareScreen(
     anchorTrace.ensureCache()
     otherTrace.ensureCache()
 
+    // Local version counter to force recomposition on slider change
+    var localVersion by remember { mutableLongStateOf(0L) }
+
     var anchorExpanded by remember { mutableStateOf(false) }
     var otherCollapsed by remember { mutableStateOf(false) }
     var showAnchorBreakdown by remember { mutableStateOf(false) }
@@ -246,11 +249,13 @@ fun CompareScreen(
                     Column(Modifier.padding(top = 8.dp)) {
                         // Slider
                         if (anchorTrace.origN > 2) {
+                            val anchorSliderVal = remember(localVersion) { anchorTrace.sliderValue }
+                            val anchorSeqSize = remember(localVersion) { anchorTrace.currentSeq.size }
                             CompressionSlider(
-                                label = "", value = anchorTrace.sliderValue.toFloat(),
-                                valueLabel = "${anchorTrace.currentSeq.size}",
+                                label = "", value = anchorSliderVal.toFloat(),
+                                valueLabel = "$anchorSeqSize",
                                 range = 2f..anchorTrace.origN.toFloat(),
-                                onValueChange = { anchorTrace.updateSlider(it.toInt()) },
+                                onValueChange = { anchorTrace.updateSlider(it.toInt()); localVersion++ },
                                 suffix = "/ ${anchorTrace.origN}"
                             )
                         }
@@ -350,11 +355,13 @@ fun CompareScreen(
                     Column(Modifier.padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         // Slider
                         if (otherTrace.origN > 2) {
+                            val otherSliderVal = remember(localVersion) { otherTrace.sliderValue }
+                            val otherSeqSize = remember(localVersion) { otherTrace.currentSeq.size }
                             CompressionSlider(
-                                label = "", value = otherTrace.sliderValue.toFloat(),
-                                valueLabel = "${otherTrace.currentSeq.size}",
+                                label = "", value = otherSliderVal.toFloat(),
+                                valueLabel = "$otherSeqSize",
                                 range = 2f..otherTrace.origN.toFloat(),
-                                onValueChange = { otherTrace.updateSlider(it.toInt()) },
+                                onValueChange = { otherTrace.updateSlider(it.toInt()); localVersion++ },
                                 suffix = "/ ${otherTrace.origN}"
                             )
                         }

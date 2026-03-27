@@ -15,7 +15,7 @@ data class CrossCompareResults(
     val discarded: List<String>
 )
 
-data class CrossCompareState(
+class CrossCompareState(
     var uf: UnionFind,
     val negativeEdges: MutableSet<String> = mutableSetOf(),
     val comparisons: MutableMap<String, ComparisonResult> = mutableMapOf(),

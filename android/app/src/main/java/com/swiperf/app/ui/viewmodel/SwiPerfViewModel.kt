@@ -53,8 +53,10 @@ class SwiPerfViewModel(app: Application) : AndroidViewModel(app) {
     val loadProgress: StateFlow<String?> = _loadProgress.asStateFlow()
 
     // ── Compare ──
-    private val _crossCompareState = MutableStateFlow<CrossCompareState?>(null)
-    val crossCompareState: StateFlow<CrossCompareState?> = _crossCompareState.asStateFlow()
+    private var _ccState: CrossCompareState? = null
+    private val _ccVersion = MutableStateFlow(0L)
+    val crossCompareState: StateFlow<CrossCompareState?> = _ccVersion.map { _ccState }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
     private val _anchorKey = MutableStateFlow<String?>(null)
     val anchorKey: StateFlow<String?> = _anchorKey.asStateFlow()
@@ -296,7 +298,7 @@ class SwiPerfViewModel(app: Application) : AndroidViewModel(app) {
             _clusters.value = emptyList()
             _activeClusterId.value = null
             _currentSessionId.value = null
-            _crossCompareState.value = null
+            _ccState = null; emitCc()
             _anchorKey.value = null
             refreshSessions()
         }
@@ -344,76 +346,71 @@ class SwiPerfViewModel(app: Application) : AndroidViewModel(app) {
 
     // ── Cross Compare ──
 
+    private fun emitCc() { _ccVersion.value++ }
+
     fun startCrossCompare() {
         val cl = activeCluster.value ?: return
         if (cl.traces.size < 2) return
         val keys = cl.traces.map { it.key }
-        val existing = _crossCompareState.value
-        if (existing != null && existing.traceKeys == keys) return // Resume
-        _crossCompareState.value = CrossCompare.createState(keys)
+        if (_ccState != null && _ccState!!.traceKeys == keys) { emitCc(); return }
+        _ccState = CrossCompare.createState(keys)
         _anchorKey.value = null
+        emitCc()
     }
 
     fun setAnchor(key: String) {
         _anchorKey.value = key
-        // Advance to anchor-based pair
-        val state = _crossCompareState.value ?: return
+        val state = _ccState ?: return
         val pair = CrossCompare.nextPairForAnchor(state, key)
-        if (pair != null) {
-            state.currentPair = pair
-            state.isComplete = false
-        }
-        _crossCompareState.value = state
+        if (pair != null) { state.currentPair = pair; state.isComplete = false }
+        emitCc()
         notifyChange()
     }
 
     fun recordComparison(result: ComparisonResult) {
-        val state = _crossCompareState.value ?: return
+        val state = _ccState ?: return
         val pair = state.currentPair ?: return
         CrossCompare.recordComparison(state, pair.first, pair.second, result)
         advancePair(state)
-        _crossCompareState.value = state
+        emitCc()
         notifyChange()
     }
 
     fun skipComparison() {
-        val state = _crossCompareState.value ?: return
+        val state = _ccState ?: return
         CrossCompare.skipCurrentPair(state)
         advancePair(state)
-        _crossCompareState.value = state
+        emitCc()
         notifyChange()
     }
 
     fun undoComparison() {
-        val state = _crossCompareState.value ?: return
+        val state = _ccState ?: return
         if (state.history.isEmpty()) return
         CrossCompare.undoComparison(state)
         val anchor = _anchorKey.value
         if (anchor != null && anchor !in state.discardedKeys) {
             val pair = CrossCompare.nextPairForAnchor(state, anchor)
-            if (pair != null) {
-                state.currentPair = pair
-                state.isComplete = false
-            }
+            if (pair != null) { state.currentPair = pair; state.isComplete = false }
         }
-        _crossCompareState.value = state
+        emitCc()
         notifyChange()
     }
 
     fun discardCompareTrace(side: Side) {
-        val state = _crossCompareState.value ?: return
+        val state = _ccState ?: return
         val pair = state.currentPair ?: return
         val cl = activeCluster.value ?: return
         val key = if (side == Side.LEFT) pair.first else pair.second
         cl.setVerdict(key, Verdict.DISCARD)
         CrossCompare.discardTrace(state, key)
         advancePair(state)
-        _crossCompareState.value = state
+        emitCc()
         notifyChange()
     }
 
     fun applyCrossCompareResults(positiveIdx: Int = 0, negativeIdx: Int = -1) {
-        val state = _crossCompareState.value ?: return
+        val state = _ccState ?: return
         val cl = activeCluster.value ?: return
         val results = CrossCompare.getResults(state)
 
@@ -421,7 +418,6 @@ class SwiPerfViewModel(app: Application) : AndroidViewModel(app) {
             for (key in results.groups[positiveIdx]) cl.verdicts[key] = Verdict.LIKE
         }
         if (negativeIdx == -1) {
-            // Pure anchor: all except positive → negative
             for (i in results.groups.indices) {
                 if (i == positiveIdx) continue
                 for (key in results.groups[i]) cl.verdicts[key] = Verdict.DISLIKE
@@ -430,22 +426,24 @@ class SwiPerfViewModel(app: Application) : AndroidViewModel(app) {
             for (key in results.groups[negativeIdx]) cl.verdicts[key] = Verdict.DISLIKE
         }
         cl.recomputeCounts()
-        _crossCompareState.value = null
+        _ccState = null
         _anchorKey.value = null
+        emitCc()
         notifyChange()
     }
 
     fun resetCrossCompare() {
         val cl = activeCluster.value ?: return
-        val keys = cl.traces.map { it.key }
-        _crossCompareState.value = CrossCompare.createState(keys)
+        _ccState = CrossCompare.createState(cl.traces.map { it.key })
         _anchorKey.value = null
+        emitCc()
         notifyChange()
     }
 
     fun closeCrossCompare() {
-        _crossCompareState.value = null
+        _ccState = null
         _anchorKey.value = null
+        emitCc()
     }
 
     private fun advancePair(state: CrossCompareState) {
