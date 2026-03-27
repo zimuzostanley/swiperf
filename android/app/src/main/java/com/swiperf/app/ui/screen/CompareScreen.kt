@@ -17,6 +17,7 @@ import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -39,6 +40,7 @@ import com.swiperf.app.ui.component.*
 import com.swiperf.app.ui.theme.LocalIsDarkTheme
 import com.swiperf.app.ui.theme.PerfettoColors
 import com.swiperf.app.ui.util.Format
+import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
@@ -80,12 +82,17 @@ fun CompareScreen(
 
     // Local version counter to force recomposition on slider change
     var localVersion by remember { mutableStateOf(0L) }
+    val snackbar = remember { SnackbarHostState() }
+    val snackScope = rememberCoroutineScope()
 
     var anchorExpanded by remember { mutableStateOf(false) }
     var otherCollapsed by remember { mutableStateOf(false) }
     var showAnchorBreakdown by remember { mutableStateOf(false) }
     var showOtherBreakdown by remember { mutableStateOf(false) }
     var showSliceDetail by remember { mutableStateOf<Pair<MergedSlice, Long>?>(null) }
+    val onRowTap: (com.swiperf.app.data.model.SummaryRow) -> Unit = { r ->
+        snackScope.launch { snackbar.showSnackbar("${r.label}: ${Format.fmtDur(r.dur)}", duration = SnackbarDuration.Short) }
+    }
 
     // Swipe state
     var offsetX by remember { mutableFloatStateOf(0f) }
@@ -123,7 +130,12 @@ fun CompareScreen(
                 },
                 actions = {
                     if (ccState.history.isNotEmpty()) {
-                        IconButton(onClick = { onUndo(); haptic.performHapticFeedback(HapticFeedbackType.LongPress) }) {
+                        IconButton(onClick = {
+                            onUndo()
+                            offsetX = 0f
+                            localVersion++
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        }) {
                             Icon(Icons.AutoMirrored.Filled.Undo, "Undo")
                         }
                     }
@@ -137,6 +149,11 @@ fun CompareScreen(
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)
             )
+        },
+        snackbarHost = {
+            SnackbarHost(snackbar) { data ->
+                Snackbar(snackbarData = data, containerColor = MaterialTheme.colorScheme.surfaceContainerHighest, contentColor = MaterialTheme.colorScheme.onSurface)
+            }
         },
         bottomBar = {
             Surface(color = MaterialTheme.colorScheme.surfaceContainer, tonalElevation = 3.dp) {
@@ -181,11 +198,13 @@ fun CompareScreen(
 
                         Spacer(Modifier.width(8.dp))
 
-                        // Skip — triggers swipe animation up (or just instant)
+                        // Skip
                         OutlinedButton(
                             onClick = {
                                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                 onSkip()
+                                offsetX = 0f
+                                localVersion++
                             },
                             modifier = Modifier.weight(1f)
                         ) { Text("skip") }
@@ -372,9 +391,9 @@ fun CompareScreen(
 
                         // Inline breakdown
                         val breakdown = buildBreakdownData(otherTrace.currentSeq, otherTrace.totalDur, isDark)
-                        BreakdownSection("States", breakdown.states, breakdown.totalDur)
+                        BreakdownSection("States", breakdown.states, breakdown.totalDur, onRowTap = onRowTap)
                         if (breakdown.names.isNotEmpty()) {
-                            BreakdownSection("Names", breakdown.names, breakdown.totalDur)
+                            BreakdownSection("Names", breakdown.names, breakdown.totalDur, onRowTap = onRowTap)
                         }
 
                         TextButton(onClick = { showOtherBreakdown = true }) {

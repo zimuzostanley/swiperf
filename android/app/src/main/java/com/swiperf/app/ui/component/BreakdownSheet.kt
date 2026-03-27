@@ -98,7 +98,7 @@ fun BreakdownSheet(
                 }
             }
         }
-            SnackbarHost(snackbar, modifier = Modifier.align(Alignment.BottomCenter)) { data ->
+            SnackbarHost(snackbar, modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 16.dp)) { data ->
                 Snackbar(snackbarData = data, containerColor = MaterialTheme.colorScheme.surfaceContainerHighest, contentColor = MaterialTheme.colorScheme.onSurface)
             }
         }
