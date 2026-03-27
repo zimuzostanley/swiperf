@@ -69,7 +69,8 @@ fun MainScreen(
     onExportSessionJson: (String, (String?) -> Unit) -> Unit,
     onCopyToNewTab: () -> Unit,
     onClearImportMsg: () -> Unit,
-    onRefreshSessions: () -> Unit
+    onRefreshSessions: () -> Unit,
+    onSyncRemote: (() -> Unit)? = null
 ) {
     val cl = activeCluster
     val hasData = cl != null && cl.traces.isNotEmpty()
@@ -399,6 +400,7 @@ fun MainScreen(
                     }
                 }
             },
+            onSyncRemote = onSyncRemote,
             onDismiss = { showSettings = false })
     }
 }

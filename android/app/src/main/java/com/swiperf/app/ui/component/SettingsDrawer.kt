@@ -31,6 +31,7 @@ fun SettingsSheet(
     onDeleteSession: (String) -> Unit,
     onDeleteAllData: () -> Unit,
     onExportSession: (String) -> Unit,
+    onSyncRemote: (() -> Unit)? = null,
     onDismiss: () -> Unit
 ) {
     var confirmClear by remember { mutableStateOf(false) }
@@ -185,6 +186,23 @@ fun SettingsSheet(
             Spacer(Modifier.height(16.dp))
             HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
             Spacer(Modifier.height(16.dp))
+
+            // Remote sync
+            if (onSyncRemote != null) {
+                Text("Sync", style = MaterialTheme.typography.titleMedium)
+                Spacer(Modifier.height(8.dp))
+                OutlinedButton(
+                    onClick = { onSyncRemote(); onDismiss() },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Default.Refresh, null, Modifier.size(16.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Fetch from server")
+                }
+                Spacer(Modifier.height(16.dp))
+                HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+                Spacer(Modifier.height(16.dp))
+            }
 
             // Data management
             Text("Data", style = MaterialTheme.typography.titleMedium)

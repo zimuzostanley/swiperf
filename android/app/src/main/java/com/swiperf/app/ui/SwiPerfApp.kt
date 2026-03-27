@@ -85,7 +85,8 @@ fun SwiPerfApp(vm: SwiPerfViewModel = viewModel()) {
                 onExportSessionJson = { id, cb -> vm.getSessionJson(id, cb) },
                 onCopyToNewTab = vm::copyFilteredToNewTab,
                 onClearImportMsg = vm::clearImportMsg,
-                onRefreshSessions = vm::refreshSessions
+                onRefreshSessions = vm::refreshSessions,
+                onSyncRemote = if (vm.remoteEnabled) vm::syncFromRemote else null
             )
         }
 

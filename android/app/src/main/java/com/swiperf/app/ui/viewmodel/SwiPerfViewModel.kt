@@ -353,6 +353,48 @@ class SwiPerfViewModel(app: Application) : AndroidViewModel(app) {
         _pinnedKey.value = null
     }
 
+    // ── Remote sync ──
+
+    val remoteEnabled: Boolean get() = com.swiperf.app.data.remote.RemoteSource.isEnabled
+
+    fun syncFromRemote() {
+        if (!remoteEnabled) {
+            _importMsg.value = "No endpoint configured" to false
+            return
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            _loading.value = true
+            _loadProgress.value = "Fetching from server..."
+            try {
+                val result = com.swiperf.app.data.remote.RemoteSource.fetch()
+                val text = result.getOrThrow()
+                withContext(Dispatchers.Main) {
+                    // Try as session first, then as raw trace data
+                    if (text.trimStart().startsWith("{") && text.contains("\"version\"") && text.contains("\"clusters\"")) {
+                        val (clusters, activeId) = SessionManager.parseExternalJson(text)
+                        _clusters.value = clusters
+                        _activeClusterId.value = activeId ?: clusters.firstOrNull()?.id
+                        _stateVersion.value++
+                        _importMsg.value = "Synced ${clusters.sumOf { it.traces.size }} traces" to true
+                    } else {
+                        val traces = TraceParser.parseText(text)
+                        if (traces.isNotEmpty()) {
+                            addCluster("Remote", traces)
+                            _importMsg.value = "Loaded ${traces.size} traces from server" to true
+                        } else {
+                            _importMsg.value = "No traces in server response" to false
+                        }
+                    }
+                    scheduleAutoSave()
+                }
+            } catch (e: Exception) {
+                _importMsg.value = "Sync failed: ${e.message}" to false
+            }
+            _loading.value = false
+            _loadProgress.value = null
+        }
+    }
+
     // ── Export ──
 
     fun buildExportRows(scope: String = "tab"): List<com.swiperf.app.data.export.ExportRow> {
