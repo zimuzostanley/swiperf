@@ -8,6 +8,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
@@ -20,7 +21,8 @@ import com.swiperf.app.ui.theme.PerfettoColors
 fun MiniTimeline(
     traceState: TraceState,
     modifier: Modifier = Modifier,
-    onSliceTapped: ((MergedSlice) -> Unit)? = null
+    highlightIndex: Int? = null,
+    onSliceTapped: ((Int, MergedSlice) -> Unit)? = null
 ) {
     val isDark = LocalIsDarkTheme.current
     val seq = traceState.currentSeq
@@ -39,13 +41,12 @@ fun MiniTimeline(
                 if (onSliceTapped == null || totalDur == 0L) return@pointerInput
                 detectTapGestures { offset ->
                     val scale = size.width.toFloat() / totalDur
-                    // Find tapped slice (reverse order for overlapping)
                     for (i in seq.indices.reversed()) {
                         val d = seq[i]
                         val x = d.tsRel * scale
                         val w = maxOf(d.dur * scale, minWidth)
                         if (offset.x >= x && offset.x <= x + w) {
-                            onSliceTapped(d)
+                            onSliceTapped(i, d)
                             break
                         }
                     }
@@ -54,27 +55,27 @@ fun MiniTimeline(
     ) {
         if (totalDur == 0L) return@Canvas
         val scale = size.width / totalDur.toFloat()
+        val dimmed = highlightIndex != null
 
-        // Background
         drawRect(PerfettoColors.canvasBg(isDark))
 
-        // Draw slices
-        for (d in seq) {
+        for ((i, d) in seq.withIndex()) {
             val x = d.tsRel * scale
             val w = maxOf(d.dur * scale, minWidth)
+            val alpha = if (dimmed && i != highlightIndex) 0.25f else 1f
 
-            // State row (top)
+            // State row
             drawRect(
-                color = PerfettoColors.stateColor(d.state, d.ioWait, isDark),
+                color = PerfettoColors.stateColor(d.state, d.ioWait, isDark).copy(alpha = alpha),
                 topLeft = Offset(x, 0f),
                 size = Size(w, stateRowH)
             )
 
-            // Name row (bottom, after gap)
+            // Name row
             val nameColor = if (d.name != null) PerfettoColors.nameColor(d.name)
                 else PerfettoColors.nameRowFallback(isDark)
             drawRect(
-                color = nameColor,
+                color = nameColor.copy(alpha = alpha),
                 topLeft = Offset(x, stateRowH + gapH),
                 size = Size(w, nameRowH)
             )

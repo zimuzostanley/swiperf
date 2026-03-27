@@ -36,6 +36,7 @@ class SwiPerfViewModel(app: Application) : AndroidViewModel(app) {
 
     // ── Filtered traces (reacts to cluster state changes) ──
     private val _stateVersion = MutableStateFlow(0L)
+    val stateVersion: StateFlow<Long> = _stateVersion.asStateFlow()
 
     val filteredTraces: StateFlow<List<TraceState>> = combine(activeCluster, _stateVersion) { cl, _ ->
         cl?.filterTraces(cl.overviewFilter) ?: emptyList()

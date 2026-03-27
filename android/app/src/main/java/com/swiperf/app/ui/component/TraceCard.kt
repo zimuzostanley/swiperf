@@ -8,8 +8,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -31,6 +30,7 @@ fun TraceCard(
     traceState: TraceState,
     index: Int,
     verdict: Verdict?,
+    version: Long,
     onVerdictChange: (Verdict) -> Unit,
     onCardClick: () -> Unit,
     onSliderChange: (Int) -> Unit,
@@ -48,6 +48,11 @@ fun TraceCard(
         label = "accent"
     )
 
+    // Read mutable values keyed on version so Compose re-reads them
+    val sliderValue = remember(version) { traceState.sliderValue }
+    val seqSize = remember(version) { traceState.currentSeq.size }
+    var highlightIdx by remember { mutableStateOf<Int?>(null) }
+
     val shape = RoundedCornerShape(6.dp)
 
     Column(
@@ -58,13 +63,8 @@ fun TraceCard(
             .border(0.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f), shape)
             .background(MaterialTheme.colorScheme.surface)
             .drawBehind {
-                // Left accent bar
                 if (verdict != null) {
-                    drawRect(
-                        color = accentColor,
-                        topLeft = Offset.Zero,
-                        size = Size(3.dp.toPx(), size.height)
-                    )
+                    drawRect(accentColor, Offset.Zero, Size(3.dp.toPx(), size.height))
                 }
             }
             .clickable { onCardClick() }
@@ -72,51 +72,35 @@ fun TraceCard(
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         // Header
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                "#${index + 1}",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text("#${index + 1}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.width(6.dp))
-            Text(
-                traceState.trace.packageName,
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.Medium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f)
-            )
+            Text(traceState.trace.packageName, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
             if (traceState.trace.startupDur > 0) {
                 Spacer(Modifier.width(6.dp))
-                Text(
-                    Format.fmtDur(traceState.trace.startupDur),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.primary
-                )
+                Text(Format.fmtDur(traceState.trace.startupDur), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
             }
             Spacer(Modifier.width(8.dp))
             VerdictButtons(currentVerdict = verdict, onVerdict = onVerdictChange)
         }
 
-        // Timeline
+        // Timeline with highlight
         MiniTimeline(
             traceState = traceState,
-            onSliceTapped = onSliceTap,
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(4.dp))
+            highlightIndex = highlightIdx,
+            onSliceTapped = { idx, slice ->
+                highlightIdx = idx
+                onSliceTap(slice)
+            },
+            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(4.dp))
         )
 
         // Slider
         if (traceState.origN > 2) {
             CompressionSlider(
                 label = "Slices",
-                value = traceState.sliderValue.toFloat(),
-                valueLabel = "${traceState.currentSeq.size}",
+                value = sliderValue.toFloat(),
+                valueLabel = "$seqSize",
                 range = 2f..traceState.origN.toFloat(),
                 onValueChange = { onSliderChange(it.toInt()) },
                 suffix = "/ ${traceState.origN}"

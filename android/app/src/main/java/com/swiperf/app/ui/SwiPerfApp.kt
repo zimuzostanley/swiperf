@@ -37,6 +37,7 @@ fun SwiPerfApp(vm: SwiPerfViewModel = viewModel()) {
     val importMsg by vm.importMsg.collectAsState()
     val ccState by vm.crossCompareState.collectAsState()
     val anchorKey by vm.anchorKey.collectAsState()
+    val stateVersion by vm.stateVersion.collectAsState()
 
     fun importFile(uri: Uri) {
         val text = context.contentResolver.openInputStream(uri)?.bufferedReader()?.readText() ?: return
@@ -58,6 +59,7 @@ fun SwiPerfApp(vm: SwiPerfViewModel = viewModel()) {
                 clusters = clusters,
                 activeCluster = activeCluster,
                 filteredTraces = filteredTraces,
+                stateVersion = stateVersion,
                 themeMode = themeMode,
                 sessions = sessions,
                 currentSessionId = currentSessionId,
