@@ -122,12 +122,15 @@ object PerfettoColors {
     // Note: Perfetto uses 0xfffffff (28-bit mask) for the initial value,
     // NOT 0xffffffff. This produces different results from standard FNV-1a.
     fun perfettoHash(s: String, max: Int): Int {
-        var h = (0x811c9dc5.toInt() and 0xfffffff).toLong()
+        var h = 0x811c9dc5L and 0xfffffffL  // 28-bit init, matching Perfetto
         for (ch in s) {
             h = h xor ch.code.toLong()
             h = (h * 16777619L) and 0xffffffffL
         }
-        return (abs(h.toInt()) % max)
+        // Match JS exactly: h is unsigned 32-bit in Long, convert to signed Int, then abs
+        val signed = h.toInt()  // reinterpret as signed 32-bit (may be negative)
+        val absVal = if (signed == Int.MIN_VALUE) Int.MAX_VALUE.toLong() else abs(signed).toLong()
+        return (absVal % max).toInt()
     }
 
     private val nameColorCache = mutableMapOf<String, Color>()
