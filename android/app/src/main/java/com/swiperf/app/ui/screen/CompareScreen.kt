@@ -79,7 +79,7 @@ fun CompareScreen(
     otherTrace.ensureCache()
 
     // Local version counter to force recomposition on slider change
-    var localVersion by remember { mutableLongStateOf(0L) }
+    var localVersion by remember { mutableStateOf(0L) }
 
     var anchorExpanded by remember { mutableStateOf(false) }
     var otherCollapsed by remember { mutableStateOf(false) }
@@ -166,11 +166,11 @@ fun CompareScreen(
                         horizontalArrangement = Arrangement.SpaceEvenly,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // Negative
+                        // Negative — triggers swipe animation left
                         FilledTonalButton(
                             onClick = {
                                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                onRecordComparison(ComparisonResult.NEGATIVE)
+                                swipeAction = "negative"
                             },
                             colors = ButtonDefaults.filledTonalButtonColors(
                                 containerColor = PerfettoColors.NEGATIVE_COLOR.copy(alpha = 0.15f),
@@ -181,7 +181,7 @@ fun CompareScreen(
 
                         Spacer(Modifier.width(8.dp))
 
-                        // Skip
+                        // Skip — triggers swipe animation up (or just instant)
                         OutlinedButton(
                             onClick = {
                                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -192,11 +192,11 @@ fun CompareScreen(
 
                         Spacer(Modifier.width(8.dp))
 
-                        // Positive
+                        // Positive — triggers swipe animation right
                         FilledTonalButton(
                             onClick = {
                                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                onRecordComparison(ComparisonResult.POSITIVE)
+                                swipeAction = "positive"
                             },
                             colors = ButtonDefaults.filledTonalButtonColors(
                                 containerColor = PerfettoColors.POSITIVE_COLOR.copy(alpha = 0.15f),
@@ -239,11 +239,13 @@ fun CompareScreen(
                     )
                 }
                 Spacer(Modifier.height(6.dp))
-                MiniTimeline(
-                    traceState = anchorTrace,
-                    onSliceTapped = { _, slice -> showSliceDetail = slice to anchorTrace.totalDur },
-                    modifier = Modifier.clip(RoundedCornerShape(4.dp))
-                )
+                key(localVersion) {
+                    MiniTimeline(
+                        traceState = anchorTrace,
+                        onSliceTapped = { _, slice -> showSliceDetail = slice to anchorTrace.totalDur },
+                        modifier = Modifier.clip(RoundedCornerShape(4.dp))
+                    )
+                }
 
                 AnimatedVisibility(visible = anchorExpanded) {
                     Column(Modifier.padding(top = 8.dp)) {
@@ -345,11 +347,13 @@ fun CompareScreen(
                 }
 
                 Spacer(Modifier.height(6.dp))
-                MiniTimeline(
-                    traceState = otherTrace,
-                    onSliceTapped = { _, slice -> showSliceDetail = slice to otherTrace.totalDur },
-                    modifier = Modifier.clip(RoundedCornerShape(4.dp))
-                )
+                key(localVersion) {
+                    MiniTimeline(
+                        traceState = otherTrace,
+                        onSliceTapped = { _, slice -> showSliceDetail = slice to otherTrace.totalDur },
+                        modifier = Modifier.clip(RoundedCornerShape(4.dp))
+                    )
+                }
 
                 AnimatedVisibility(visible = !otherCollapsed) {
                     Column(Modifier.padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {

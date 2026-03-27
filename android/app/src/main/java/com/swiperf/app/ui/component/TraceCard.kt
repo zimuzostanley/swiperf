@@ -83,16 +83,18 @@ fun TraceCard(
             VerdictButtons(currentVerdict = verdict, onVerdict = onVerdictChange)
         }
 
-        // Timeline with tap highlight (clears when detail sheet dismisses)
-        MiniTimeline(
-            traceState = traceState,
-            highlightIndex = highlightIdx,
-            onSliceTapped = { idx, slice ->
-                highlightIdx = idx
-                onSliceTap(slice) { highlightIdx = null }
-            },
-            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(4.dp))
-        )
+        // Timeline — keyed on version so it re-renders when slider changes
+        key(version) {
+            MiniTimeline(
+                traceState = traceState,
+                highlightIndex = highlightIdx,
+                onSliceTapped = { idx, slice ->
+                    highlightIdx = idx
+                    onSliceTap(slice) { highlightIdx = null }
+                },
+                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(4.dp))
+            )
+        }
 
         // Slider
         if (traceState.origN > 2) {
