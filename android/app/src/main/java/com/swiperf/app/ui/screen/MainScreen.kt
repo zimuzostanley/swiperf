@@ -165,7 +165,15 @@ fun MainScreen(
                 }
             }
         },
-        snackbarHost = { SnackbarHost(snackbarHostState) }
+        snackbarHost = {
+            SnackbarHost(snackbarHostState) { data ->
+                Snackbar(
+                    snackbarData = data,
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                    contentColor = MaterialTheme.colorScheme.onSurface
+                )
+            }
+        }
     ) { padding ->
         Column(
             modifier = Modifier.fillMaxSize().padding(padding).background(MaterialTheme.colorScheme.background)
