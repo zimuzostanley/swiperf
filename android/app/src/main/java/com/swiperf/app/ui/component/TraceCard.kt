@@ -40,11 +40,8 @@ fun TraceCard(
     verdict: Verdict?,
     seq: List<MergedSlice>,
     totalDur: Long,
-    sliderValue: Int,
-    origN: Int,
     onVerdictChange: (Verdict) -> Unit,
     onCardClick: () -> Unit,
-    onSliderChange: (Int) -> Unit,
     onSliceTap: (MergedSlice, onDismiss: () -> Unit) -> Unit,
     isPinned: Boolean = false,
     onTogglePin: (() -> Unit)? = null,
@@ -164,8 +161,6 @@ fun TraceCard(
                     Spacer(Modifier.width(6.dp))
                     Text(Format.fmtDur(startupDur), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                 }
-                Spacer(Modifier.width(8.dp))
-                VerdictButtons(currentVerdict = verdict, onVerdict = onVerdictChange)
             }
 
             // Timeline
@@ -179,18 +174,6 @@ fun TraceCard(
                 },
                 modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(4.dp))
             )
-
-            // Slider
-            if (origN > 2) {
-                CompressionSlider(
-                    label = "",
-                    value = sliderValue.toFloat(),
-                    valueLabel = "${seq.size}",
-                    range = 2f..origN.toFloat(),
-                    onValueChange = { onSliderChange(it.toInt()) },
-                    suffix = "/ $origN"
-                )
-            }
         }
     }
 }

@@ -11,8 +11,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -33,12 +32,18 @@ import com.swiperf.app.ui.util.Format
 fun BreakdownSheet(
     traceState: TraceState,
     index: Int = -1,
+    onSliderChange: ((Int) -> Unit)? = null,
     onDismiss: () -> Unit
 ) {
     val isDark = LocalIsDarkTheme.current
     val context = LocalContext.current
     val clipboardManager = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-    val breakdown = buildBreakdownData(traceState.currentSeq, traceState.totalDur, isDark)
+
+    // Local version to re-read mutable state after slider change
+    var localVersion by remember { mutableStateOf(0L) }
+    val currentSeq = remember(localVersion) { traceState.currentSeq }
+    val sliderValue = remember(localVersion) { traceState.sliderValue }
+    val breakdown = remember(localVersion) { buildBreakdownData(currentSeq, traceState.totalDur, isDark) }
     val snackbar = remember { androidx.compose.material3.SnackbarHostState() }
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     val onRowTap: (SummaryRow) -> Unit = { r ->
@@ -87,7 +92,22 @@ fun BreakdownSheet(
             }
 
             // Timeline
-            MiniTimeline(seq = traceState.currentSeq, totalDur = traceState.totalDur)
+            MiniTimeline(seq = currentSeq, totalDur = traceState.totalDur)
+
+            // Per-trace slider
+            if (onSliderChange != null && traceState.origN > 2) {
+                CompressionSlider(
+                    label = "",
+                    value = sliderValue.toFloat(),
+                    valueLabel = "${currentSeq.size}",
+                    range = 2f..traceState.origN.toFloat(),
+                    onValueChange = {
+                        onSliderChange(it.toInt())
+                        localVersion = localVersion + 1
+                    },
+                    suffix = "/ ${traceState.origN}"
+                )
+            }
 
             // Breakdown tables
             BreakdownSection("States", breakdown.states, breakdown.totalDur, onRowTap = onRowTap)

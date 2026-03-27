@@ -257,7 +257,6 @@ fun MainScreen(
                     pinnedTrace.ensureCache()
                     val pVerdict = remember(stateVersion) { c.verdicts[pinnedTrace.key] }
                     val pSeq = remember(stateVersion) { pinnedTrace.currentSeq }
-                    val pSlider = remember(stateVersion) { pinnedTrace.sliderValue }
                     TraceCard(
                         packageName = pinnedTrace.trace.packageName,
                         startupDur = pinnedTrace.trace.startupDur,
@@ -265,11 +264,8 @@ fun MainScreen(
                         verdict = pVerdict,
                         seq = pSeq,
                         totalDur = pinnedTrace.totalDur,
-                        sliderValue = pSlider,
-                        origN = pinnedTrace.origN,
                         onVerdictChange = { v -> onSetVerdict(pinnedTrace.key, v) },
                         onCardClick = { showBreakdown = pinnedTrace to (indexMap[pinnedTrace.key] ?: 0) },
-                        onSliderChange = { v -> onSliderChange(pinnedTrace, v) },
                         onSliceTap = { slice, onDismiss ->
                             showSliceDetail = slice to pinnedTrace.totalDur
                             sliceDetailDismissCallback = onDismiss
@@ -290,10 +286,8 @@ fun MainScreen(
                     ) { i ->
                         val ts = unpinnedTraces[i]
                         ts.ensureCache()
-                        // Read per-item values — only THIS card recomposes when its data changes
                         val v = remember(stateVersion) { c.verdicts[ts.key] }
                         val s = remember(stateVersion) { ts.currentSeq }
-                        val sv = remember(stateVersion) { ts.sliderValue }
                         TraceCard(
                             packageName = ts.trace.packageName,
                             startupDur = ts.trace.startupDur,
@@ -301,11 +295,8 @@ fun MainScreen(
                             verdict = v,
                             seq = s,
                             totalDur = ts.totalDur,
-                            sliderValue = sv,
-                            origN = ts.origN,
                             onVerdictChange = { vd -> onSetVerdict(ts.key, vd) },
                             onCardClick = { showBreakdown = ts to (indexMap[ts.key] ?: 0) },
-                            onSliderChange = { val2 -> onSliderChange(ts, val2) },
                             onSliceTap = { slice, onDismiss ->
                                 showSliceDetail = slice to ts.totalDur
                                 sliceDetailDismissCallback = onDismiss
@@ -375,7 +366,14 @@ fun MainScreen(
     if (showPaste) {
         PasteSheet(onPaste = { text -> onPasteText(text); showPaste = false }, onDismiss = { showPaste = false })
     }
-    showBreakdown?.let { (ts, idx) -> BreakdownSheet(traceState = ts, index = idx, onDismiss = { showBreakdown = null }) }
+    showBreakdown?.let { (ts, idx) ->
+        BreakdownSheet(
+            traceState = ts,
+            index = idx,
+            onSliderChange = { v -> onSliderChange(ts, v) },
+            onDismiss = { showBreakdown = null }
+        )
+    }
     showSliceDetail?.let { (slice, totalDur) ->
         SliceDetailSheet(slice = slice, totalDur = totalDur, onDismiss = {
             showSliceDetail = null
