@@ -10,6 +10,8 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -31,7 +33,7 @@ import com.swiperf.app.ui.component.*
 import com.swiperf.app.ui.theme.PerfettoColors
 import com.swiperf.app.ui.theme.ThemeMode
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun MainScreen(
     clusters: List<Cluster>,
@@ -73,6 +75,7 @@ fun MainScreen(
 
     var showSettings by remember { mutableStateOf(false) }
     var showExport by remember { mutableStateOf(false) }
+    var showPaste by remember { mutableStateOf(false) }
     var showBreakdown by remember { mutableStateOf<TraceState?>(null) }
     var showSliceDetail by remember { mutableStateOf<Pair<MergedSlice, Long>?>(null) }
     var pendingSaveContent by remember { mutableStateOf<Pair<String, String>?>(null) }
@@ -105,7 +108,16 @@ fun MainScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("SwiPerf", fontWeight = FontWeight.SemiBold) },
+                title = {
+                    Text(
+                        "SwiPerf",
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.combinedClickable(
+                            onClick = {},
+                            onDoubleClick = { showPaste = true }
+                        )
+                    )
+                },
                 actions = {
                     IconButton(onClick = { filePicker.launch(arrayOf("application/json", "text/*", "*/*")) }) {
                         Icon(Icons.Default.Add, "Import")
@@ -145,16 +157,6 @@ fun MainScreen(
                         }
 
                         Spacer(Modifier.weight(1f))
-
-                        // Counts — prominent, readable
-                        Text("${cl!!.traces.size}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-                        Text(" traces", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Spacer(Modifier.width(12.dp))
-                        Text("${counts.positive}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = PerfettoColors.POSITIVE_COLOR)
-                        Text("+", style = MaterialTheme.typography.bodySmall, color = PerfettoColors.POSITIVE_COLOR)
-                        Spacer(Modifier.width(8.dp))
-                        Text("${counts.negative}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = PerfettoColors.NEGATIVE_COLOR)
-                        Text("\u2212", style = MaterialTheme.typography.bodySmall, color = PerfettoColors.NEGATIVE_COLOR)
                     }
                 }
             }
@@ -243,6 +245,9 @@ fun MainScreen(
     }
 
     // ── Sheets ──
+    if (showPaste) {
+        PasteSheet(onPaste = { text -> onPasteText(text); showPaste = false }, onDismiss = { showPaste = false })
+    }
     showBreakdown?.let { ts -> BreakdownSheet(traceState = ts, onDismiss = { showBreakdown = null }) }
     showSliceDetail?.let { (slice, totalDur) -> SliceDetailSheet(slice = slice, totalDur = totalDur, onDismiss = { showSliceDetail = null }) }
     if (showExport) {
@@ -310,5 +315,42 @@ private fun EmptyImportArea(loading: Boolean, onOpenFile: () -> Unit, onPasteTex
 
         Spacer(Modifier.height(8.dp))
         Text("Supports [{ts, dur, state}] slices, {trace_uuid, slices} traces, TSV/CSV", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f))
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PasteSheet(onPaste: (String) -> Unit, onDismiss: () -> Unit) {
+    var text by remember { mutableStateOf("") }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text("Paste Data", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+            Text("JSON, TSV, or CSV with trace data", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+
+            OutlinedTextField(
+                value = text,
+                onValueChange = { text = it },
+                modifier = Modifier.fillMaxWidth().height(200.dp),
+                placeholder = { Text("Paste JSON / TSV / CSV\u2026", style = MaterialTheme.typography.bodySmall) },
+                textStyle = MaterialTheme.typography.labelSmall,
+                singleLine = false,
+                shape = RoundedCornerShape(4.dp)
+            )
+
+            Button(
+                onClick = { if (text.trim().isNotEmpty()) onPaste(text) },
+                enabled = text.trim().isNotEmpty(),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Import")
+            }
+        }
     }
 }

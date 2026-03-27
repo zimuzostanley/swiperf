@@ -48,10 +48,8 @@ fun TraceCard(
         label = "accent"
     )
 
-    // Read mutable values keyed on version so Compose re-reads them
     val sliderValue = remember(version) { traceState.sliderValue }
     val seqSize = remember(version) { traceState.currentSeq.size }
-    var highlightIdx by remember { mutableStateOf<Int?>(null) }
 
     val shape = RoundedCornerShape(6.dp)
 
@@ -84,21 +82,17 @@ fun TraceCard(
             VerdictButtons(currentVerdict = verdict, onVerdict = onVerdictChange)
         }
 
-        // Timeline with highlight
+        // Timeline
         MiniTimeline(
             traceState = traceState,
-            highlightIndex = highlightIdx,
-            onSliceTapped = { idx, slice ->
-                highlightIdx = idx
-                onSliceTap(slice)
-            },
+            onSliceTapped = { _, slice -> onSliceTap(slice) },
             modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(4.dp))
         )
 
         // Slider
         if (traceState.origN > 2) {
             CompressionSlider(
-                label = "Slices",
+                label = "",
                 value = sliderValue.toFloat(),
                 valueLabel = "$seqSize",
                 range = 2f..traceState.origN.toFloat(),
