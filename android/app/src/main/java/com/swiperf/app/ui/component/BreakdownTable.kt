@@ -76,7 +76,8 @@ fun BreakdownSection(
     title: String,
     rows: List<SummaryRow>,
     totalDur: Long,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onRowTap: ((SummaryRow) -> Unit)? = null
 ) {
     var sortCol by remember { mutableStateOf("dur") }
     var sortDir by remember { mutableIntStateOf(-1) }
@@ -131,7 +132,7 @@ fun BreakdownSection(
 
         // Rows
         for (row in sorted) {
-            BreakdownRow(row = row, totalDur = totalDur)
+            BreakdownRow(row = row, totalDur = totalDur, onTap = onRowTap)
         }
     }
 }
@@ -156,12 +157,13 @@ private fun SortHeader(
 }
 
 @Composable
-private fun BreakdownRow(row: SummaryRow, totalDur: Long) {
+private fun BreakdownRow(row: SummaryRow, totalDur: Long, onTap: ((SummaryRow) -> Unit)? = null) {
     val color = Color(row.color.toULong())
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .then(if (onTap != null) Modifier.clickable { onTap(row) } else Modifier)
             .padding(horizontal = 4.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)

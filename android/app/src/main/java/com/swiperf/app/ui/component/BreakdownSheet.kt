@@ -7,15 +7,18 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.swiperf.app.data.model.MergedSlice
+import com.swiperf.app.data.model.SummaryRow
 import com.swiperf.app.data.model.TraceState
 import com.swiperf.app.ui.theme.LocalIsDarkTheme
 import com.swiperf.app.ui.theme.PerfettoColors
+import kotlinx.coroutines.launch
 import com.swiperf.app.ui.util.Format
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -26,11 +29,17 @@ fun BreakdownSheet(
 ) {
     val isDark = LocalIsDarkTheme.current
     val breakdown = buildBreakdownData(traceState.currentSeq, traceState.totalDur, isDark)
+    val snackbar = remember { androidx.compose.material3.SnackbarHostState() }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val onRowTap: (SummaryRow) -> Unit = { r ->
+        scope.launch { snackbar.showSnackbar("${r.label}: ${Format.fmtDur(r.dur)} (${Format.fmtPct(r.dur, traceState.totalDur)})", duration = SnackbarDuration.Short) }
+    }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
     ) {
+        Box {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -63,16 +72,16 @@ fun BreakdownSheet(
             MiniTimeline(traceState = traceState)
 
             // Breakdown tables
-            BreakdownSection("States", breakdown.states, breakdown.totalDur)
+            BreakdownSection("States", breakdown.states, breakdown.totalDur, onRowTap = onRowTap)
 
             if (breakdown.names.isNotEmpty()) {
                 HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
-                BreakdownSection("Names", breakdown.names, breakdown.totalDur)
+                BreakdownSection("Names", breakdown.names, breakdown.totalDur, onRowTap = onRowTap)
             }
 
             if (breakdown.blockedFunctions.isNotEmpty()) {
                 HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
-                BreakdownSection("Blocked Functions", breakdown.blockedFunctions, breakdown.totalDur)
+                BreakdownSection("Blocked Functions", breakdown.blockedFunctions, breakdown.totalDur, onRowTap = onRowTap)
             }
 
             // Extra fields
@@ -87,6 +96,10 @@ fun BreakdownSheet(
                         }
                     }
                 }
+            }
+        }
+            SnackbarHost(snackbar, modifier = Modifier.align(Alignment.BottomCenter)) { data ->
+                Snackbar(snackbarData = data, containerColor = MaterialTheme.colorScheme.surfaceContainerHighest, contentColor = MaterialTheme.colorScheme.onSurface)
             }
         }
     }
