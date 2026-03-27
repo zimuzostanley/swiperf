@@ -128,6 +128,14 @@ function renderTraceCard(cl: Cluster, ts: TraceState, idx: number) {
         ? m('span.trace-startup-dur', fmt_dur(ts.trace.startup_dur))
         : null,
       (() => {
+        const sim = ts.trace.extra?.cosine_similarity
+        if (sim != null) {
+          const n = typeof sim === 'number' ? sim : parseFloat(String(sim))
+          if (!isNaN(n)) return m('span.trace-cosine', n.toFixed(2))
+        }
+        return null
+      })(),
+      (() => {
         const href = buildTraceLink(ts.trace.trace_uuid, ts.trace.package_name)
         return href ? m('a.trace-link', {
           href, target: '_blank', rel: 'noopener',

@@ -273,6 +273,11 @@ textarea.json-area:focus { border-color: var(--accent); }
   font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent);
   white-space: nowrap;
 }
+.trace-cosine {
+  font-family: var(--mono); font-size: 10px; color: var(--dim);
+  background: var(--surface2); border: 1px solid var(--border);
+  padding: 1px 6px; border-radius: 3px; white-space: nowrap;
+}
 .trace-link {
   font-size: 12px; color: var(--accent); text-decoration: none; opacity: 0.6;
   transition: opacity 0.15s;

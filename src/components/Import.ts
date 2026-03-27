@@ -297,6 +297,7 @@ export const Import: m.Component = {
           }, 'Import directory\u2026'),
           m('input#dir-input', {
             type: 'file', style: { display: 'none' }, onchange: loadFromFile,
+            webkitdirectory: true, directory: true, multiple: true,
           }),
           S.clusters.length > 0
             ? m('button.btn', { onclick: saveSession, disabled: loading }, 'Save session')
@@ -320,12 +321,5 @@ export const Import: m.Component = {
         ]),
       ]),
     ])
-  },
-  oncreate() {
-    const d = document.getElementById('dir-input')
-    if (d) {
-      d.setAttribute('webkitdirectory', '')
-      d.setAttribute('directory', '')
-    }
   },
 }
