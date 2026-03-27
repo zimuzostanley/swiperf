@@ -80,6 +80,7 @@ class SwiPerfViewModel(app: Application) : AndroidViewModel(app) {
                         _clusters.value = clusters
                         _activeClusterId.value = activeId ?: clusters.firstOrNull()?.id
                         _currentSessionId.value = sessionId
+                        _stateVersion.value++
                     }
                 }
             } catch (_: Exception) {}
