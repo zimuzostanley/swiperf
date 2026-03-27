@@ -49,7 +49,7 @@ fun BreakdownSheet(
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
     ) {
         Box {
         Column(
@@ -67,14 +67,20 @@ fun BreakdownSheet(
                 fontWeight = FontWeight.SemiBold
             )
 
-            // Meta info
+            // Meta info — each chip copies full value on tap
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(16.dp)
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                MetaChip("UUID", traceState.trace.traceUuid.take(8) + "...")
+                MetaChip("UUID", traceState.trace.traceUuid.take(8) + "...") {
+                    clipboardManager.setPrimaryClip(ClipData.newPlainText("SwiPerf", traceState.trace.traceUuid))
+                    scope.launch { snackbar.showSnackbar("Copied UUID", duration = SnackbarDuration.Short) }
+                }
                 if (traceState.trace.startupDur > 0) {
-                    MetaChip("Startup", Format.fmtDur(traceState.trace.startupDur))
+                    MetaChip("Startup", Format.fmtDur(traceState.trace.startupDur)) {
+                        clipboardManager.setPrimaryClip(ClipData.newPlainText("SwiPerf", "${traceState.trace.startupDur}"))
+                        scope.launch { snackbar.showSnackbar("Copied startup dur", duration = SnackbarDuration.Short) }
+                    }
                 }
                 MetaChip("Slices", "${traceState.origN}")
                 MetaChip("Total", Format.fmtDur(traceState.totalDur))
@@ -122,7 +128,7 @@ fun BreakdownSheet(
                 }
             }
         }
-            SnackbarHost(snackbar, modifier = Modifier.align(Alignment.TopCenter).padding(top = 8.dp)) { data ->
+            SnackbarHost(snackbar, modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 8.dp)) { data ->
                 Snackbar(snackbarData = data, containerColor = MaterialTheme.colorScheme.surfaceContainerHighest, contentColor = MaterialTheme.colorScheme.onSurface)
             }
         }
@@ -130,8 +136,14 @@ fun BreakdownSheet(
 }
 
 @Composable
-private fun MetaChip(label: String, value: String) {
-    Column {
+private fun MetaChip(label: String, value: String, onTap: (() -> Unit)? = null) {
+    Column(
+        modifier = if (onTap != null) Modifier
+            .clip(RoundedCornerShape(4.dp))
+            .clickable { onTap() }
+            .padding(2.dp)
+        else Modifier
+    ) {
         Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text(value, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
     }
@@ -157,7 +169,7 @@ fun SliceDetailSheet(
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
     ) {
         Box {
         Column(
@@ -183,7 +195,7 @@ fun SliceDetailSheet(
             SliceDetailRow("Depth", if (slice.depth != null) "${slice.depth}" else "\u2014", onTap = copyRow)
             SliceDetailRow("Merged", "\u00d7${slice.merged}", onTap = copyRow)
         }
-            SnackbarHost(snackbar, modifier = Modifier.align(Alignment.TopCenter).padding(top = 8.dp)) { data ->
+            SnackbarHost(snackbar, modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 8.dp)) { data ->
                 Snackbar(snackbarData = data, containerColor = MaterialTheme.colorScheme.surfaceContainerHighest, contentColor = MaterialTheme.colorScheme.onSurface)
             }
         }
