@@ -4,12 +4,26 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- Background circle -->
+    <!-- Soft rounded square background -->
     <path
         android:fillColor="#5b4fcf"
-        android:pathData="M54,54m-40,0a40,40 0,1 1,80 0a40,40 0,1 1,-80 0"/>
-    <!-- Timeline bars icon -->
+        android:pathData="M24,24h60a0,0 0,0 1,0 0v60a0,0 0,0 1,0 0h-60a0,0 0,0 1,0 0v-60a0,0 0,0 1,0 0z"/>
+    <!-- Minimal timeline: two stacked horizontal bars with slight offset -->
+    <!-- Top bar (short, state-like) -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M30,40h12v28h-12zM46,32h12v36h-12zM62,44h12v24h-12z"/>
+        android:pathData="M34,44h16a2,2 0,0 1,2 2v4a2,2 0,0 1,-2 2h-16a2,2 0,0 1,-2 -2v-4a2,2 0,0 1,2 -2z"/>
+    <path
+        android:fillColor="@android:color/white"
+        android:alpha="0.6"
+        android:pathData="M54,44h22a2,2 0,0 1,2 2v4a2,2 0,0 1,-2 2h-22a2,2 0,0 1,-2 -2v-4a2,2 0,0 1,2 -2z"/>
+    <!-- Bottom bar (longer, name-like) -->
+    <path
+        android:fillColor="@android:color/white"
+        android:alpha="0.4"
+        android:pathData="M34,56h10a2,2 0,0 1,2 2v4a2,2 0,0 1,-2 2h-10a2,2 0,0 1,-2 -2v-4a2,2 0,0 1,2 -2z"/>
+    <path
+        android:fillColor="#FFFFFF"
+        android:alpha="0.8"
+        android:pathData="M48,56h28a2,2 0,0 1,2 2v4a2,2 0,0 1,-2 2h-28a2,2 0,0 1,-2 -2v-4a2,2 0,0 1,2 -2z"/>
 </vector>
