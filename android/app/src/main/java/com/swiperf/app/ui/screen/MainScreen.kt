@@ -249,20 +249,24 @@ fun MainScreen(
                     m
                 }
 
-                // Read verdicts keyed on version
-                val verdicts = remember(stateVersion) { c.verdicts.toMap() }
-
                 // Pinned trace (rendered above the scrollable list)
                 val pinnedTrace = if (pinnedKey != null) filteredTraces.find { it.key == pinnedKey } else null
                 val unpinnedTraces = if (pinnedKey != null) filteredTraces.filter { it.key != pinnedKey } else filteredTraces
 
                 if (pinnedTrace != null) {
                     pinnedTrace.ensureCache()
+                    val pVerdict = remember(stateVersion) { c.verdicts[pinnedTrace.key] }
+                    val pSeq = remember(stateVersion) { pinnedTrace.currentSeq }
+                    val pSlider = remember(stateVersion) { pinnedTrace.sliderValue }
                     TraceCard(
-                        traceState = pinnedTrace,
+                        packageName = pinnedTrace.trace.packageName,
+                        startupDur = pinnedTrace.trace.startupDur,
                         index = indexMap[pinnedTrace.key] ?: 0,
-                        verdict = verdicts[pinnedTrace.key],
-                        version = stateVersion,
+                        verdict = pVerdict,
+                        seq = pSeq,
+                        totalDur = pinnedTrace.totalDur,
+                        sliderValue = pSlider,
+                        origN = pinnedTrace.origN,
                         onVerdictChange = { v -> onSetVerdict(pinnedTrace.key, v) },
                         onCardClick = { showBreakdown = pinnedTrace to (indexMap[pinnedTrace.key] ?: 0) },
                         onSliderChange = { v -> onSliderChange(pinnedTrace, v) },
@@ -275,17 +279,33 @@ fun MainScreen(
                     )
                 }
 
-                LazyColumn(modifier = Modifier.weight(1f), contentPadding = PaddingValues(bottom = 8.dp)) {
-                    itemsIndexed(items = unpinnedTraces, key = { _, ts -> ts.key }) { _, ts ->
+                LazyColumn(
+                    modifier = Modifier.weight(1f),
+                    contentPadding = PaddingValues(bottom = 8.dp)
+                ) {
+                    items(
+                        count = unpinnedTraces.size,
+                        key = { unpinnedTraces[it].key },
+                        contentType = { "trace" }
+                    ) { i ->
+                        val ts = unpinnedTraces[i]
                         ts.ensureCache()
+                        // Read per-item values — only THIS card recomposes when its data changes
+                        val v = remember(stateVersion) { c.verdicts[ts.key] }
+                        val s = remember(stateVersion) { ts.currentSeq }
+                        val sv = remember(stateVersion) { ts.sliderValue }
                         TraceCard(
-                            traceState = ts,
+                            packageName = ts.trace.packageName,
+                            startupDur = ts.trace.startupDur,
                             index = indexMap[ts.key] ?: 0,
-                            verdict = verdicts[ts.key],
-                            version = stateVersion,
-                            onVerdictChange = { v -> onSetVerdict(ts.key, v) },
+                            verdict = v,
+                            seq = s,
+                            totalDur = ts.totalDur,
+                            sliderValue = sv,
+                            origN = ts.origN,
+                            onVerdictChange = { vd -> onSetVerdict(ts.key, vd) },
                             onCardClick = { showBreakdown = ts to (indexMap[ts.key] ?: 0) },
-                            onSliderChange = { v -> onSliderChange(ts, v) },
+                            onSliderChange = { val2 -> onSliderChange(ts, val2) },
                             onSliceTap = { slice, onDismiss ->
                                 showSliceDetail = slice to ts.totalDur
                                 sliceDetailDismissCallback = onDismiss

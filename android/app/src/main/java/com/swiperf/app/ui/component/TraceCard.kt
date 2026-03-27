@@ -23,17 +23,20 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.swiperf.app.data.model.MergedSlice
-import com.swiperf.app.data.model.TraceState
 import com.swiperf.app.data.model.Verdict
 import com.swiperf.app.ui.theme.PerfettoColors
 import com.swiperf.app.ui.util.Format
 
 @Composable
 fun TraceCard(
-    traceState: TraceState,
+    packageName: String,
+    startupDur: Long,
     index: Int,
     verdict: Verdict?,
-    version: Long,
+    seq: List<MergedSlice>,
+    totalDur: Long,
+    sliderValue: Int,
+    origN: Int,
     onVerdictChange: (Verdict) -> Unit,
     onCardClick: () -> Unit,
     onSliderChange: (Int) -> Unit,
@@ -53,10 +56,7 @@ fun TraceCard(
         label = "accent"
     )
 
-    val sliderValue = remember(version) { traceState.sliderValue }
-    val seqSize = remember(version) { traceState.currentSeq.size }
     var highlightIdx by remember { mutableStateOf<Int?>(null) }
-
     val shape = RoundedCornerShape(6.dp)
 
     Column(
@@ -88,18 +88,16 @@ fun TraceCard(
             }
             Text("#${index + 1}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.width(6.dp))
-            Text(traceState.trace.packageName, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-            if (traceState.trace.startupDur > 0) {
+            Text(packageName, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+            if (startupDur > 0) {
                 Spacer(Modifier.width(6.dp))
-                Text(Format.fmtDur(traceState.trace.startupDur), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                Text(Format.fmtDur(startupDur), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
             }
             Spacer(Modifier.width(8.dp))
             VerdictButtons(currentVerdict = verdict, onVerdict = onVerdictChange)
         }
 
-        // Timeline — seq/totalDur passed directly so Compose detects changes
-        val seq = remember(version) { traceState.currentSeq }
-        val totalDur = remember(version) { traceState.totalDur }
+        // Timeline — seq is passed directly so Compose skips if unchanged
         MiniTimeline(
             seq = seq,
             totalDur = totalDur,
@@ -112,14 +110,14 @@ fun TraceCard(
         )
 
         // Slider
-        if (traceState.origN > 2) {
+        if (origN > 2) {
             CompressionSlider(
                 label = "",
                 value = sliderValue.toFloat(),
-                valueLabel = "$seqSize",
-                range = 2f..traceState.origN.toFloat(),
+                valueLabel = "${seq.size}",
+                range = 2f..origN.toFloat(),
                 onValueChange = { onSliderChange(it.toInt()) },
-                suffix = "/ ${traceState.origN}"
+                suffix = "/ $origN"
             )
         }
     }

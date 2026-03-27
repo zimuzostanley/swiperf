@@ -121,11 +121,15 @@ class SwiPerfViewModel(app: Application) : AndroidViewModel(app) {
 
         val cl = Cluster(name = name, traces = states)
         cl.recomputeCounts()
-        states.firstOrNull()?.ensureCache()
 
         _clusters.value = _clusters.value + cl
         _activeClusterId.value = cl.id
         notifyChange()
+
+        // Pre-compute caches in background
+        viewModelScope.launch(Dispatchers.Default) {
+            for (ts in states) ts.ensureCache()
+        }
     }
 
     fun removeCluster(id: String) {
