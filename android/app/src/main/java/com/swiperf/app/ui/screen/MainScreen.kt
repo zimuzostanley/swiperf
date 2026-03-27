@@ -79,6 +79,7 @@ fun MainScreen(
     var showExport by remember { mutableStateOf(false) }
     var showPaste by remember { mutableStateOf(false) }
     var renameClusterId by remember { mutableStateOf<String?>(null) }
+    var longPressClusterId by remember { mutableStateOf<String?>(null) }
     var showBreakdown by remember { mutableStateOf<TraceState?>(null) }
     var showSliceDetail by remember { mutableStateOf<Pair<MergedSlice, Long>?>(null) }
     var sliceDetailDismissCallback by remember { mutableStateOf<(() -> Unit)?>(null) }
@@ -206,12 +207,13 @@ fun MainScreen(
                                 onClick = { onSwitchCluster(c.id) }
                             ) {
                                 Text(
-                                    "${c.name} (${c.traces.size})",
+                                    c.name,
                                     modifier = Modifier
                                         .padding(12.dp)
                                         .combinedClickable(
                                             onClick = { onSwitchCluster(c.id) },
-                                            onDoubleClick = { renameClusterId = c.id }
+                                            onDoubleClick = { renameClusterId = c.id },
+                                            onLongClick = { longPressClusterId = c.id }
                                         ),
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
@@ -270,6 +272,25 @@ fun MainScreen(
                 }
             }
         }
+    }
+
+    // ── Long-press cluster: remove ──
+    longPressClusterId?.let { id ->
+        val name = clusters.find { it.id == id }?.name ?: ""
+        AlertDialog(
+            onDismissRequest = { longPressClusterId = null },
+            title = { Text("Remove \u201c$name\u201d?") },
+            text = { Text("This will close this tab. Data is not deleted from saved sessions.") },
+            confirmButton = {
+                Button(
+                    onClick = { onRemoveCluster(id); longPressClusterId = null },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) { Text("Remove") }
+            },
+            dismissButton = {
+                TextButton(onClick = { longPressClusterId = null }) { Text("Cancel") }
+            }
+        )
     }
 
     // ── Rename cluster dialog ──
