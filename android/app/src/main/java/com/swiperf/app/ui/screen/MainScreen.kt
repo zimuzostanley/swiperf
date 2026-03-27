@@ -1,16 +1,18 @@
 package com.swiperf.app.ui.screen
 
-import android.content.Intent
-import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.*
-import androidx.compose.foundation.horizontalScroll
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -50,15 +52,8 @@ fun MainScreen(
     var showBreakdown by remember { mutableStateOf<TraceState?>(null) }
     var showSliceDetail by remember { mutableStateOf<Pair<MergedSlice, Long>?>(null) }
     var showExport by remember { mutableStateOf(false) }
-
-    val saveLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.CreateDocument("text/tab-separated-values")
-    ) { uri ->
-        // Will be handled via callback
-    }
-
-    // Save file helper
     var pendingSaveContent by remember { mutableStateOf<Pair<String, String>?>(null) }
+
     val fileCreator = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("*/*")
     ) { uri ->
@@ -74,10 +69,11 @@ fun MainScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Column {
-                        Text(cl.name, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.titleMedium)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(cl.name, fontWeight = FontWeight.SemiBold)
+                        Spacer(Modifier.width(8.dp))
                         Text(
-                            "${cl.traces.size} traces \u00b7 ${cl.counts.positive} pos \u00b7 ${cl.counts.negative} neg",
+                            "${cl.traces.size} traces",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -89,14 +85,6 @@ fun MainScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = onToggleSort) {
-                        Icon(
-                            if (cl.sortField == SortField.STARTUP_DUR)
-                                (if (cl.sortDir == 1) Icons.Default.ArrowUpward else Icons.Default.ArrowDownward)
-                            else Icons.Default.Sort,
-                            "Sort"
-                        )
-                    }
                     IconButton(onClick = onStartCompare, enabled = cl.traces.size >= 2) {
                         Icon(Icons.Default.Compare, "Compare")
                     }
@@ -104,33 +92,80 @@ fun MainScreen(
                         Icon(Icons.Default.Share, "Export")
                     }
                     IconButton(onClick = onSaveSession) {
-                        Icon(Icons.Default.Save, "Save session")
+                        Icon(Icons.Default.Save, "Save")
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.background
                 )
             )
+        },
+        bottomBar = {
+            Surface(
+                color = MaterialTheme.colorScheme.surfaceContainer,
+                tonalElevation = 3.dp
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .navigationBarsPadding()
+                        .padding(horizontal = 4.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Sort
+                    TextButton(onClick = onToggleSort) {
+                        Icon(
+                            if (cl.sortField == SortField.STARTUP_DUR)
+                                (if (cl.sortDir == 1) Icons.Default.ArrowUpward else Icons.Default.ArrowDownward)
+                            else Icons.AutoMirrored.Filled.Sort,
+                            null,
+                            Modifier.size(16.dp)
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Text(
+                            if (cl.sortField == SortField.STARTUP_DUR) "Startup" else "Sort",
+                            style = MaterialTheme.typography.labelLarge
+                        )
+                    }
+
+                    Spacer(Modifier.weight(1f))
+
+                    // Counts
+                    Text(
+                        "${cl.counts.positive}+ ${cl.counts.negative}\u2212",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
         }
     ) { padding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
+                .background(MaterialTheme.colorScheme.background)
         ) {
-            // Import message
-            AnimatedVisibility(visible = importMsg != null) {
+            // Error banner
+            AnimatedVisibility(
+                visible = importMsg != null,
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically()
+            ) {
                 importMsg?.let { (msg, ok) ->
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 12.dp, vertical = 4.dp),
+                            .background(
+                                if (ok) MaterialTheme.colorScheme.primaryContainer
+                                else MaterialTheme.colorScheme.errorContainer
+                            )
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            (if (ok) "\u2713 " else "\u2717 ") + msg,
+                            msg,
                             style = MaterialTheme.typography.bodySmall,
-                            color = if (ok) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
                             modifier = Modifier.weight(1f)
                         )
                         IconButton(onClick = onClearImportMsg, modifier = Modifier.size(20.dp)) {
@@ -140,32 +175,31 @@ fun MainScreen(
                 }
             }
 
-            // Cluster tabs (if multiple)
+            // Cluster tabs
             if (clusters.size > 1) {
-                ScrollableTabRow(
+                TabRow(
                     selectedTabIndex = clusters.indexOfFirst { it.id == cl.id }.coerceAtLeast(0),
-                    containerColor = MaterialTheme.colorScheme.background,
-                    edgePadding = 12.dp
+                    containerColor = MaterialTheme.colorScheme.background
                 ) {
                     clusters.forEach { c ->
                         Tab(
                             selected = c.id == cl.id,
-                            onClick = { onSwitchCluster(c.id) },
-                            text = {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text("${c.name} (${c.traces.size})")
-                                    if (clusters.size > 1) {
-                                        Spacer(Modifier.width(4.dp))
-                                        IconButton(
-                                            onClick = { onRemoveCluster(c.id) },
-                                            modifier = Modifier.size(16.dp)
-                                        ) {
-                                            Icon(Icons.Default.Close, "Close", Modifier.size(12.dp))
-                                        }
-                                    }
+                            onClick = { onSwitchCluster(c.id) }
+                        ) {
+                            Row(
+                                Modifier.padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Text("${c.name} (${c.traces.size})")
+                                IconButton(
+                                    onClick = { onRemoveCluster(c.id) },
+                                    modifier = Modifier.size(16.dp)
+                                ) {
+                                    Icon(Icons.Default.Close, null, Modifier.size(12.dp))
                                 }
                             }
-                        )
+                        }
                     }
                 }
             }
@@ -187,13 +221,16 @@ fun MainScreen(
             )
 
             // Trace list
+            val indexMap = remember(cl.traces) {
+                val m = mutableMapOf<String, Int>()
+                cl.traces.forEachIndexed { i, ts -> m[ts.key] = i }
+                m
+            }
+
             LazyColumn(
                 modifier = Modifier.weight(1f),
-                contentPadding = PaddingValues(bottom = 80.dp)
+                contentPadding = PaddingValues(bottom = 8.dp)
             ) {
-                val indexMap = mutableMapOf<String, Int>()
-                cl.traces.forEachIndexed { i, ts -> indexMap[ts.key] = i }
-
                 itemsIndexed(
                     items = filteredTraces,
                     key = { _, ts -> ts.key }
@@ -212,29 +249,31 @@ fun MainScreen(
 
                 if (filteredTraces.isEmpty()) {
                     item {
-                        Text(
-                            "No traces match this filter",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(24.dp)
-                        )
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(48.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                "No traces match this filter",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                 }
             }
         }
     }
 
-    // Breakdown sheet
+    // Sheets
     showBreakdown?.let { ts ->
         BreakdownSheet(traceState = ts, onDismiss = { showBreakdown = null })
     }
-
-    // Slice detail sheet
     showSliceDetail?.let { (slice, totalDur) ->
         SliceDetailSheet(slice = slice, totalDur = totalDur, onDismiss = { showSliceDetail = null })
     }
-
-    // Export sheet
     if (showExport) {
         ExportSheet(
             hasClusters = clusters.isNotEmpty(),
@@ -243,7 +282,6 @@ fun MainScreen(
             onExportJson = onExportJson,
             onSaveFile = { content, filename ->
                 pendingSaveContent = content to filename
-                val mime = if (filename.endsWith(".json")) "application/json" else "text/tab-separated-values"
                 fileCreator.launch(filename)
             },
             onDismiss = { showExport = false }

@@ -1,7 +1,9 @@
 package com.swiperf.app.ui.component
 
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -11,6 +13,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -39,104 +44,83 @@ fun TraceCard(
             Verdict.DISCARD -> PerfettoColors.DISCARD_COLOR
             null -> Color.Transparent
         },
-        label = "verdictAccent"
+        animationSpec = tween(200),
+        label = "accent"
     )
 
-    val bgTint by animateColorAsState(
-        targetValue = when (verdict) {
-            Verdict.LIKE -> PerfettoColors.POSITIVE_COLOR.copy(alpha = 0.04f)
-            Verdict.DISLIKE -> PerfettoColors.NEGATIVE_COLOR.copy(alpha = 0.04f)
-            Verdict.DISCARD -> PerfettoColors.DISCARD_COLOR.copy(alpha = 0.04f)
-            null -> Color.Transparent
-        },
-        label = "verdictBg"
-    )
+    val shape = RoundedCornerShape(6.dp)
 
-    Card(
+    Column(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 4.dp)
-            .clickable { onCardClick() },
-        shape = RoundedCornerShape(8.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+            .padding(horizontal = 12.dp, vertical = 3.dp)
+            .clip(shape)
+            .border(0.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f), shape)
+            .background(MaterialTheme.colorScheme.surface)
+            .drawBehind {
+                // Left accent bar
+                if (verdict != null) {
+                    drawRect(
+                        color = accentColor,
+                        topLeft = Offset.Zero,
+                        size = Size(3.dp.toPx(), size.height)
+                    )
+                }
+            }
+            .clickable { onCardClick() }
+            .padding(start = if (verdict != null) 6.dp else 12.dp, end = 12.dp, top = 10.dp, bottom = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-        Row(modifier = Modifier.fillMaxWidth()) {
-            // Left accent bar
-            if (verdict != null) {
-                Box(
-                    modifier = Modifier
-                        .width(3.dp)
-                        .fillMaxHeight()
-                        .background(accentColor)
+        // Header
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                "#${index + 1}",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.width(6.dp))
+            Text(
+                traceState.trace.packageName,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+            if (traceState.trace.startupDur > 0) {
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    Format.fmtDur(traceState.trace.startupDur),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary
                 )
             }
+            Spacer(Modifier.width(8.dp))
+            VerdictButtons(currentVerdict = verdict, onVerdict = onVerdictChange)
+        }
 
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(bgTint)
-                    .padding(12.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                // Header row
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    // Index + package + duration
-                    Text(
-                        "#${index + 1}",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Text(
-                        traceState.trace.packageName,
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.Medium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f)
-                    )
-                    if (traceState.trace.startupDur > 0) {
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            Format.fmtDur(traceState.trace.startupDur),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                    }
-                    Spacer(Modifier.width(8.dp))
-                    VerdictButtons(
-                        currentVerdict = verdict,
-                        onVerdict = onVerdictChange
-                    )
-                }
+        // Timeline
+        MiniTimeline(
+            traceState = traceState,
+            onSliceTapped = onSliceTap,
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(4.dp))
+        )
 
-                // Mini timeline
-                MiniTimeline(
-                    traceState = traceState,
-                    onSliceTapped = onSliceTap,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(4.dp))
-                )
-
-                // Compression slider
-                if (traceState.origN > 2) {
-                    CompressionSlider(
-                        label = "Slices",
-                        value = traceState.sliderValue.toFloat(),
-                        valueLabel = "${traceState.currentSeq.size}",
-                        range = 2f..traceState.origN.toFloat(),
-                        onValueChange = { onSliderChange(it.toInt()) },
-                        suffix = "/ ${traceState.origN}"
-                    )
-                }
-            }
+        // Slider
+        if (traceState.origN > 2) {
+            CompressionSlider(
+                label = "Slices",
+                value = traceState.sliderValue.toFloat(),
+                valueLabel = "${traceState.currentSeq.size}",
+                range = 2f..traceState.origN.toFloat(),
+                onValueChange = { onSliderChange(it.toInt()) },
+                suffix = "/ ${traceState.origN}"
+            )
         }
     }
 }

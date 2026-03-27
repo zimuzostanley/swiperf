@@ -112,6 +112,7 @@ fun SwiPerfApp(vm: SwiPerfViewModel = viewModel()) {
                     importMsg = importMsg,
                     themeMode = themeMode,
                     onImportFile = ::importFile,
+                    onPasteText = { text -> vm.importText(text, "Paste") },
                     onLoadSession = vm::loadSession,
                     onDeleteSession = vm::deleteSession,
                     onSetTheme = vm::setTheme,
