@@ -224,19 +224,3 @@ fun SettingsSheet(
         )
     }
 }
-
-// Keep old name for backward compat — just delegates
-@Composable
-fun SettingsDrawerContent(
-    themeMode: ThemeMode,
-    sessions: List<SessionMeta>,
-    currentSessionId: String?,
-    onSetTheme: (ThemeMode) -> Unit,
-    onLoadSession: (String) -> Unit,
-    onDeleteSession: (String) -> Unit,
-    onDeleteAllData: () -> Unit,
-    onExportSession: (String) -> Unit,
-    onClose: () -> Unit
-) {
-    // This is no longer used — SettingsSheet is called directly from MainScreen
-}

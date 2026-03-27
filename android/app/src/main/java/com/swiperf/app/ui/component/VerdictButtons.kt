@@ -16,7 +16,6 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.swiperf.app.data.model.Verdict
 import com.swiperf.app.ui.theme.PerfettoColors
 
@@ -73,7 +72,7 @@ private fun VerdictBtn(
     ) {
         Text(
             label,
-            fontSize = 14.sp,
+            style = MaterialTheme.typography.bodyMedium,
             fontWeight = FontWeight.SemiBold,
             color = if (isActive) Color.White else MaterialTheme.colorScheme.onSurface,
             textAlign = TextAlign.Center

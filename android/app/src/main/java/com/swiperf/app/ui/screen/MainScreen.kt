@@ -127,8 +127,8 @@ fun MainScreen(
                     IconButton(onClick = { filePicker.launch(arrayOf("application/json", "text/*", "*/*")) }) {
                         Icon(Icons.Default.Add, "Import")
                     }
-                    if (hasData) {
-                        IconButton(onClick = onStartCompare, enabled = cl!!.traces.size >= 2) {
+                    if (hasData && cl != null) {
+                        IconButton(onClick = onStartCompare, enabled = cl.traces.size >= 2) {
                             Icon(Icons.Default.Compare, "Compare")
                         }
                         IconButton(onClick = { showExport = true }) {
@@ -194,26 +194,27 @@ fun MainScreen(
                 // ── Empty state ──
                 EmptyImportArea(loading = loading, onOpenFile = { filePicker.launch(arrayOf("application/json", "text/*", "*/*")) }, onPasteText = onPasteText)
             } else {
+                val c = cl ?: return@Column // Safe: hasData guarantees cl != null
                 // ── Cluster tabs ──
                 if (clusters.size > 1) {
                     ScrollableTabRow(
-                        selectedTabIndex = clusters.indexOfFirst { it.id == cl!!.id }.coerceAtLeast(0),
+                        selectedTabIndex = clusters.indexOfFirst { it.id == c.id }.coerceAtLeast(0),
                         containerColor = MaterialTheme.colorScheme.background,
                         edgePadding = 12.dp
                     ) {
-                        clusters.forEach { c ->
+                        clusters.forEach { tab ->
                             Tab(
-                                selected = c.id == cl!!.id,
-                                onClick = { onSwitchCluster(c.id) }
+                                selected = tab.id == c.id,
+                                onClick = { onSwitchCluster(tab.id) }
                             ) {
                                 Text(
-                                    c.name,
+                                    tab.name,
                                     modifier = Modifier
                                         .padding(12.dp)
                                         .combinedClickable(
-                                            onClick = { onSwitchCluster(c.id) },
-                                            onDoubleClick = { renameClusterId = c.id },
-                                            onLongClick = { longPressClusterId = c.id }
+                                            onClick = { onSwitchCluster(tab.id) },
+                                            onDoubleClick = { renameClusterId = tab.id },
+                                            onLongClick = { longPressClusterId = tab.id }
                                         ),
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
@@ -224,7 +225,7 @@ fun MainScreen(
                 }
 
                 // Filter tabs
-                FilterTabRow(cluster = cl!!, activeFilter = overviewFilter, onSelect = onSetOverviewFilter)
+                FilterTabRow(cluster = c, activeFilter = overviewFilter, onSelect = onSetOverviewFilter)
 
                 // Global slider
                 CompressionSlider(
@@ -236,14 +237,14 @@ fun MainScreen(
                 )
 
                 // Trace list
-                val indexMap = remember(cl.traces) {
+                val indexMap = remember(c.traces) {
                     val m = mutableMapOf<String, Int>()
-                    cl.traces.forEachIndexed { i, ts -> m[ts.key] = i }
+                    c.traces.forEachIndexed { i, ts -> m[ts.key] = i }
                     m
                 }
 
                 // Read verdicts keyed on version
-                val verdicts = remember(stateVersion) { cl.verdicts.toMap() }
+                val verdicts = remember(stateVersion) { c.verdicts.toMap() }
 
                 LazyColumn(modifier = Modifier.weight(1f), contentPadding = PaddingValues(bottom = 8.dp)) {
                     itemsIndexed(items = filteredTraces, key = { _, ts -> ts.key }) { _, ts ->

@@ -65,7 +65,7 @@ fun buildBreakdownData(data: List<MergedSlice>, totalDur: Long, isDark: Boolean)
         SummaryRow(k, k, v.first, v.second, c.value.toLong(), if (maxNameDur > 0) v.first.toFloat() / maxNameDur else 0f)
     }
     val bfs = bfMap.map { (k, v) ->
-        SummaryRow(k, k, v.first, v.second, Color(0xFFC62828).value.toLong(), if (maxBfDur > 0) v.first.toFloat() / maxBfDur else 0f)
+        SummaryRow(k, k, v.first, v.second, PerfettoColors.NEGATIVE_COLOR.value.toLong(), if (maxBfDur > 0) v.first.toFloat() / maxBfDur else 0f)
     }
 
     return BreakdownData(states, names, bfs, totalDur)
