@@ -1,0 +1,289 @@
+package com.swiperf.app.data.session
+
+import android.content.Context
+import com.swiperf.app.data.model.*
+import com.swiperf.app.data.parse.TraceParser
+import org.json.JSONArray
+import org.json.JSONObject
+import java.util.UUID
+
+object SessionManager {
+
+    private fun dao(context: Context) = AppDatabase.getInstance(context).sessionDao()
+
+    // ── Serialize clusters to JSON (web-app compatible format) ──
+
+    fun clustersToJson(clusters: List<Cluster>, activeClusterId: String?): String {
+        val json = JSONObject()
+        json.put("version", 1)
+        json.put("activeClusterId", activeClusterId ?: JSONObject.NULL)
+
+        val clustersArr = JSONArray()
+        for (cl in clusters) {
+            val clObj = JSONObject()
+            clObj.put("id", cl.id)
+            clObj.put("name", cl.name)
+
+            val tracesArr = JSONArray()
+            for (ts in cl.traces) {
+                val tObj = JSONObject()
+                tObj.put("trace_uuid", ts.trace.traceUuid)
+                tObj.put("package_name", ts.trace.packageName)
+                tObj.put("startup_dur", ts.trace.startupDur)
+
+                val slicesArr = JSONArray()
+                for (s in ts.trace.slices) {
+                    val sObj = JSONObject()
+                    sObj.put("ts", s.ts)
+                    sObj.put("dur", s.dur)
+                    if (s.name != null) sObj.put("name", s.name)
+                    if (s.state != null) sObj.put("state", s.state)
+                    if (s.depth != null) sObj.put("depth", s.depth)
+                    if (s.ioWait != null) sObj.put("io_wait", s.ioWait)
+                    if (s.blockedFunction != null) sObj.put("blocked_function", s.blockedFunction)
+                    slicesArr.put(sObj)
+                }
+                tObj.put("slices", slicesArr)
+
+                ts.trace.extra?.let { extra ->
+                    for ((k, v) in extra) {
+                        when (v) {
+                            is String -> tObj.put(k, v)
+                            is Number -> tObj.put(k, v)
+                            is Boolean -> tObj.put(k, v)
+                            null -> tObj.put(k, JSONObject.NULL)
+                        }
+                    }
+                }
+                tracesArr.put(tObj)
+            }
+            clObj.put("traces", tracesArr)
+
+            val verdictsArr = JSONArray()
+            for ((key, verdict) in cl.verdicts) {
+                val vArr = JSONArray()
+                vArr.put(key)
+                vArr.put(when (verdict) {
+                    Verdict.LIKE -> "like"
+                    Verdict.DISLIKE -> "dislike"
+                    Verdict.DISCARD -> "discard"
+                })
+                verdictsArr.put(vArr)
+            }
+            clObj.put("verdicts", verdictsArr)
+            clObj.put("overviewFilter", cl.overviewFilter.name.lowercase())
+            clObj.put("splitView", false)
+            clObj.put("splitFilters", JSONArray().put("pending").put("positive"))
+            clObj.put("splitRatio", 0.5)
+            clObj.put("sortField", if (cl.sortField == SortField.STARTUP_DUR) "startup_dur" else "index")
+            clObj.put("sortDir", cl.sortDir)
+            clObj.put("globalSlider", cl.globalSlider)
+
+            if (cl.propFilters.isNotEmpty()) {
+                val pfArr = JSONArray()
+                for ((field, values) in cl.propFilters) {
+                    val entry = JSONArray()
+                    entry.put(field)
+                    val vals = JSONArray()
+                    for (v in values) vals.put(v)
+                    entry.put(vals)
+                    pfArr.put(entry)
+                }
+                clObj.put("propFilters", pfArr)
+            }
+
+            clustersArr.put(clObj)
+        }
+        json.put("clusters", clustersArr)
+        return json.toString()
+    }
+
+    // ── Parse JSON to clusters ──
+
+    fun jsonToClusters(text: String): Pair<List<Cluster>, String?> {
+        val json = JSONObject(text)
+        val version = json.optInt("version", 1)
+        if (version != 1) throw Exception("Unknown session version: $version")
+
+        val activeId = if (json.isNull("activeClusterId")) null else json.optString("activeClusterId")
+        val clustersArr = json.getJSONArray("clusters")
+        val clusters = mutableListOf<Cluster>()
+
+        for (i in 0 until clustersArr.length()) {
+            val clObj = clustersArr.getJSONObject(i)
+            val tracesArr = clObj.getJSONArray("traces")
+            val traceEntries = mutableListOf<TraceEntry>()
+
+            for (j in 0 until tracesArr.length()) {
+                val tObj = tracesArr.getJSONObject(j)
+                val entry = TraceParser.normalizeTrace(tObj)
+                if (entry != null) traceEntries.add(entry)
+            }
+
+            val traceStates = traceEntries.map { TraceState.fromEntry(it) }
+            val verdicts = mutableMapOf<String, Verdict>()
+            val verdictsArr = clObj.optJSONArray("verdicts")
+            if (verdictsArr != null) {
+                for (j in 0 until verdictsArr.length()) {
+                    val pair = verdictsArr.getJSONArray(j)
+                    val key = pair.getString(0)
+                    val v = when (pair.getString(1)) {
+                        "like" -> Verdict.LIKE
+                        "dislike" -> Verdict.DISLIKE
+                        "discard" -> Verdict.DISCARD
+                        else -> continue
+                    }
+                    verdicts[key] = v
+                }
+            }
+
+            val sortFieldStr = clObj.optString("sortField", "index")
+            val sortField = if (sortFieldStr == "startup_dur") SortField.STARTUP_DUR else SortField.INDEX
+
+            val cluster = Cluster(
+                id = clObj.getString("id"),
+                name = clObj.getString("name"),
+                traces = traceStates,
+                verdicts = verdicts,
+                overviewFilter = try {
+                    OverviewFilter.valueOf(clObj.optString("overviewFilter", "all").uppercase())
+                } catch (_: Exception) { OverviewFilter.ALL },
+                sortField = sortField,
+                sortDir = clObj.optInt("sortDir", 1),
+                globalSlider = clObj.optInt("globalSlider", 100)
+            )
+
+            val pfArr = clObj.optJSONArray("propFilters")
+            if (pfArr != null) {
+                for (j in 0 until pfArr.length()) {
+                    val entry = pfArr.getJSONArray(j)
+                    val field = entry.getString(0)
+                    val vals = entry.getJSONArray(1)
+                    val valueSet = mutableSetOf<String>()
+                    for (k in 0 until vals.length()) valueSet.add(vals.getString(k))
+                    cluster.propFilters[field] = valueSet
+                }
+            }
+
+            cluster.recomputeCounts()
+            if (traceStates.isNotEmpty()) traceStates[0].ensureCache()
+            clusters.add(cluster)
+        }
+
+        return clusters to activeId
+    }
+
+    // ── Save session to SQLite ──
+
+    suspend fun saveSession(
+        context: Context,
+        sessionName: String,
+        clusters: List<Cluster>,
+        activeClusterId: String?,
+        sessionId: String = UUID.randomUUID().toString()
+    ): String {
+        val jsonData = clustersToJson(clusters, activeClusterId)
+        val traceCount = clusters.sumOf { it.traces.size }
+        val now = System.currentTimeMillis()
+
+        dao(context).upsertSession(SessionEntity(
+            id = sessionId,
+            name = sessionName,
+            createdAt = now,
+            updatedAt = now,
+            clusterCount = clusters.size,
+            traceCount = traceCount,
+            jsonData = jsonData
+        ))
+        return sessionId
+    }
+
+    // ── Update existing session (same ID, new data) ──
+
+    suspend fun updateSession(
+        context: Context,
+        sessionId: String,
+        clusters: List<Cluster>,
+        activeClusterId: String?
+    ) {
+        val existing = dao(context).getSession(sessionId) ?: return
+        val jsonData = clustersToJson(clusters, activeClusterId)
+        val traceCount = clusters.sumOf { it.traces.size }
+
+        dao(context).upsertSession(existing.copy(
+            updatedAt = System.currentTimeMillis(),
+            clusterCount = clusters.size,
+            traceCount = traceCount,
+            jsonData = jsonData
+        ))
+    }
+
+    // ── Load session from SQLite ──
+
+    suspend fun loadSession(context: Context, sessionId: String): Pair<List<Cluster>, String?>? {
+        val entity = dao(context).getSession(sessionId) ?: return null
+        return jsonToClusters(entity.jsonData)
+    }
+
+    // ── Get session JSON for export ──
+
+    suspend fun getSessionJson(context: Context, sessionId: String): String? {
+        return dao(context).getSession(sessionId)?.jsonData
+    }
+
+    // ── List all sessions ──
+
+    suspend fun listSessions(context: Context): List<SessionMeta> {
+        return dao(context).listSessions()
+    }
+
+    // ── Delete ──
+
+    suspend fun deleteSession(context: Context, sessionId: String) {
+        dao(context).deleteSession(sessionId)
+    }
+
+    suspend fun deleteAllSessions(context: Context) {
+        dao(context).deleteAllSessions()
+        dao(context).clearAppState()
+    }
+
+    // ── Auto-save current app state (survives process death) ──
+
+    suspend fun saveCurrentState(
+        context: Context,
+        activeSessionId: String?,
+        activeClusterId: String?,
+        clusters: List<Cluster>
+    ) {
+        val stateJson = if (clusters.isNotEmpty()) {
+            clustersToJson(clusters, activeClusterId)
+        } else null
+
+        dao(context).saveAppState(AppStateEntity(
+            key = "current",
+            activeSessionId = activeSessionId,
+            activeClusterId = activeClusterId,
+            stateJson = stateJson
+        ))
+    }
+
+    // ── Restore current app state ──
+
+    suspend fun restoreCurrentState(context: Context): Triple<String?, List<Cluster>, String?>? {
+        val state = dao(context).getAppState() ?: return null
+        if (state.stateJson == null) return Triple(state.activeSessionId, emptyList(), null)
+        return try {
+            val (clusters, activeId) = jsonToClusters(state.stateJson)
+            Triple(state.activeSessionId, clusters, activeId ?: state.activeClusterId)
+        } catch (_: Exception) { null }
+    }
+
+    // ── Import from external JSON text ──
+
+    fun parseExternalJson(text: String): Pair<List<Cluster>, String?> = jsonToClusters(text)
+
+    // ── Session count ──
+
+    suspend fun sessionCount(context: Context): Int = dao(context).sessionCount()
+}

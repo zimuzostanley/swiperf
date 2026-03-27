@@ -1,3 +1,13 @@
 node_modules/
 dist/
 *.tsbuildinfo
+
+# Android
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/captures/
+android/.idea/
+*.apk
+*.aab
