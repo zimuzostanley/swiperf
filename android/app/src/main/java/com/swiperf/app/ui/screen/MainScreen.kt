@@ -78,6 +78,7 @@ fun MainScreen(
     var showPaste by remember { mutableStateOf(false) }
     var showBreakdown by remember { mutableStateOf<TraceState?>(null) }
     var showSliceDetail by remember { mutableStateOf<Pair<MergedSlice, Long>?>(null) }
+    var sliceDetailDismissCallback by remember { mutableStateOf<(() -> Unit)?>(null) }
     var pendingSaveContent by remember { mutableStateOf<Pair<String, String>?>(null) }
 
     val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -229,7 +230,10 @@ fun MainScreen(
                             onVerdictChange = { v -> onSetVerdict(ts.key, v) },
                             onCardClick = { showBreakdown = ts },
                             onSliderChange = { v -> onSliderChange(ts, v) },
-                            onSliceTap = { slice -> showSliceDetail = slice to ts.totalDur }
+                            onSliceTap = { slice, onDismiss ->
+                                showSliceDetail = slice to ts.totalDur
+                                sliceDetailDismissCallback = onDismiss
+                            }
                         )
                     }
                     if (filteredTraces.isEmpty()) {
@@ -249,7 +253,13 @@ fun MainScreen(
         PasteSheet(onPaste = { text -> onPasteText(text); showPaste = false }, onDismiss = { showPaste = false })
     }
     showBreakdown?.let { ts -> BreakdownSheet(traceState = ts, onDismiss = { showBreakdown = null }) }
-    showSliceDetail?.let { (slice, totalDur) -> SliceDetailSheet(slice = slice, totalDur = totalDur, onDismiss = { showSliceDetail = null }) }
+    showSliceDetail?.let { (slice, totalDur) ->
+        SliceDetailSheet(slice = slice, totalDur = totalDur, onDismiss = {
+            showSliceDetail = null
+            sliceDetailDismissCallback?.invoke()
+            sliceDetailDismissCallback = null
+        })
+    }
     if (showExport) {
         ExportSheet(hasClusters = clusters.isNotEmpty(), clusterCount = clusters.size, onExportTsv = onExportTsv, onExportJson = onExportJson,
             onSaveFile = { content, filename -> pendingSaveContent = content to filename; fileCreator.launch(filename) },

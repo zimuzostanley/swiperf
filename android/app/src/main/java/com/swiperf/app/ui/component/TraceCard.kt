@@ -34,7 +34,7 @@ fun TraceCard(
     onVerdictChange: (Verdict) -> Unit,
     onCardClick: () -> Unit,
     onSliderChange: (Int) -> Unit,
-    onSliceTap: (MergedSlice) -> Unit,
+    onSliceTap: (MergedSlice, onDismiss: () -> Unit) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val accentColor by animateColorAsState(
@@ -50,6 +50,7 @@ fun TraceCard(
 
     val sliderValue = remember(version) { traceState.sliderValue }
     val seqSize = remember(version) { traceState.currentSeq.size }
+    var highlightIdx by remember { mutableStateOf<Int?>(null) }
 
     val shape = RoundedCornerShape(6.dp)
 
@@ -82,10 +83,14 @@ fun TraceCard(
             VerdictButtons(currentVerdict = verdict, onVerdict = onVerdictChange)
         }
 
-        // Timeline
+        // Timeline with tap highlight (clears when detail sheet dismisses)
         MiniTimeline(
             traceState = traceState,
-            onSliceTapped = { _, slice -> onSliceTap(slice) },
+            highlightIndex = highlightIdx,
+            onSliceTapped = { idx, slice ->
+                highlightIdx = idx
+                onSliceTap(slice) { highlightIdx = null }
+            },
             modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(4.dp))
         )
 

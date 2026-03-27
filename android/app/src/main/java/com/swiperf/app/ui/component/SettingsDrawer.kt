@@ -82,13 +82,26 @@ fun SettingsSheet(
             if (hasData) {
                 Text("Session", style = MaterialTheme.typography.titleMedium)
                 Spacer(Modifier.height(8.dp))
-                OutlinedButton(
-                    onClick = { onSaveSession(clusterName) },
-                    modifier = Modifier.fillMaxWidth()
+                var sessionName by remember { mutableStateOf(clusterName) }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(Icons.Default.Save, null, Modifier.size(16.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text("Save Current Session")
+                    OutlinedTextField(
+                        value = sessionName,
+                        onValueChange = { sessionName = it },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true,
+                        textStyle = MaterialTheme.typography.bodyMedium,
+                        placeholder = { Text("Session name", style = MaterialTheme.typography.bodySmall) },
+                        shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
+                    )
+                    OutlinedButton(onClick = { onSaveSession(sessionName.ifBlank { clusterName }) }) {
+                        Icon(Icons.Default.Save, null, Modifier.size(16.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("Save")
+                    }
                 }
 
                 Spacer(Modifier.height(16.dp))
