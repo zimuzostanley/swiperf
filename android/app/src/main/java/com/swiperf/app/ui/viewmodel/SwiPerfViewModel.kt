@@ -462,6 +462,12 @@ class SwiPerfViewModel(app: Application) : AndroidViewModel(app) {
         notifyChange()
     }
 
+    fun scoringReset() {
+        val targetKey = _scoringTargetKey.value ?: return
+        // Re-start with same target
+        startScoring(targetKey)
+    }
+
     fun closeScoring() {
         // Save final score if available
         val state = _scoringState

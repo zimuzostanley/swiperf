@@ -53,6 +53,7 @@ fun ScoringScreen(
     targetTotalDur: Long,
     onVerdict: (RegionVerdict) -> Unit,
     onUndo: () -> Unit,
+    onReset: () -> Unit,
     onClose: () -> Unit
 ) {
     val haptic = LocalHapticFeedback.current
@@ -89,6 +90,9 @@ fun ScoringScreen(
                     if (historySize > 0) {
                         IconButton(onClick = { onUndo(); haptic.performHapticFeedback(HapticFeedbackType.LongPress) }) {
                             Icon(Icons.AutoMirrored.Filled.Undo, "Undo")
+                        }
+                        IconButton(onClick = { onReset() }) {
+                            Icon(Icons.Default.Refresh, "Reset")
                         }
                     }
                     Text(scoreDisplay, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(end = 12.dp))
@@ -156,29 +160,16 @@ fun ScoringScreen(
                                     ) { _, dragAmount -> swipeOffset += dragAmount }
                                 }
                         ) {
-                            // Growing fill bar from center
-                            if (absFrac > 0.05f) {
+                            // Growing fill bar from edge
+                            if (absFrac > 0.03f) {
                                 val fillColor = if (frac > 0) PerfettoColors.POSITIVE_COLOR else PerfettoColors.NEGATIVE_COLOR
-                                val fillWidth = absFrac * 0.5f // fills up to 50% of width
-                                if (frac > 0) {
-                                    // Grow rightward from center
-                                    Box(
-                                        Modifier
-                                            .fillMaxHeight()
-                                            .fillMaxWidth(0.5f + fillWidth)
-                                            .align(Alignment.CenterStart)
-                                            .background(fillColor.copy(alpha = absFrac * 0.25f))
-                                    )
-                                } else {
-                                    // Grow leftward from center
-                                    Box(
-                                        Modifier
-                                            .fillMaxHeight()
-                                            .fillMaxWidth(0.5f + fillWidth)
-                                            .align(Alignment.CenterEnd)
-                                            .background(fillColor.copy(alpha = absFrac * 0.25f))
-                                    )
-                                }
+                                Box(
+                                    Modifier
+                                        .fillMaxHeight()
+                                        .fillMaxWidth(absFrac)
+                                        .align(if (frac > 0) Alignment.CenterStart else Alignment.CenterEnd)
+                                        .background(fillColor.copy(alpha = 0.15f + absFrac * 0.15f))
+                                )
                             }
 
                             // Labels

@@ -128,6 +128,7 @@ fun SwiPerfApp(vm: SwiPerfViewModel = viewModel()) {
                     targetTotalDur = targetTrace?.totalDur ?: 0L,
                     onVerdict = vm::scoringVerdict,
                     onUndo = vm::scoringUndo,
+                    onReset = vm::scoringReset,
                     onClose = {
                         vm.closeScoring()
                         navController.popBackStack()
