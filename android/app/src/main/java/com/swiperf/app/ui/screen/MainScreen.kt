@@ -83,8 +83,9 @@ fun MainScreen(
     var renameClusterId by remember { mutableStateOf<String?>(null) }
     var longPressClusterId by remember { mutableStateOf<String?>(null) }
     var showBreakdown by remember { mutableStateOf<Pair<TraceState, Int>?>(null) }
-    var showSliceDetail by remember { mutableStateOf<Pair<MergedSlice, Long>?>(null) }
-    var sliceDetailDismissCallback by remember { mutableStateOf<(() -> Unit)?>(null) }
+    // Slice detail: slice, totalDur, full seq, index in seq, highlight callback
+    data class SliceDetailState(val slice: MergedSlice, val totalDur: Long, val seq: List<MergedSlice>, val index: Int, val onHighlightChange: (Int?) -> Unit)
+    var showSliceDetail by remember { mutableStateOf<SliceDetailState?>(null) }
     var pendingSaveContent by remember { mutableStateOf<Pair<String, String>?>(null) }
 
     val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -268,9 +269,8 @@ fun MainScreen(
                         totalDur = pinnedTrace.totalDur,
                         onVerdictChange = { v -> onSetVerdict(pinnedTrace.key, v) },
                         onCardClick = { showBreakdown = pinnedTrace to (indexMap[pinnedTrace.key] ?: 0) },
-                        onSliceTap = { slice, onDismiss ->
-                            showSliceDetail = slice to pinnedTrace.totalDur
-                            sliceDetailDismissCallback = onDismiss
+                        onSliceTap = { idx, slice, s, td, onHl ->
+                            showSliceDetail = SliceDetailState(slice, td, s, idx, onHl)
                         },
                         isPinned = true,
                         onTogglePin = { onTogglePin(pinnedTrace.key) }
@@ -300,9 +300,8 @@ fun MainScreen(
                             totalDur = ts.totalDur,
                             onVerdictChange = { vd -> onSetVerdict(ts.key, vd) },
                             onCardClick = { showBreakdown = ts to (indexMap[ts.key] ?: 0) },
-                            onSliceTap = { slice, onDismiss ->
-                                showSliceDetail = slice to ts.totalDur
-                                sliceDetailDismissCallback = onDismiss
+                            onSliceTap = { idx, slice, s, td, onHl ->
+                                showSliceDetail = SliceDetailState(slice, td, s, idx, onHl)
                             },
                             isPinned = false,
                             onTogglePin = { onTogglePin(ts.key) }
@@ -377,12 +376,18 @@ fun MainScreen(
             onDismiss = { showBreakdown = null }
         )
     }
-    showSliceDetail?.let { (slice, totalDur) ->
-        SliceDetailSheet(slice = slice, totalDur = totalDur, onDismiss = {
-            showSliceDetail = null
-            sliceDetailDismissCallback?.invoke()
-            sliceDetailDismissCallback = null
-        })
+    showSliceDetail?.let { state ->
+        SliceDetailSheet(
+            slice = state.slice,
+            totalDur = state.totalDur,
+            seq = state.seq,
+            initialIndex = state.index,
+            onIndexChange = { newIdx -> state.onHighlightChange(newIdx) },
+            onDismiss = {
+                state.onHighlightChange(null) // Clear highlight
+                showSliceDetail = null
+            }
+        )
     }
     if (showExport) {
         ExportSheet(hasClusters = clusters.isNotEmpty(), clusterCount = clusters.size, onExportTsv = onExportTsv, onExportJson = onExportJson,

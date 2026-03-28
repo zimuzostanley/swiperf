@@ -5,6 +5,8 @@ import android.content.ClipboardManager
 import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -174,6 +176,9 @@ private fun MetaChip(label: String, value: String, onTap: (() -> Unit)? = null) 
 fun SliceDetailSheet(
     slice: MergedSlice,
     totalDur: Long,
+    seq: List<MergedSlice>? = null,
+    initialIndex: Int = -1,
+    onIndexChange: ((Int) -> Unit)? = null,
     onDismiss: () -> Unit
 ) {
     val isDark = LocalIsDarkTheme.current
@@ -187,6 +192,11 @@ fun SliceDetailSheet(
         scope.launch { snackbar.showSnackbar("Copied: $text", duration = SnackbarDuration.Short) }
     }
 
+    // Navigate between slices: double-tap = next, triple-tap = previous
+    var currentIdx by remember { mutableStateOf(if (initialIndex >= 0) initialIndex else seq?.indexOf(slice) ?: 0) }
+    val currentSlice = if (seq != null && currentIdx in seq.indices) seq[currentIdx] else slice
+    val canNavigate = seq != null && seq.size > 1
+
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
@@ -199,21 +209,70 @@ fun SliceDetailSheet(
                 .padding(bottom = 32.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Text(
-                slice.name ?: "unnamed",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.SemiBold
-            )
+            // Header — double-tap next, triple-tap previous
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    currentSlice.name ?: "unnamed",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = if (canNavigate) {
+                        Modifier
+                            .weight(1f)
+                            .pointerInput(Unit) {
+                                detectTapGestures(
+                                    onDoubleTap = {
+                                        if (currentIdx < seq!!.size - 1) {
+                                            currentIdx++
+                                            onIndexChange?.invoke(currentIdx)
+                                        }
+                                    }
+                                )
+                            }
+                    } else Modifier.weight(1f)
+                )
+                if (canNavigate) {
+                    Text(
+                        "${currentIdx + 1}/${seq!!.size}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            if (canNavigate) {
+                // Navigation hint + back button
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "double-tap title \u2192 next",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                    )
+                    Spacer(Modifier.weight(1f))
+                    if (currentIdx > 0) {
+                        androidx.compose.material3.TextButton(
+                            onClick = { currentIdx--; onIndexChange?.invoke(currentIdx) },
+                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 0.dp)
+                        ) {
+                            Text("\u2190 prev", style = MaterialTheme.typography.labelSmall)
+                        }
+                    }
+                }
+            }
 
-            SliceDetailRow("State", PerfettoColors.stateLabel(slice.state, slice.ioWait),
-                PerfettoColors.stateColor(slice.state, slice.ioWait, isDark), onTap = copyRow)
-            SliceDetailRow("Duration", Format.fmtDur(slice.dur), onTap = copyRow)
-            SliceDetailRow("Percentage", Format.fmtPct(slice.dur, totalDur), onTap = copyRow)
-            SliceDetailRow("Start", "+" + Format.fmtDur(slice.tsRel), onTap = copyRow)
-            SliceDetailRow("IO Wait", if (slice.ioWait != null) "${slice.ioWait}" else "\u2014", onTap = copyRow)
-            SliceDetailRow("Blocked", slice.blockedFunction ?: "\u2014", onTap = copyRow)
-            SliceDetailRow("Depth", if (slice.depth != null) "${slice.depth}" else "\u2014", onTap = copyRow)
-            SliceDetailRow("Merged", "\u00d7${slice.merged}", onTap = copyRow)
+            SliceDetailRow("State", PerfettoColors.stateLabel(currentSlice.state, currentSlice.ioWait),
+                PerfettoColors.stateColor(currentSlice.state, currentSlice.ioWait, isDark), onTap = copyRow)
+            SliceDetailRow("Duration", Format.fmtDur(currentSlice.dur), onTap = copyRow)
+            SliceDetailRow("Percentage", Format.fmtPct(currentSlice.dur, totalDur), onTap = copyRow)
+            SliceDetailRow("Start", "+" + Format.fmtDur(currentSlice.tsRel), onTap = copyRow)
+            SliceDetailRow("IO Wait", if (currentSlice.ioWait != null) "${currentSlice.ioWait}" else "\u2014", onTap = copyRow)
+            SliceDetailRow("Blocked", currentSlice.blockedFunction ?: "\u2014", onTap = copyRow)
+            SliceDetailRow("Depth", if (currentSlice.depth != null) "${currentSlice.depth}" else "\u2014", onTap = copyRow)
+            SliceDetailRow("Merged", "\u00d7${currentSlice.merged}", onTap = copyRow)
         }
             SnackbarHost(snackbar, modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 8.dp)) { data ->
                 Snackbar(snackbarData = data, containerColor = MaterialTheme.colorScheme.surfaceContainerHighest, contentColor = MaterialTheme.colorScheme.onSurface)

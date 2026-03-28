@@ -43,7 +43,7 @@ fun TraceCard(
     totalDur: Long,
     onVerdictChange: (Verdict) -> Unit,
     onCardClick: () -> Unit,
-    onSliceTap: (MergedSlice, onDismiss: () -> Unit) -> Unit,
+    onSliceTap: (index: Int, slice: MergedSlice, seq: List<MergedSlice>, totalDur: Long, onHighlightChange: (Int?) -> Unit) -> Unit,
     isPinned: Boolean = false,
     onTogglePin: (() -> Unit)? = null,
     modifier: Modifier = Modifier
@@ -184,7 +184,7 @@ fun TraceCard(
                 highlightIndex = highlightIdx,
                 onSliceTapped = { idx, slice ->
                     highlightIdx = idx
-                    onSliceTap(slice) { highlightIdx = null }
+                    onSliceTap(idx, slice, seq, totalDur) { newIdx -> highlightIdx = newIdx }
                 },
                 modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(4.dp))
             )
