@@ -128,23 +128,18 @@ fun ScoringScreen(
                             Text("Done \u00b7 $scoreDisplay", fontWeight = FontWeight.SemiBold)
                         }
                     } else {
-                        // Swipe area: left = different, right = same
+                        // Swipe area with growing fill bar
                         var swipeOffset by remember { mutableFloatStateOf(0f) }
-                        val swipeThreshold = 120f
+                        val swipeThreshold = 150f // ~40% of typical screen width
                         val frac = (swipeOffset / swipeThreshold).coerceIn(-1f, 1f)
+                        val absFrac = kotlin.math.abs(frac)
 
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(48.dp)
+                                .height(52.dp)
                                 .clip(RoundedCornerShape(6.dp))
-                                .background(
-                                    when {
-                                        frac > 0.15f -> PerfettoColors.POSITIVE_COLOR.copy(alpha = frac * 0.2f)
-                                        frac < -0.15f -> PerfettoColors.NEGATIVE_COLOR.copy(alpha = kotlin.math.abs(frac) * 0.2f)
-                                        else -> MaterialTheme.colorScheme.surfaceContainerHighest
-                                    }
-                                )
+                                .background(MaterialTheme.colorScheme.surfaceContainerHighest)
                                 .pointerInput(Unit) {
                                     detectHorizontalDragGestures(
                                         onDragEnd = {
@@ -159,28 +154,50 @@ fun ScoringScreen(
                                         },
                                         onDragCancel = { swipeOffset = 0f }
                                     ) { _, dragAmount -> swipeOffset += dragAmount }
-                                },
-                            contentAlignment = Alignment.Center
+                                }
                         ) {
+                            // Growing fill bar from center
+                            if (absFrac > 0.05f) {
+                                val fillColor = if (frac > 0) PerfettoColors.POSITIVE_COLOR else PerfettoColors.NEGATIVE_COLOR
+                                val fillWidth = absFrac * 0.5f // fills up to 50% of width
+                                if (frac > 0) {
+                                    // Grow rightward from center
+                                    Box(
+                                        Modifier
+                                            .fillMaxHeight()
+                                            .fillMaxWidth(0.5f + fillWidth)
+                                            .align(Alignment.CenterStart)
+                                            .background(fillColor.copy(alpha = absFrac * 0.25f))
+                                    )
+                                } else {
+                                    // Grow leftward from center
+                                    Box(
+                                        Modifier
+                                            .fillMaxHeight()
+                                            .fillMaxWidth(0.5f + fillWidth)
+                                            .align(Alignment.CenterEnd)
+                                            .background(fillColor.copy(alpha = absFrac * 0.25f))
+                                    )
+                                }
+                            }
+
+                            // Labels
                             Row(
-                                Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                                Modifier.fillMaxSize().padding(horizontal = 16.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
                                     "\u2190 different",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = PerfettoColors.NEGATIVE_COLOR.copy(alpha = if (frac < -0.15f) 0.4f + kotlin.math.abs(frac) * 0.6f else 0.3f)
-                                )
-                                Text(
-                                    "swipe",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = if (kotlin.math.abs(frac) < 0.15f) 0.5f else 0.15f)
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontWeight = if (frac < -0.5f) FontWeight.SemiBold else FontWeight.Normal,
+                                    color = PerfettoColors.NEGATIVE_COLOR.copy(alpha = if (frac < -0.1f) 0.5f + absFrac * 0.5f else 0.3f)
                                 )
                                 Text(
                                     "same \u2192",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = PerfettoColors.POSITIVE_COLOR.copy(alpha = if (frac > 0.15f) 0.4f + frac * 0.6f else 0.3f)
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontWeight = if (frac > 0.5f) FontWeight.SemiBold else FontWeight.Normal,
+                                    color = PerfettoColors.POSITIVE_COLOR.copy(alpha = if (frac > 0.1f) 0.5f + frac * 0.5f else 0.3f)
                                 )
                             }
                         }
