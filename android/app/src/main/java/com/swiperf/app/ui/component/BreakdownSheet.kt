@@ -207,14 +207,7 @@ fun SliceDetailSheet(
                 .padding(bottom = 32.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // Header
-            Text(
-                currentSlice.name ?: "unnamed",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.SemiBold
-            )
-
-            // Navigation
+            // Navigation (above header so arrows don't shift with name length)
             if (canNavigate) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -239,6 +232,13 @@ fun SliceDetailSheet(
                     ) { Text("\u2192", style = MaterialTheme.typography.bodyMedium) }
                 }
             }
+
+            // Header
+            Text(
+                currentSlice.name ?: "unnamed",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.SemiBold
+            )
 
             SliceDetailRow("State", PerfettoColors.stateLabel(currentSlice.state, currentSlice.ioWait),
                 PerfettoColors.stateColor(currentSlice.state, currentSlice.ioWait, isDark), onTap = copyRow)

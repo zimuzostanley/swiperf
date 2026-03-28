@@ -4,9 +4,12 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -23,6 +26,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -114,25 +118,61 @@ fun ScoringScreen(
                             Text("Done \u00b7 $scoreDisplay", fontWeight = FontWeight.SemiBold)
                         }
                     } else {
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            FilledTonalButton(
-                                onClick = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); onVerdict(RegionVerdict.DIFFERENT) },
-                                colors = ButtonDefaults.filledTonalButtonColors(
-                                    containerColor = PerfettoColors.NEGATIVE_COLOR.copy(alpha = 0.2f),
-                                    contentColor = PerfettoColors.NEGATIVE_COLOR
-                                ),
-                                shape = RoundedCornerShape(6.dp),
-                                modifier = Modifier.weight(1f)
-                            ) { Text("different", fontWeight = FontWeight.SemiBold) }
-                            FilledTonalButton(
-                                onClick = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); onVerdict(RegionVerdict.SAME) },
-                                colors = ButtonDefaults.filledTonalButtonColors(
-                                    containerColor = PerfettoColors.POSITIVE_COLOR.copy(alpha = 0.2f),
-                                    contentColor = PerfettoColors.POSITIVE_COLOR
-                                ),
-                                shape = RoundedCornerShape(6.dp),
-                                modifier = Modifier.weight(1f)
-                            ) { Text("same", fontWeight = FontWeight.SemiBold) }
+                        // Swipe area: left = different, right = same
+                        var swipeOffset by remember { mutableFloatStateOf(0f) }
+                        val swipeThreshold = 120f
+                        val frac = (swipeOffset / swipeThreshold).coerceIn(-1f, 1f)
+
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(48.dp)
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(
+                                    when {
+                                        frac > 0.15f -> PerfettoColors.POSITIVE_COLOR.copy(alpha = frac * 0.2f)
+                                        frac < -0.15f -> PerfettoColors.NEGATIVE_COLOR.copy(alpha = kotlin.math.abs(frac) * 0.2f)
+                                        else -> MaterialTheme.colorScheme.surfaceContainerHighest
+                                    }
+                                )
+                                .pointerInput(Unit) {
+                                    detectHorizontalDragGestures(
+                                        onDragEnd = {
+                                            if (swipeOffset > swipeThreshold) {
+                                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                onVerdict(RegionVerdict.SAME)
+                                            } else if (swipeOffset < -swipeThreshold) {
+                                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                onVerdict(RegionVerdict.DIFFERENT)
+                                            }
+                                            swipeOffset = 0f
+                                        },
+                                        onDragCancel = { swipeOffset = 0f }
+                                    ) { _, dragAmount -> swipeOffset += dragAmount }
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Row(
+                                Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    "\u2190 different",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = PerfettoColors.NEGATIVE_COLOR.copy(alpha = if (frac < -0.15f) 0.4f + kotlin.math.abs(frac) * 0.6f else 0.3f)
+                                )
+                                Text(
+                                    "swipe",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = if (kotlin.math.abs(frac) < 0.15f) 0.5f else 0.15f)
+                                )
+                                Text(
+                                    "same \u2192",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = PerfettoColors.POSITIVE_COLOR.copy(alpha = if (frac > 0.15f) 0.4f + frac * 0.6f else 0.3f)
+                                )
+                            }
                         }
                     }
                 }
