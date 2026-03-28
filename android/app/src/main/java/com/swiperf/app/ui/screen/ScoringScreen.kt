@@ -28,6 +28,9 @@ import android.content.Context
 import com.swiperf.app.data.scoring.RegionVerdict
 import com.swiperf.app.data.scoring.ScoringRegion
 import com.swiperf.app.data.scoring.ScoringState
+import androidx.compose.foundation.Canvas
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import com.swiperf.app.ui.theme.LocalIsDarkTheme
 import com.swiperf.app.ui.theme.PerfettoColors
 import com.swiperf.app.ui.util.Format
@@ -212,11 +215,37 @@ fun ScoringScreen(
                         .padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
+                    // Timeline snippets — anchor vs target side by side
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text("anchor", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                        RegionBar(
+                            stateColor = PerfettoColors.stateColor(region.anchorState, region.anchorIoWait, isDark),
+                            nameColor = if (region.anchorName != null) PerfettoColors.nameColor(region.anchorName) else PerfettoColors.nameRowFallback(isDark),
+                            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(3.dp))
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Text("target", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        RegionBar(
+                            stateColor = PerfettoColors.stateColor(region.targetState, region.targetIoWait, isDark),
+                            nameColor = if (region.targetName != null) PerfettoColors.nameColor(region.targetName) else PerfettoColors.nameRowFallback(isDark),
+                            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(3.dp))
+                        )
+                    }
+
+                    // Duration
+                    Text(
+                        "${(region.duration * 100).toInt()}% of trace",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.1f))
+
                     // What differs
                     val diffLabel = region.diffs.joinToString(" + ") { it.field.replace("_", " ") } + if (region.diffs.size == 1) " differs" else " differ"
                     Text(diffLabel, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
-                    // Anchor and target values for each diff
+                    // Field values
                     for (diff in region.diffs) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text("anchor", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.width(52.dp))
@@ -251,15 +280,26 @@ fun ScoringScreen(
                         }
                     }
 
-                    // Duration
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
-                    Text(
-                        "${(region.duration * 100).toInt()}% of trace",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
                 }
             }
         }
+    }
+}
+
+/** Single-region timeline bar: state row (top) + name row (bottom), full width. */
+@Composable
+private fun RegionBar(
+    stateColor: androidx.compose.ui.graphics.Color,
+    nameColor: androidx.compose.ui.graphics.Color,
+    modifier: Modifier = Modifier
+) {
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val stateH = with(density) { 10.dp.toPx() }
+    val gapH = with(density) { 1.dp.toPx() }
+    val nameH = with(density) { 14.dp.toPx() }
+
+    Canvas(modifier = modifier.height(25.dp)) {
+        drawRect(stateColor, Offset.Zero, Size(size.width, stateH))
+        drawRect(nameColor, Offset(0f, stateH + gapH), Size(size.width, nameH))
     }
 }
