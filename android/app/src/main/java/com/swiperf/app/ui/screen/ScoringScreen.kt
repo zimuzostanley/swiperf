@@ -306,7 +306,10 @@ private fun FieldRow(label: String, anchorVal: String, targetVal: String, differ
     }
 }
 
-/** Full trace timeline with the current region highlighted (rest dimmed). */
+/** Full trace timeline with the current region highlighted (rest dimmed).
+ *  Draws all slices at full alpha, then overlays dimming rectangles OUTSIDE
+ *  the region. Both anchor and target use the same regionStart/regionEnd
+ *  so the highlight is perfectly aligned. */
 @Composable
 private fun FullTrackWithHighlight(
     seq: List<MergedSlice>,
@@ -320,24 +323,30 @@ private fun FullTrackWithHighlight(
     val stateH = with(density) { 8.dp.toPx() }
     val gapH = with(density) { 1.dp.toPx() }
     val nameH = with(density) { 10.dp.toPx() }
+    val dimColor = if (isDark) androidx.compose.ui.graphics.Color(0xCC111318) else androidx.compose.ui.graphics.Color(0xCCF5F4F0)
 
     Canvas(modifier = Modifier.fillMaxWidth().height(19.dp).clip(RoundedCornerShape(3.dp))) {
         if (totalDur == 0L) return@Canvas
         val scale = size.width / totalDur.toFloat()
         drawRect(PerfettoColors.canvasBg(isDark))
 
+        // Draw all slices at full alpha
         for (d in seq) {
             val x = d.tsRel * scale
             val w = maxOf(d.dur * scale, minW)
-            // Check overlap: slice [sliceStart, sliceEnd) vs region [regionStart, regionEnd)
-            val sliceStart = d.tsRel.toDouble() / totalDur
-            val sliceEnd = (d.tsRel + d.dur).toDouble() / totalDur
-            val inRegion = sliceStart < regionEnd + 0.001 && sliceEnd > regionStart - 0.001
-            val alpha = if (inRegion) 1f else 0.2f
-
-            drawRect(PerfettoColors.stateColor(d.state, d.ioWait, isDark).copy(alpha = alpha), Offset(x, 0f), Size(w, stateH))
+            drawRect(PerfettoColors.stateColor(d.state, d.ioWait, isDark), Offset(x, 0f), Size(w, stateH))
             val nc = if (d.name != null) PerfettoColors.nameColor(d.name) else PerfettoColors.nameRowFallback(isDark)
-            drawRect(nc.copy(alpha = alpha), Offset(x, stateH + gapH), Size(w, nameH))
+            drawRect(nc, Offset(x, stateH + gapH), Size(w, nameH))
+        }
+
+        // Dim everything outside the region with an overlay
+        val regionStartPx = (regionStart * size.width).toFloat()
+        val regionEndPx = (regionEnd * size.width).toFloat()
+        if (regionStartPx > 0) {
+            drawRect(dimColor, Offset.Zero, Size(regionStartPx, size.height))
+        }
+        if (regionEndPx < size.width) {
+            drawRect(dimColor, Offset(regionEndPx, 0f), Size(size.width - regionEndPx, size.height))
         }
     }
 }
