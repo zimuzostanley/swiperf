@@ -460,7 +460,7 @@ fun MainScreen(
                 }
             },
             onSyncRemote = onSyncRemote,
-            scoringDict = if (cl?.scoreAnchorKey != null) cl.scoringDict else null,
+            scoringDict = cl?.scoringDict ?: com.swiperf.app.data.scoring.ScoringDictionary(),
             scoringUseDict = cl?.scoringUseDict ?: true,
             scoringNormalizeDigits = cl?.scoringNormalizeDigits ?: false,
             onToggleUseDict = onToggleUseDict,

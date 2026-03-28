@@ -35,7 +35,7 @@ fun SettingsSheet(
     onDeleteAllData: () -> Unit,
     onExportSession: (String) -> Unit,
     onSyncRemote: (() -> Unit)? = null,
-    scoringDict: ScoringDictionary? = null,
+    scoringDict: ScoringDictionary = ScoringDictionary(),
     scoringUseDict: Boolean = true,
     scoringNormalizeDigits: Boolean = false,
     onToggleUseDict: (() -> Unit)? = null,
@@ -216,8 +216,8 @@ fun SettingsSheet(
                 Spacer(Modifier.height(16.dp))
             }
 
-            // Scoring Dictionary (only when anchor is set)
-            if (scoringDict != null) {
+            // Scoring
+            run {
                 Text("Scoring", style = MaterialTheme.typography.titleMedium)
                 Spacer(Modifier.height(8.dp))
 
@@ -314,7 +314,7 @@ fun SettingsSheet(
         )
     }
 
-    if (showDictionary && scoringDict != null) {
+    if (showDictionary) {
         DictionarySheet(
             dictionary = scoringDict,
             onRemove = { entries -> onRemoveDictEntries?.invoke(entries) },
