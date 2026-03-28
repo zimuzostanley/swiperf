@@ -207,40 +207,36 @@ fun SliceDetailSheet(
                 .padding(bottom = 32.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // Header — double-tap next, triple-tap previous
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    currentSlice.name ?: "unnamed",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.weight(1f)
-                )
-                if (canNavigate) {
-                    Text(
-                        "${currentIdx + 1}/${seq!!.size}",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
+            // Header
+            Text(
+                currentSlice.name ?: "unnamed",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.SemiBold
+            )
+
+            // Navigation
             if (canNavigate) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     TextButton(
                         onClick = { currentIdx--; onIndexChange?.invoke(currentIdx) },
-                        enabled = currentIdx > 0
-                    ) { Text("\u2190 prev", style = MaterialTheme.typography.labelSmall) }
+                        enabled = currentIdx > 0,
+                        contentPadding = PaddingValues(horizontal = 8.dp)
+                    ) { Text("\u2190", style = MaterialTheme.typography.bodyMedium) }
+                    Spacer(Modifier.weight(1f))
+                    Text(
+                        "${currentIdx + 1} / ${seq!!.size}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                     Spacer(Modifier.weight(1f))
                     TextButton(
                         onClick = { currentIdx++; onIndexChange?.invoke(currentIdx) },
-                        enabled = currentIdx < seq!!.size - 1
-                    ) { Text("next \u2192", style = MaterialTheme.typography.labelSmall) }
+                        enabled = currentIdx < seq!!.size - 1,
+                        contentPadding = PaddingValues(horizontal = 8.dp)
+                    ) { Text("\u2192", style = MaterialTheme.typography.bodyMedium) }
                 }
             }
 
