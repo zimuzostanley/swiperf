@@ -266,8 +266,20 @@ fun ScoringScreen(
 
                 FieldCard("name", region.anchorName != region.targetName) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(region.anchorName ?: "\u2014", style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).clickable { copy(region.anchorName) })
-                        Text(region.targetName ?: "\u2014", style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).clickable { copy(region.targetName) })
+                        Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                            if (region.anchorName != null) {
+                                Box(Modifier.size(8.dp).clip(CircleShape).background(PerfettoColors.nameColor(region.anchorName)))
+                                Spacer(Modifier.width(4.dp))
+                            }
+                            Text(region.anchorName ?: "\u2014", style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.clickable { copy(region.anchorName) })
+                        }
+                        Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                            if (region.targetName != null) {
+                                Box(Modifier.size(8.dp).clip(CircleShape).background(PerfettoColors.nameColor(region.targetName)))
+                                Spacer(Modifier.width(4.dp))
+                            }
+                            Text(region.targetName ?: "\u2014", style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.clickable { copy(region.targetName) })
+                        }
                     }
                 }
 
