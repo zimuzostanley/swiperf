@@ -223,24 +223,24 @@ class ScoringEngineTest {
         )
         val state = ScoringEngine.createState(anchor, 100, target, 100)
 
-        // Largest region has sig {state: Running→Sleeping, name: foo→bar}
+        // Time-ordered: first region [0, 0.33] has sig {name: foo→bar} (size 1)
         val idx1 = state.nextRegionIndex!!
         val sig1 = state.regions[idx1].diffSignature
-        assertTrue(sig1.size == 2) // both state and name differ
+        assertEquals(1, sig1.size) // only name differs
         ScoringEngine.recordVerdict(state, idx1, RegionVerdict.SAME)
 
-        // Other regions have sig {name: foo→bar} (no state diff) — different signature
-        // So they should NOT be auto-resolved
+        // Third region [0.67, 1.0] has same sig {name: foo→bar} → auto-resolved
+        // Second region [0.33, 0.67] has sig {state+name} → different signature, NOT resolved
         assertFalse(state.isComplete)
         val next = state.nextRegionIndex!!
         val sig2 = state.regions[next].diffSignature
-        assertEquals(1, sig2.size) // only name differs
+        assertEquals(2, sig2.size) // state + name differ
     }
 
     // ── nextRegionIndex ordering ──
 
     @Test
-    fun nextRegion_largestFirst() {
+    fun nextRegion_timeOrdered() {
         val anchor = listOf(
             slice(0, 20, "Running", "a"),
             slice(20, 80, "Running", "b")
@@ -253,8 +253,8 @@ class ScoringEngineTest {
 
         val idx = state.nextRegionIndex!!
         val region = state.regions[idx]
-        // Largest differing region should be the 80% one
-        assertTrue(region.duration > 0.5)
+        // Earliest differing region (time-ordered)
+        assertTrue(region.start < 0.25)
     }
 
     // ── Undo ──

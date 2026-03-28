@@ -157,19 +157,14 @@ object ScoringEngine {
         val boundaryList = boundaries.toList()
         val regions = mutableListOf<ScoringRegion>()
 
-        // Pointer-based lookup: O(N+M) instead of O((N+M)^2)
-        var ai = 0
-        var ti = 0
         for (i in 0 until boundaryList.size - 1) {
             val start = boundaryList[i]
             val end = boundaryList[i + 1]
             if (end - start < 1e-12) continue
 
             val mid = (start + end) / 2
-            while (ai < anchorProps.size - 1 && anchorProps[ai].end <= mid) ai++
-            while (ti < targetProps.size - 1 && targetProps[ti].end <= mid) ti++
-            val anchor = anchorProps.getOrNull(ai)?.takeIf { mid >= it.start && mid < it.end }
-            val target = targetProps.getOrNull(ti)?.takeIf { mid >= it.start && mid < it.end }
+            val anchor = anchorProps.find { mid >= it.start && mid < it.end }
+            val target = targetProps.find { mid >= it.start && mid < it.end }
 
             regions.add(ScoringRegion(
                 start, end,

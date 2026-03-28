@@ -109,15 +109,21 @@ fun ScoringScreen(
                         }
                     } else {
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Button(
+                            FilledTonalButton(
                                 onClick = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); onVerdict(RegionVerdict.DIFFERENT) },
-                                colors = ButtonDefaults.buttonColors(containerColor = PerfettoColors.NEGATIVE_COLOR, contentColor = androidx.compose.ui.graphics.Color.White),
+                                colors = ButtonDefaults.filledTonalButtonColors(
+                                    containerColor = PerfettoColors.NEGATIVE_COLOR.copy(alpha = 0.2f),
+                                    contentColor = PerfettoColors.NEGATIVE_COLOR
+                                ),
                                 shape = RoundedCornerShape(6.dp),
                                 modifier = Modifier.weight(1f)
                             ) { Text("different", fontWeight = FontWeight.SemiBold) }
-                            Button(
+                            FilledTonalButton(
                                 onClick = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); onVerdict(RegionVerdict.SAME) },
-                                colors = ButtonDefaults.buttonColors(containerColor = PerfettoColors.POSITIVE_COLOR, contentColor = androidx.compose.ui.graphics.Color.White),
+                                colors = ButtonDefaults.filledTonalButtonColors(
+                                    containerColor = PerfettoColors.POSITIVE_COLOR.copy(alpha = 0.2f),
+                                    contentColor = PerfettoColors.POSITIVE_COLOR
+                                ),
                                 shape = RoundedCornerShape(6.dp),
                                 modifier = Modifier.weight(1f)
                             ) { Text("same", fontWeight = FontWeight.SemiBold) }
