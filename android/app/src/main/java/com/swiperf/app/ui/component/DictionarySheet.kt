@@ -43,11 +43,13 @@ fun DictionarySheet(
     val selected = remember { mutableStateListOf<DictEntry>() }
     var showImport by remember { mutableStateOf(false) }
     var confirmClear by remember { mutableStateOf(false) }
+    var filterVerdict by remember { mutableStateOf<RegionVerdict?>(null) }
 
-    val filtered = remember(search, filterNormalized, dictionary.all) {
+    val filtered = remember(search, filterNormalized, filterVerdict, dictionary.all) {
         val q = search.lowercase()
         dictionary.all
             .filter { if (filterNormalized != null) it.normalized == filterNormalized else true }
+            .filter { if (filterVerdict != null) it.verdict == filterVerdict else true }
             .filter { if (q.isBlank()) true else q in it.searchText }
             .sortedByDescending { it.hitCount }
     }
@@ -87,11 +89,12 @@ fun DictionarySheet(
                 )
                 Spacer(Modifier.height(6.dp))
 
-                // Filter: all / raw / normalized
+                // Filters
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    FilterChip(selected = filterNormalized == null, onClick = { filterNormalized = null }, label = { Text("all") })
-                    FilterChip(selected = filterNormalized == false, onClick = { filterNormalized = false }, label = { Text("raw") })
-                    FilterChip(selected = filterNormalized == true, onClick = { filterNormalized = true }, label = { Text("normalized") })
+                    FilterChip(selected = filterVerdict == null, onClick = { filterVerdict = null }, label = { Text("all") })
+                    FilterChip(selected = filterVerdict == RegionVerdict.SAME, onClick = { filterVerdict = RegionVerdict.SAME }, label = { Text("same") })
+                    FilterChip(selected = filterVerdict == RegionVerdict.DIFFERENT, onClick = { filterVerdict = RegionVerdict.DIFFERENT }, label = { Text("diff") })
+                    FilterChip(selected = filterNormalized == true, onClick = { filterNormalized = if (filterNormalized == true) null else true }, label = { Text("[n]") })
                 }
                 Spacer(Modifier.height(6.dp))
 
