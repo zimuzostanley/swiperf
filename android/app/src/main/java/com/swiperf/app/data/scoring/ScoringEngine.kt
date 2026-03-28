@@ -1,5 +1,6 @@
 package com.swiperf.app.data.scoring
 
+import com.swiperf.app.data.model.MergedSlice
 import com.swiperf.app.data.model.Slice
 
 /**
@@ -170,6 +171,21 @@ object ScoringEngine {
         }
 
         return mergeAdjacentSame(regions)
+    }
+
+    /** Build regions from compressed (merged) slices. */
+    fun buildRegionsFromMerged(anchorSlices: List<MergedSlice>, anchorTotalDur: Long,
+                               targetSlices: List<MergedSlice>, targetTotalDur: Long,
+                               normalize: Boolean = false): List<ScoringRegion> {
+        // Convert MergedSlice to Slice for reuse
+        val toSlice = { m: MergedSlice -> Slice(m.ts, m.dur, m.name, m.state, m.depth, m.ioWait, m.blockedFunction) }
+        return buildRegions(anchorSlices.map(toSlice), anchorTotalDur, targetSlices.map(toSlice), targetTotalDur, normalize)
+    }
+
+    fun createStateFromMerged(anchorSlices: List<MergedSlice>, anchorTotalDur: Long,
+                              targetSlices: List<MergedSlice>, targetTotalDur: Long,
+                              normalize: Boolean = false): ScoringState {
+        return ScoringState(buildRegionsFromMerged(anchorSlices, anchorTotalDur, targetSlices, targetTotalDur, normalize))
     }
 
     private fun mergeAdjacentSame(regions: List<ScoringRegion>): List<ScoringRegion> {

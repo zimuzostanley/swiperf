@@ -78,7 +78,9 @@ fun MainScreen(
     onToggleNormalizeDigits: (() -> Unit)? = null,
     onRemoveDictEntries: ((List<com.swiperf.app.data.scoring.DictEntry>) -> Unit)? = null,
     onClearDict: (() -> Unit)? = null,
-    onImportDict: ((json: String, merge: Boolean) -> Unit)? = null
+    onImportDict: ((json: String, merge: Boolean) -> Unit)? = null,
+    autoPinFirst: Boolean = true,
+    onToggleAutoPinFirst: (() -> Unit)? = null
 ) {
     val cl = activeCluster
     val hasData = cl != null && cl.traces.isNotEmpty()
@@ -267,8 +269,8 @@ fun MainScreen(
                 }
 
                 // Pinned trace (rendered above the scrollable list)
-                val pinnedTrace = if (pinnedKey != null) filteredTraces.find { it.key == pinnedKey } else null
-                val unpinnedTraces = if (pinnedKey != null) filteredTraces.filter { it.key != pinnedKey } else filteredTraces
+                val pinnedTrace = if (pinnedKey != null) c.traces.find { it.key == pinnedKey } else null
+                val unpinnedTraces = filteredTraces.filter { it.key != pinnedKey }
 
                 if (pinnedTrace != null) {
                     pinnedTrace.ensureCache()
@@ -468,6 +470,8 @@ fun MainScreen(
             onRemoveDictEntries = onRemoveDictEntries,
             onClearDict = onClearDict,
             onImportDict = onImportDict,
+            autoPinFirst = autoPinFirst,
+            onToggleAutoPinFirst = onToggleAutoPinFirst,
             onDismiss = { showSettings = false })
     }
 }

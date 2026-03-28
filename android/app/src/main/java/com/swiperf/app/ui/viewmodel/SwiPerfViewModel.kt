@@ -1,6 +1,7 @@
 package com.swiperf.app.ui.viewmodel
 
 import android.app.Application
+import android.content.Context
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.swiperf.app.data.export.ExportHelper
@@ -68,6 +69,18 @@ class SwiPerfViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _scoringTargetKey = MutableStateFlow<String?>(null)
     val scoringTargetKey: StateFlow<String?> = _scoringTargetKey.asStateFlow()
+
+    // ── Auto-pin first trace ──
+    private val _autoPinFirst = MutableStateFlow(
+        ctx.getSharedPreferences("swiperf", Context.MODE_PRIVATE).getBoolean("auto_pin_first", true)
+    )
+    val autoPinFirst: StateFlow<Boolean> = _autoPinFirst.asStateFlow()
+
+    fun toggleAutoPinFirst() {
+        val newVal = !_autoPinFirst.value
+        _autoPinFirst.value = newVal
+        ctx.getSharedPreferences("swiperf", Context.MODE_PRIVATE).edit().putBoolean("auto_pin_first", newVal).apply()
+    }
 
     // ── Theme ──
     private val _themeMode = MutableStateFlow(ThemePrefs.load(app))
@@ -138,6 +151,11 @@ class SwiPerfViewModel(app: Application) : AndroidViewModel(app) {
 
         _clusters.value = _clusters.value + cl
         _activeClusterId.value = cl.id
+
+        if (_autoPinFirst.value && _pinnedKey.value == null && states.isNotEmpty()) {
+            _pinnedKey.value = states[0].key
+        }
+
         notifyChange()
 
         // Pre-compute caches in background
@@ -375,9 +393,10 @@ class SwiPerfViewModel(app: Application) : AndroidViewModel(app) {
         target.ensureCache()
         cl.scoreAnchorKey = _pinnedKey.value
         _scoringTargetKey.value = targetKey
-        val state = ScoringEngine.createState(
-            anchor.trace.slices, anchor.totalDur,
-            target.trace.slices, target.totalDur,
+        // Use compressed slices (current zoom level) for scoring
+        val state = ScoringEngine.createStateFromMerged(
+            anchor.currentSeq, anchor.totalDur,
+            target.currentSeq, target.totalDur,
             normalize = cl.scoringNormalizeDigits
         )
         if (cl.scoringUseDict) {

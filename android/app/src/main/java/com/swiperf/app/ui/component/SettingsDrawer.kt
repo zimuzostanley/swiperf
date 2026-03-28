@@ -43,6 +43,8 @@ fun SettingsSheet(
     onRemoveDictEntries: ((List<DictEntry>) -> Unit)? = null,
     onClearDict: (() -> Unit)? = null,
     onImportDict: ((json: String, merge: Boolean) -> Unit)? = null,
+    autoPinFirst: Boolean = true,
+    onToggleAutoPinFirst: (() -> Unit)? = null,
     onDismiss: () -> Unit
 ) {
     var confirmClear by remember { mutableStateOf(false) }
@@ -257,6 +259,26 @@ fun SettingsSheet(
                     Switch(
                         checked = scoringNormalizeDigits,
                         onCheckedChange = { onToggleNormalizeDigits?.invoke() }
+                    )
+                }
+                Spacer(Modifier.height(4.dp))
+
+                // Auto-pin first trace
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Auto-pin first trace", style = MaterialTheme.typography.bodyMedium)
+                        Text(
+                            "Pin the first trace as anchor when loading data",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = autoPinFirst,
+                        onCheckedChange = { onToggleAutoPinFirst?.invoke() }
                     )
                 }
                 Spacer(Modifier.height(8.dp))
