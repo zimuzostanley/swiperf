@@ -128,7 +128,7 @@ class ScoringState(
             when (verdicts[i]) {
                 RegionVerdict.SAME -> sameDur += r.duration
                 RegionVerdict.DIFFERENT -> diffDur += r.duration
-                else -> {} // remaining
+                else -> {}
             }
         }
         val remainingDur = total - sameDur - diffDur
@@ -138,6 +138,27 @@ class ScoringState(
             (remainingDur / total * 100).toInt()
         )
     }
+
+    /** Auto-matched: % of total trace that's identical. */
+    val autoSamePct: Int by lazy {
+        val total = regions.sumOf { it.duration }
+        if (total == 0.0) 0 else (regions.filter { it.isAutoSame }.sumOf { it.duration } / total * 100).toInt()
+    }
+
+    /** Manual scoring stats (auto-matched excluded). Percentages of DIFFERING duration only. */
+    val manualSamePct: Int get() {
+        val differingDur = regions.filter { !it.isAutoSame }.sumOf { it.duration }
+        if (differingDur == 0.0) return 0
+        val sameDur = regions.indices.filter { !regions[it].isAutoSame && verdicts[it] == RegionVerdict.SAME }.sumOf { regions[it].duration }
+        return (sameDur / differingDur * 100).toInt()
+    }
+    val manualDiffPct: Int get() {
+        val differingDur = regions.filter { !it.isAutoSame }.sumOf { it.duration }
+        if (differingDur == 0.0) return 0
+        val diffDur = regions.indices.filter { !regions[it].isAutoSame && verdicts[it] == RegionVerdict.DIFFERENT }.sumOf { regions[it].duration }
+        return (diffDur / differingDur * 100).toInt()
+    }
+    val manualReviewedPct: Int get() = manualSamePct + manualDiffPct
 }
 
 object ScoringEngine {

@@ -456,7 +456,7 @@ class SwiPerfViewModel(app: Application) : AndroidViewModel(app) {
         val cl = activeCluster.value
         val targetKey = _scoringTargetKey.value
         if (cl != null && targetKey != null) {
-            cl.scores[targetKey] = state.breakdown.samePct / 100f
+            cl.scores[targetKey] = state.manualSamePct / 100f
         }
         // Bump hit counts for cascaded entries in the dictionary
         if (action.learnedSignature != null && action.cascadedIndices.isNotEmpty()) {

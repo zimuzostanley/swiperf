@@ -65,16 +65,15 @@ fun ScoringScreen(
 
     BackHandler { onClose() }
 
-    val scoreDisplay = remember(version) {
-        val b = scoringState.breakdown
-        if (b.samePct + b.diffPct == 0) "\u2014" else "${b.samePct}%"
-    }
+    // Manual scoring stats (excludes auto-matched)
+    val manualSamePct = remember(version) { scoringState.manualSamePct }
+    val manualDiffPct = remember(version) { scoringState.manualDiffPct }
+    val manualReviewedPct = remember(version) { scoringState.manualReviewedPct }
+    val autoMatchedPct = remember(version) { scoringState.autoSamePct }
+    val scoreDisplay = if (manualReviewedPct == 0) "\u2014" else "${manualSamePct}%"
     val region = remember(version) { scoringState.nextRegionIndex?.let { scoringState.regions[it] } }
     val isComplete = remember(version) { scoringState.isComplete }
-    val differingResolved = remember(version) { scoringState.differingResolved }
-    val differingTotal = remember(version) { scoringState.differingTotal }
     val historySize = remember(version) { scoringState.history.size }
-    val breakdown = remember(version) { scoringState.breakdown }
 
     fun copy(text: String?) {
         val t = text ?: "null"
@@ -104,22 +103,18 @@ fun ScoringScreen(
         bottomBar = {
             Surface(color = MaterialTheme.colorScheme.surfaceContainer, tonalElevation = 3.dp) {
                 Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 12.dp, vertical = 8.dp)) {
-                    // Progress: how much of the trace has been reviewed
-                    val reviewed = breakdown.samePct + breakdown.diffPct
+                    // Progress of manual review
                     LinearProgressIndicator(
-                        progress = { reviewed / 100f },
+                        progress = { manualReviewedPct / 100f },
                         modifier = Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)),
                         color = MaterialTheme.colorScheme.primary,
                         trackColor = MaterialTheme.colorScheme.surfaceContainerHighest
                     )
                     Spacer(Modifier.height(4.dp))
-                    Text(
-                        "${reviewed}% reviewed",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.fillMaxWidth(),
-                        textAlign = TextAlign.Center
-                    )
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("${manualReviewedPct}% reviewed", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("${autoMatchedPct}% auto", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                    }
                     Spacer(Modifier.height(8.dp))
                     if (isComplete) {
                         Button(onClick = onClose, modifier = Modifier.fillMaxWidth()) {
