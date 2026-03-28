@@ -71,6 +71,27 @@ fun ScoringScreen(
     val scoreDisplay = if (b.samePct + b.diffPct == 0) "\u2014" else "${b.samePct}%"
     val region = remember(version) { scoringState.nextRegionIndex?.let { scoringState.regions[it] } }
     val isComplete = remember(version) { scoringState.isComplete }
+
+    // Swipe state — shared between content area and bottom bar
+    var swipeOffset by remember { mutableFloatStateOf(0f) }
+    val swipeThreshold = 150f
+    val frac = (swipeOffset / swipeThreshold).coerceIn(-1f, 1f)
+    val absFrac = kotlin.math.abs(frac)
+    val swipeModifier = if (!isComplete) Modifier.pointerInput(version) {
+        detectHorizontalDragGestures(
+            onDragEnd = {
+                if (swipeOffset > swipeThreshold) {
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onVerdict(RegionVerdict.SAME)
+                } else if (swipeOffset < -swipeThreshold) {
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onVerdict(RegionVerdict.DIFFERENT)
+                }
+                swipeOffset = 0f
+            },
+            onDragCancel = { swipeOffset = 0f }
+        ) { _, dragAmount -> swipeOffset += dragAmount }
+    } else Modifier
     val historySize = remember(version) { scoringState.history.size }
 
     fun copy(text: String?) {
@@ -114,33 +135,13 @@ fun ScoringScreen(
                             Text("Done \u00b7 $scoreDisplay", fontWeight = FontWeight.SemiBold)
                         }
                     } else {
-                        // Swipe area with growing fill bar
-                        var swipeOffset by remember { mutableFloatStateOf(0f) }
-                        val swipeThreshold = 150f // ~40% of typical screen width
-                        val frac = (swipeOffset / swipeThreshold).coerceIn(-1f, 1f)
-                        val absFrac = kotlin.math.abs(frac)
-
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(52.dp)
                                 .clip(RoundedCornerShape(6.dp))
                                 .background(MaterialTheme.colorScheme.surfaceContainerHighest)
-                                .pointerInput(Unit) {
-                                    detectHorizontalDragGestures(
-                                        onDragEnd = {
-                                            if (swipeOffset > swipeThreshold) {
-                                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                                onVerdict(RegionVerdict.SAME)
-                                            } else if (swipeOffset < -swipeThreshold) {
-                                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                                onVerdict(RegionVerdict.DIFFERENT)
-                                            }
-                                            swipeOffset = 0f
-                                        },
-                                        onDragCancel = { swipeOffset = 0f }
-                                    ) { _, dragAmount -> swipeOffset += dragAmount }
-                                }
+                                .then(swipeModifier)
                         ) {
                             // Growing fill bar from edge
                             if (absFrac > 0.03f) {
@@ -185,7 +186,7 @@ fun ScoringScreen(
         }
     ) { padding ->
         Column(
-            modifier = Modifier.fillMaxSize().padding(padding).background(MaterialTheme.colorScheme.background).verticalScroll(rememberScrollState())
+            modifier = Modifier.fillMaxSize().padding(padding).background(MaterialTheme.colorScheme.background).then(swipeModifier).verticalScroll(rememberScrollState())
         ) {
             if (isComplete) {
                 Box(modifier = Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
