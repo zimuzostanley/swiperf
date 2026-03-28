@@ -68,10 +68,18 @@ class ScoringState(
     // Priority queue: differing region indices sorted by duration descending
     private val queue = java.util.TreeSet<Int>(compareByDescending<Int> { regions.getOrNull(it)?.duration ?: 0.0 }.thenBy { it })
 
+    // Signature → region indices map (built once, used for O(1) cascade)
+    val sigIndex: Map<Set<Triple<String, String?, String?>>, List<Int>>
+
     init {
+        val idx = HashMap<Set<Triple<String, String?, String?>>, MutableList<Int>>()
         for (i in regions.indices) {
-            if (!regions[i].isAutoSame) queue.add(i)
+            if (!regions[i].isAutoSame) {
+                queue.add(i)
+                idx.getOrPut(regions[i].diffSignature) { mutableListOf() }.add(i)
+            }
         }
+        sigIndex = idx
     }
 
     internal fun removeFromQueue(idx: Int) { queue.remove(idx) }
@@ -213,19 +221,9 @@ object ScoringEngine {
         return ScoringState(buildRegions(anchorSlices, anchorTotalDur, targetSlices, targetTotalDur, normalize))
     }
 
-    // Build signature→indices map for O(1) cascade lookup
-    private fun sigIndex(state: ScoringState): Map<Set<Triple<String, String?, String?>>, List<Int>> {
-        val map = HashMap<Set<Triple<String, String?, String?>>, MutableList<Int>>()
-        for (i in state.regions.indices) {
-            if (state.regions[i].isAutoSame) continue
-            map.getOrPut(state.regions[i].diffSignature) { mutableListOf() }.add(i)
-        }
-        return map
-    }
-
     /**
      * Record a user verdict. Learns the exact diff signature and cascades to
-     * other regions with the identical signature. O(cascade_count), not O(N).
+     * other regions with the identical signature. O(cascade_count).
      */
     fun recordVerdict(state: ScoringState, regionIndex: Int, verdict: RegionVerdict): ScoringAction {
         state.verdicts[regionIndex] = verdict
@@ -240,9 +238,8 @@ object ScoringEngine {
             if (verdict == RegionVerdict.SAME) state.sameSignatures.add(sig)
             else state.diffSignatures.add(sig)
 
-            // Cascade via sig index — O(matching_count) not O(total_regions)
-            val index = sigIndex(state)
-            val matching = index[sig] ?: emptyList()
+            // Cascade via cached sig index — O(matching_count)
+            val matching = state.sigIndex[sig] ?: emptyList()
             for (i in matching) {
                 if (i == regionIndex || state.verdicts.containsKey(i)) continue
                 state.verdicts[i] = verdict

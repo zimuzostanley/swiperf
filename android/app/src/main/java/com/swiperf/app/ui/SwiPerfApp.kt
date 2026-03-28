@@ -119,6 +119,7 @@ fun SwiPerfApp(vm: SwiPerfViewModel = viewModel()) {
                 val targetTrace = cl?.traces?.find { it.key == scoringTargetKey }
                 ScoringScreen(
                     scoringState = ss,
+                    version = stateVersion,
                     anchorName = anchorTrace?.trace?.packageName ?: "anchor",
                     targetName = targetTrace?.trace?.packageName ?: "target",
                     onVerdict = vm::scoringVerdict,

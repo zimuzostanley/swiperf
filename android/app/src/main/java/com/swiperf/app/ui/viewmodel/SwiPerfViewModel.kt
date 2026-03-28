@@ -450,6 +450,7 @@ class SwiPerfViewModel(app: Application) : AndroidViewModel(app) {
         val state = _scoringState ?: return
         ScoringEngine.undo(state)
         _scoringVersion.value++
+        notifyChange()
     }
 
     fun closeScoring() {
