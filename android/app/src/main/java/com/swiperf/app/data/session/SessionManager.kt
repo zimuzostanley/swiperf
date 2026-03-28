@@ -75,9 +75,22 @@ object SessionManager {
             clObj.put("splitView", false)
             clObj.put("splitFilters", JSONArray().put("pending").put("positive"))
             clObj.put("splitRatio", 0.5)
-            clObj.put("sortField", if (cl.sortField == SortField.STARTUP_DUR) "startup_dur" else "index")
+            clObj.put("sortField", when (cl.sortField) {
+                SortField.STARTUP_DUR -> "startup_dur"
+                SortField.COSINE_SIMILARITY -> "cosine_similarity"
+                SortField.MANUAL_SCORE -> "manual_score"
+                SortField.INDEX -> "index"
+            })
             clObj.put("sortDir", cl.sortDir)
             clObj.put("globalSlider", cl.globalSlider)
+
+            // Scores
+            if (cl.scores.isNotEmpty()) {
+                val scoresObj = JSONObject()
+                for ((key, score) in cl.scores) scoresObj.put(key, score.toDouble())
+                clObj.put("scores", scoresObj)
+                if (cl.scoreAnchorKey != null) clObj.put("scoreAnchorKey", cl.scoreAnchorKey)
+            }
 
             if (cl.propFilters.isNotEmpty()) {
                 val pfArr = JSONArray()
@@ -138,7 +151,12 @@ object SessionManager {
             }
 
             val sortFieldStr = clObj.optString("sortField", "index")
-            val sortField = if (sortFieldStr == "startup_dur") SortField.STARTUP_DUR else SortField.INDEX
+            val sortField = when (sortFieldStr) {
+                "startup_dur" -> SortField.STARTUP_DUR
+                "cosine_similarity" -> SortField.COSINE_SIMILARITY
+                "manual_score" -> SortField.MANUAL_SCORE
+                else -> SortField.INDEX
+            }
 
             val cluster = Cluster(
                 id = clObj.getString("id"),
@@ -163,6 +181,15 @@ object SessionManager {
                     for (k in 0 until vals.length()) valueSet.add(vals.getString(k))
                     cluster.propFilters[field] = valueSet
                 }
+            }
+
+            // Restore scores
+            val scoresObj = clObj.optJSONObject("scores")
+            if (scoresObj != null) {
+                for (key in scoresObj.keys()) {
+                    cluster.scores[key] = scoresObj.getDouble(key).toFloat()
+                }
+                cluster.scoreAnchorKey = clObj.optString("scoreAnchorKey", null)
             }
 
             cluster.recomputeCounts()

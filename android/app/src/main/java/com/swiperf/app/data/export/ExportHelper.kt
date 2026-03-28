@@ -159,7 +159,13 @@ object ExportHelper {
         val rows = mutableListOf<ExportRow>()
         for (cl in clusters) {
             for (ts in cl.traces) {
-                rows.add(traceExportRow(ts.trace, ts.key, cl.name, cl.verdicts))
+                val row = traceExportRow(ts.trace, ts.key, cl.name, cl.verdicts)
+                val score = cl.scores[ts.key]
+                if (score != null) {
+                    rows.add(row.copy(extra = row.extra + ("manual_score" to score)))
+                } else {
+                    rows.add(row)
+                }
             }
         }
         return rows
