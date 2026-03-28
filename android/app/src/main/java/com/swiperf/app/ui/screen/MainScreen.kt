@@ -498,7 +498,7 @@ private fun EmptyImportArea(loading: Boolean, onOpenFile: () -> Unit, onPasteTex
         OutlinedTextField(
             value = pasteText,
             onValueChange = { pasteText = it },
-            modifier = Modifier.fillMaxWidth().height(120.dp),
+            modifier = Modifier.fillMaxWidth().height(150.dp),
             placeholder = { Text("Paste JSON / TSV / CSV\u2026", style = MaterialTheme.typography.bodySmall) },
             textStyle = MaterialTheme.typography.labelSmall,
             enabled = !loading,
@@ -537,7 +537,7 @@ private fun PasteSheet(onPaste: (String) -> Unit, onDismiss: () -> Unit) {
             OutlinedTextField(
                 value = text,
                 onValueChange = { text = it },
-                modifier = Modifier.fillMaxWidth().height(200.dp),
+                modifier = Modifier.fillMaxWidth().height(150.dp),
                 placeholder = { Text("Paste JSON / TSV / CSV\u2026", style = MaterialTheme.typography.bodySmall) },
                 textStyle = MaterialTheme.typography.labelSmall,
                 singleLine = false,
