@@ -480,12 +480,11 @@ class SwiPerfViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun closeScoring() {
-        // Save final score if available
         val state = _scoringState
         val cl = activeCluster.value
         val targetKey = _scoringTargetKey.value
-        if (state != null && cl != null && targetKey != null && !state.score.isNaN()) {
-            cl.scores[targetKey] = state.score.toFloat()
+        if (state != null && cl != null && targetKey != null) {
+            cl.scores[targetKey] = state.breakdown.samePct / 100f
         }
         // Save learned entries back to dictionary (tagged with normalize flag)
         if (state != null) {
