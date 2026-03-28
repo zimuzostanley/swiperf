@@ -15,7 +15,7 @@ data class Cluster(
     var name: String,
     val traces: List<TraceState>,
     val verdicts: MutableMap<String, Verdict> = mutableMapOf(),
-    var overviewFilter: OverviewFilter = OverviewFilter.ALL,
+    var overviewFilter: OverviewFilter = OverviewFilter.PENDING,
     var counts: VerdictCounts = VerdictCounts(),
     val tableSortState: MutableMap<String, SortState> = mutableMapOf(),
     var sortField: SortField = SortField.INDEX,

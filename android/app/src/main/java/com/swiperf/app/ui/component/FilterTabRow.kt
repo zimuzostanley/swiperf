@@ -27,11 +27,11 @@ fun FilterTabRow(
     modifier: Modifier = Modifier
 ) {
     val filters = listOf(
-        FilterDef(OverviewFilter.ALL, "all") { MaterialTheme.colorScheme.onSurfaceVariant },
+        FilterDef(OverviewFilter.PENDING, "new") { MaterialTheme.colorScheme.onSurfaceVariant },
         FilterDef(OverviewFilter.POSITIVE, "+ve") { PerfettoColors.POSITIVE_COLOR },
         FilterDef(OverviewFilter.NEGATIVE, "\u2212ve") { PerfettoColors.NEGATIVE_COLOR },
-        FilterDef(OverviewFilter.PENDING, "new") { MaterialTheme.colorScheme.onSurfaceVariant },
         FilterDef(OverviewFilter.DISCARDED, "skip") { PerfettoColors.DISCARD_COLOR },
+        FilterDef(OverviewFilter.ALL, "all") { MaterialTheme.colorScheme.onSurfaceVariant },
     )
 
     ScrollableTabRow(
