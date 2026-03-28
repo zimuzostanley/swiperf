@@ -392,6 +392,7 @@ class SwiPerfViewModel(app: Application) : AndroidViewModel(app) {
                 _clusters.value = result.clusters
                 _activeClusterId.value = result.activeClusterId ?: result.clusters.firstOrNull()?.id
                 result.applyDictTo(scoringDict, _scoringUseDict, _scoringNormalizeDigits)
+                for (cl in result.clusters) { if (cl.globalSlider < 100) cl.updateGlobalSlider(cl.globalSlider) }
                 _importMsg.value = "Session restored (${result.clusters.size} clusters)" to true
                 scheduleAutoSave()
             } catch (e: Exception) {
