@@ -143,18 +143,7 @@ fun ScoringScreen(
                                 modifier = Modifier.weight(1f)
                             ) { Text("different", fontWeight = FontWeight.SemiBold) }
 
-                            Spacer(Modifier.width(8.dp))
-
-                            OutlinedButton(
-                                onClick = {
-                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    lastCascadeCount = 0
-                                    onVerdict(RegionVerdict.SKIPPED)
-                                },
-                                modifier = Modifier.weight(1f)
-                            ) { Text("skip") }
-
-                            Spacer(Modifier.width(8.dp))
+                            Spacer(Modifier.width(12.dp))
 
                             FilledTonalButton(
                                 onClick = {
