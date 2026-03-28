@@ -115,22 +115,28 @@ class ScoringState(
     val differingResolved: Int get() = verdicts.size
     val differingTotal: Int get() = regions.count { !it.isAutoSame }
 
-    /** Auto-matched stats */
-    val autoSameCount: Int by lazy { regions.count { it.isAutoSame } }
-    val autoSamePct: Int by lazy {
-        val total = regions.sumOf { it.duration }
-        if (total > 0) (regions.filter { it.isAutoSame }.sumOf { it.duration } / total * 100).toInt() else 0
-    }
+    /** Duration breakdown as percentages of total trace. */
+    data class DurationBreakdown(val samePct: Int, val diffPct: Int, val remainingPct: Int)
 
-    /** Coverage: percentage of trace duration that has been scored (auto + user, excluding skipped). */
-    val coveragePct: Double get() {
-        var scored = 0.0
+    val breakdown: DurationBreakdown get() {
         val total = regions.sumOf { it.duration }
-        if (total == 0.0) return 100.0
+        if (total == 0.0) return DurationBreakdown(100, 0, 0)
+        var sameDur = 0.0
+        var diffDur = 0.0
         for ((i, r) in regions.withIndex()) {
-            if (r.isAutoSame || verdicts.containsKey(i)) scored += r.duration
+            if (r.isAutoSame) { sameDur += r.duration; continue }
+            when (verdicts[i]) {
+                RegionVerdict.SAME -> sameDur += r.duration
+                RegionVerdict.DIFFERENT -> diffDur += r.duration
+                else -> {} // remaining
+            }
         }
-        return scored / total * 100
+        val remainingDur = total - sameDur - diffDur
+        return DurationBreakdown(
+            (sameDur / total * 100).toInt(),
+            (diffDur / total * 100).toInt(),
+            (remainingDur / total * 100).toInt()
+        )
     }
 }
 

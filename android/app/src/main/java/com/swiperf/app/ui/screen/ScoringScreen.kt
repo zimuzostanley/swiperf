@@ -72,7 +72,7 @@ fun ScoringScreen(
     val differingResolved = remember(version) { scoringState.differingResolved }
     val differingTotal = remember(version) { scoringState.differingTotal }
     val historySize = remember(version) { scoringState.history.size }
-    val coveragePct = remember(version) { scoringState.coveragePct.toInt() }
+    val breakdown = remember(version) { scoringState.breakdown }
 
     fun copy(text: String?) {
         val t = text ?: "null"
@@ -99,20 +99,29 @@ fun ScoringScreen(
         bottomBar = {
             Surface(color = MaterialTheme.colorScheme.surfaceContainer, tonalElevation = 3.dp) {
                 Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 12.dp, vertical = 8.dp)) {
-                    LinearProgressIndicator(
-                        progress = { coveragePct / 100f },
-                        modifier = Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)),
-                        color = MaterialTheme.colorScheme.primary,
-                        trackColor = MaterialTheme.colorScheme.surfaceContainerHighest
-                    )
+                    // Stacked progress bar: same (green) + different (red) + remaining (gray)
+                    Row(
+                        modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)).background(MaterialTheme.colorScheme.surfaceContainerHighest)
+                    ) {
+                        if (breakdown.samePct > 0) {
+                            Box(Modifier.weight(breakdown.samePct.toFloat()).fillMaxHeight().background(PerfettoColors.POSITIVE_COLOR.copy(alpha = 0.7f)))
+                        }
+                        if (breakdown.diffPct > 0) {
+                            Box(Modifier.weight(breakdown.diffPct.toFloat()).fillMaxHeight().background(PerfettoColors.NEGATIVE_COLOR.copy(alpha = 0.7f)))
+                        }
+                        if (breakdown.remainingPct > 0) {
+                            Box(Modifier.weight(breakdown.remainingPct.toFloat()).fillMaxHeight())
+                        }
+                    }
                     Spacer(Modifier.height(4.dp))
-                    Text(
-                        "${coveragePct}% covered \u00b7 ${differingTotal - differingResolved} remaining",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.fillMaxWidth(),
-                        textAlign = TextAlign.Center
-                    )
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text("same ${breakdown.samePct}%", style = MaterialTheme.typography.labelSmall, color = PerfettoColors.POSITIVE_COLOR)
+                        Text("diff ${breakdown.diffPct}%", style = MaterialTheme.typography.labelSmall, color = PerfettoColors.NEGATIVE_COLOR)
+                        Text("left ${breakdown.remainingPct}%", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                     Spacer(Modifier.height(8.dp))
                     if (isComplete) {
                         Button(onClick = onClose, modifier = Modifier.fillMaxWidth()) {
