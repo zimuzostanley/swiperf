@@ -82,6 +82,72 @@ class ScoringEngineTest {
         assertEquals("bar", regions[0].diffs[0].targetVal)
     }
 
+    // ── Region-to-slice correctness (blown-up must match full track) ──
+
+    @Test
+    fun buildRegions_eachRegionMatchesCorrectSlices() {
+        // Complex case: anchor and target have different boundaries
+        val anchor = listOf(
+            slice(0, 40, "Running", "bind"),
+            slice(40, 30, "IO", "binder", ioWait = 1),
+            slice(70, 30, "Running", "inflate")
+        )
+        val target = listOf(
+            slice(0, 50, "Running", "bind"),
+            slice(50, 50, "Sleeping", "gc")
+        )
+        val regions = ScoringEngine.buildRegions(anchor, 100, target, 100)
+
+        // Verify each region has the correct anchor and target values
+        for (r in regions) {
+            val mid = (r.start + r.end) / 2
+            // Find what anchor slice covers this midpoint
+            val expectedAnchor = anchor.find {
+                val s = (it.ts).toDouble() / 100
+                val e = (it.ts + it.dur).toDouble() / 100
+                mid >= s && mid < e
+            }
+            val expectedTarget = target.find {
+                val s = (it.ts).toDouble() / 100
+                val e = (it.ts + it.dur).toDouble() / 100
+                mid >= s && mid < e
+            }
+            // Blown-up values must match the source slices
+            assertEquals("Region at ${r.start}-${r.end} anchor state", expectedAnchor?.state, r.anchorState)
+            assertEquals("Region at ${r.start}-${r.end} anchor name", expectedAnchor?.name, r.anchorName)
+            assertEquals("Region at ${r.start}-${r.end} target state", expectedTarget?.state, r.targetState)
+            assertEquals("Region at ${r.start}-${r.end} target name", expectedTarget?.name, r.targetName)
+        }
+    }
+
+    @Test
+    fun buildRegions_timeOrderCoversFullTrace() {
+        val anchor = listOf(slice(0, 60, "A", "x"), slice(60, 40, "B", "y"))
+        val target = listOf(slice(0, 30, "A", "x"), slice(30, 70, "C", "z"))
+        val regions = ScoringEngine.buildRegions(anchor, 100, target, 100)
+
+        // Regions should be sorted by start time
+        for (i in 0 until regions.size - 1) {
+            assertTrue("Regions not sorted", regions[i].start <= regions[i + 1].start)
+        }
+        // First region starts at 0, last ends at 1
+        assertEquals(0.0, regions.first().start, 0.001)
+        assertEquals(1.0, regions.last().end, 0.001)
+        // No gaps
+        for (i in 0 until regions.size - 1) {
+            assertEquals("Gap between regions", regions[i].end, regions[i + 1].start, 0.001)
+        }
+    }
+
+    @Test
+    fun buildRegions_allRegionsDurationsSumToOne() {
+        val anchor = listOf(slice(0, 25, "A"), slice(25, 25, "B"), slice(50, 50, "C"))
+        val target = listOf(slice(0, 40, "X"), slice(40, 60, "Y"))
+        val regions = ScoringEngine.buildRegions(anchor, 100, target, 100)
+        val totalDur = regions.sumOf { it.duration }
+        assertEquals(1.0, totalDur, 0.001)
+    }
+
     // ── Score computation ──
 
     @Test
