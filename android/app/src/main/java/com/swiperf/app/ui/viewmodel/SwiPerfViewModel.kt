@@ -61,6 +61,13 @@ class SwiPerfViewModel(app: Application) : AndroidViewModel(app) {
     private val _pinnedKey = MutableStateFlow<String?>(null)
     val pinnedKey: StateFlow<String?> = _pinnedKey.asStateFlow()
 
+    // ── Dictionary (global across all tabs) ──
+    val scoringDict = ScoringDictionary()
+    private val _scoringUseDict = MutableStateFlow(true)
+    val scoringUseDict: StateFlow<Boolean> = _scoringUseDict.asStateFlow()
+    private val _scoringNormalizeDigits = MutableStateFlow(false)
+    val scoringNormalizeDigits: StateFlow<Boolean> = _scoringNormalizeDigits.asStateFlow()
+
     // ── Scoring ──
     private var _scoringState: ScoringState? = null
     private val _scoringVersion = MutableStateFlow(0L)
@@ -102,13 +109,13 @@ class SwiPerfViewModel(app: Application) : AndroidViewModel(app) {
             try {
                 val restored = SessionManager.restoreCurrentState(ctx)
                 if (restored != null) {
-                    val (sessionId, clusters, activeId) = restored
-                    if (clusters.isNotEmpty()) {
-                        _clusters.value = clusters
-                        _activeClusterId.value = activeId ?: clusters.firstOrNull()?.id
-                        _currentSessionId.value = sessionId
+                    if (restored.clusters.isNotEmpty()) {
+                        _clusters.value = restored.clusters
+                        _activeClusterId.value = restored.activeClusterId ?: restored.clusters.firstOrNull()?.id
+                        _currentSessionId.value = restored.sessionId
                         _stateVersion.value++
                     }
+                    restored.applyDictTo(scoringDict, _scoringUseDict, _scoringNormalizeDigits)
                 }
             } catch (_: Exception) {}
             _loading.value = false
@@ -132,7 +139,10 @@ class SwiPerfViewModel(app: Application) : AndroidViewModel(app) {
                     ctx,
                     _currentSessionId.value,
                     _activeClusterId.value,
-                    _clusters.value
+                    _clusters.value,
+                    scoringDict = scoringDict,
+                    scoringUseDict = _scoringUseDict.value,
+                    scoringNormalizeDigits = _scoringNormalizeDigits.value
                 )
             } catch (_: Exception) {}
         }
@@ -275,7 +285,10 @@ class SwiPerfViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val id = SessionManager.saveSession(
-                    ctx, name, _clusters.value, _activeClusterId.value
+                    ctx, name, _clusters.value, _activeClusterId.value,
+                    scoringDict = scoringDict,
+                    scoringUseDict = _scoringUseDict.value,
+                    scoringNormalizeDigits = _scoringNormalizeDigits.value
                 )
                 _currentSessionId.value = id
                 refreshSessions()
@@ -293,11 +306,11 @@ class SwiPerfViewModel(app: Application) : AndroidViewModel(app) {
             try {
                 val result = SessionManager.loadSession(ctx, sessionId)
                 if (result != null) {
-                    val (clusters, activeId) = result
-                    _clusters.value = clusters
-                    _activeClusterId.value = activeId ?: clusters.firstOrNull()?.id
+                    _clusters.value = result.clusters
+                    _activeClusterId.value = result.activeClusterId ?: result.clusters.firstOrNull()?.id
                     _currentSessionId.value = sessionId
-                    _importMsg.value = "Session loaded (${clusters.size} clusters)" to true
+                    result.applyDictTo(scoringDict, _scoringUseDict, _scoringNormalizeDigits)
+                    _importMsg.value = "Session loaded (${result.clusters.size} clusters)" to true
                     scheduleAutoSave()
                 }
             } catch (e: Exception) {
@@ -323,6 +336,9 @@ class SwiPerfViewModel(app: Application) : AndroidViewModel(app) {
             _activeClusterId.value = null
             _currentSessionId.value = null
             _pinnedKey.value = null
+            scoringDict.clear()
+            _scoringUseDict.value = true
+            _scoringNormalizeDigits.value = false
             refreshSessions()
         }
     }
@@ -341,17 +357,23 @@ class SwiPerfViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun exportCurrentAsJson(): String {
-        return SessionManager.clustersToJson(_clusters.value, _activeClusterId.value)
+        return SessionManager.clustersToJson(
+            _clusters.value, _activeClusterId.value,
+            scoringDict = scoringDict,
+            scoringUseDict = _scoringUseDict.value,
+            scoringNormalizeDigits = _scoringNormalizeDigits.value
+        )
     }
 
     fun importSessionFromText(text: String) {
         viewModelScope.launch(Dispatchers.IO) {
             _loading.value = true
             try {
-                val (clusters, activeId) = SessionManager.parseExternalJson(text)
-                _clusters.value = clusters
-                _activeClusterId.value = activeId ?: clusters.firstOrNull()?.id
-                _importMsg.value = "Session restored (${clusters.size} clusters)" to true
+                val result = SessionManager.parseExternalJson(text)
+                _clusters.value = result.clusters
+                _activeClusterId.value = result.activeClusterId ?: result.clusters.firstOrNull()?.id
+                result.applyDictTo(scoringDict, _scoringUseDict, _scoringNormalizeDigits)
+                _importMsg.value = "Session restored (${result.clusters.size} clusters)" to true
                 scheduleAutoSave()
             } catch (e: Exception) {
                 _importMsg.value = "Session load failed: ${e.message}" to false
@@ -397,10 +419,10 @@ class SwiPerfViewModel(app: Application) : AndroidViewModel(app) {
         val state = ScoringEngine.createStateFromMerged(
             anchor.currentSeq, anchor.totalDur,
             target.currentSeq, target.totalDur,
-            normalize = cl.scoringNormalizeDigits
+            normalize = _scoringNormalizeDigits.value
         )
-        if (cl.scoringUseDict) {
-            cl.scoringDict.applyTo(state)
+        if (_scoringUseDict.value) {
+            scoringDict.applyTo(state)
         }
         _scoringState = state
         _scoringVersion.value++
@@ -417,8 +439,8 @@ class SwiPerfViewModel(app: Application) : AndroidViewModel(app) {
             cl.scores[targetKey] = state.score.toFloat()
         }
         // Bump hit counts for cascaded entries in the dictionary
-        if (cl != null && action.learnedSignature != null && action.cascadedIndices.isNotEmpty()) {
-            cl.scoringDict.bumpHitCount(action.learnedSignature)
+        if (action.learnedSignature != null && action.cascadedIndices.isNotEmpty()) {
+            scoringDict.bumpHitCount(action.learnedSignature)
         }
         _scoringVersion.value++
         notifyChange()
@@ -439,8 +461,8 @@ class SwiPerfViewModel(app: Application) : AndroidViewModel(app) {
             cl.scores[targetKey] = state.score.toFloat()
         }
         // Save learned entries back to dictionary (tagged with normalize flag)
-        if (state != null && cl != null) {
-            cl.scoringDict.addFromState(state, normalized = cl.scoringNormalizeDigits)
+        if (state != null) {
+            scoringDict.addFromState(state, normalized = _scoringNormalizeDigits.value)
         }
         _scoringState = null
         _scoringTargetKey.value = null
@@ -451,46 +473,36 @@ class SwiPerfViewModel(app: Application) : AndroidViewModel(app) {
     // ── Dictionary operations ──
 
     fun removeDictEntries(entries: List<DictEntry>) {
-        activeCluster.value?.let { cl ->
-            cl.scoringDict.removeAll(entries)
-            notifyChange()
-        }
+        scoringDict.removeAll(entries)
+        notifyChange()
     }
 
     fun clearDict() {
-        activeCluster.value?.let { cl ->
-            cl.scoringDict.clear()
-            notifyChange()
-        }
+        scoringDict.clear()
+        notifyChange()
     }
 
     fun importDict(json: String, merge: Boolean = true) {
-        activeCluster.value?.let { cl ->
-            if (!merge) cl.scoringDict.clear()
-            val imported = ScoringDictionary.fromJson(json)
-            for (entry in imported.all) {
-                cl.scoringDict.addFromState(ScoringState(
-                    emptyList(),
-                    sameSignatures = if (entry.verdict == RegionVerdict.SAME) mutableSetOf(entry.signature) else mutableSetOf(),
-                    diffSignatures = if (entry.verdict == RegionVerdict.DIFFERENT) mutableSetOf(entry.signature) else mutableSetOf()
-                ), normalized = entry.normalized)
-            }
-            notifyChange()
+        if (!merge) scoringDict.clear()
+        val imported = ScoringDictionary.fromJson(json)
+        for (entry in imported.all) {
+            scoringDict.addFromState(ScoringState(
+                emptyList(),
+                sameSignatures = if (entry.verdict == RegionVerdict.SAME) mutableSetOf(entry.signature) else mutableSetOf(),
+                diffSignatures = if (entry.verdict == RegionVerdict.DIFFERENT) mutableSetOf(entry.signature) else mutableSetOf()
+            ), normalized = entry.normalized)
         }
+        notifyChange()
     }
 
     fun toggleScoringUseDict() {
-        activeCluster.value?.let { cl ->
-            cl.scoringUseDict = !cl.scoringUseDict
-            notifyChange()
-        }
+        _scoringUseDict.value = !_scoringUseDict.value
+        notifyChange()
     }
 
     fun toggleScoringNormalizeDigits() {
-        activeCluster.value?.let { cl ->
-            cl.scoringNormalizeDigits = !cl.scoringNormalizeDigits
-            notifyChange()
-        }
+        _scoringNormalizeDigits.value = !_scoringNormalizeDigits.value
+        notifyChange()
     }
 
     // ── Remote sync ──
@@ -511,11 +523,12 @@ class SwiPerfViewModel(app: Application) : AndroidViewModel(app) {
                 withContext(Dispatchers.Main) {
                     // Try as session first, then as raw trace data
                     if (text.trimStart().startsWith("{") && text.contains("\"version\"") && text.contains("\"clusters\"")) {
-                        val (clusters, activeId) = SessionManager.parseExternalJson(text)
-                        _clusters.value = clusters
-                        _activeClusterId.value = activeId ?: clusters.firstOrNull()?.id
+                        val result = SessionManager.parseExternalJson(text)
+                        _clusters.value = result.clusters
+                        _activeClusterId.value = result.activeClusterId ?: result.clusters.firstOrNull()?.id
+                        result.applyDictTo(scoringDict, _scoringUseDict, _scoringNormalizeDigits)
                         _stateVersion.value++
-                        _importMsg.value = "Synced ${clusters.sumOf { it.traces.size }} traces" to true
+                        _importMsg.value = "Synced ${result.clusters.sumOf { it.traces.size }} traces" to true
                     } else {
                         val traces = TraceParser.parseText(text)
                         if (traces.isNotEmpty()) {

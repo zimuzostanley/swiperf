@@ -39,6 +39,8 @@ fun SwiPerfApp(vm: SwiPerfViewModel = viewModel()) {
     val scoringState by vm.scoringState.collectAsState()
     val scoringTargetKey by vm.scoringTargetKey.collectAsState()
     val autoPinFirst by vm.autoPinFirst.collectAsState()
+    val scoringUseDict by vm.scoringUseDict.collectAsState()
+    val scoringNormalizeDigits by vm.scoringNormalizeDigits.collectAsState()
 
     fun importFile(uri: Uri) {
         val text = context.contentResolver.openInputStream(uri)?.bufferedReader()?.readText() ?: return
@@ -96,6 +98,9 @@ fun SwiPerfApp(vm: SwiPerfViewModel = viewModel()) {
                     vm.startScoring(targetKey)
                     navController.navigate(Route.Scoring.route)
                 },
+                scoringDict = vm.scoringDict,
+                scoringUseDict = scoringUseDict,
+                scoringNormalizeDigits = scoringNormalizeDigits,
                 onToggleUseDict = vm::toggleScoringUseDict,
                 onToggleNormalizeDigits = vm::toggleScoringNormalizeDigits,
                 onRemoveDictEntries = vm::removeDictEntries,

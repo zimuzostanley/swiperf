@@ -4,9 +4,39 @@ import android.content.Context
 import com.swiperf.app.data.model.*
 import com.swiperf.app.data.parse.TraceParser
 import com.swiperf.app.data.scoring.ScoringDictionary
+import kotlinx.coroutines.flow.MutableStateFlow
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
+
+data class SessionLoadResult(
+    val clusters: List<Cluster>,
+    val activeClusterId: String?,
+    val scoringDictJson: String? = null,
+    val scoringUseDict: Boolean = true,
+    val scoringNormalizeDigits: Boolean = false,
+    val sessionId: String? = null
+) {
+    fun applyDictTo(
+        dict: ScoringDictionary,
+        useDict: MutableStateFlow<Boolean>,
+        normalizeDigits: MutableStateFlow<Boolean>
+    ) {
+        dict.clear()
+        if (scoringDictJson != null && scoringDictJson.isNotEmpty()) {
+            val imported = ScoringDictionary.fromJson(scoringDictJson)
+            for (entry in imported.all) {
+                dict.addFromState(com.swiperf.app.data.scoring.ScoringState(
+                    emptyList(),
+                    sameSignatures = if (entry.verdict == com.swiperf.app.data.scoring.RegionVerdict.SAME) mutableSetOf(entry.signature) else mutableSetOf(),
+                    diffSignatures = if (entry.verdict == com.swiperf.app.data.scoring.RegionVerdict.DIFFERENT) mutableSetOf(entry.signature) else mutableSetOf()
+                ))
+            }
+        }
+        useDict.value = scoringUseDict
+        normalizeDigits.value = scoringNormalizeDigits
+    }
+}
 
 object SessionManager {
 
@@ -14,10 +44,23 @@ object SessionManager {
 
     // ── Serialize clusters to JSON (web-app compatible format) ──
 
-    fun clustersToJson(clusters: List<Cluster>, activeClusterId: String?): String {
+    fun clustersToJson(
+        clusters: List<Cluster>,
+        activeClusterId: String?,
+        scoringDict: ScoringDictionary? = null,
+        scoringUseDict: Boolean = true,
+        scoringNormalizeDigits: Boolean = false
+    ): String {
         val json = JSONObject()
         json.put("version", 1)
         json.put("activeClusterId", activeClusterId ?: JSONObject.NULL)
+
+        // Scoring dictionary (global, not per-cluster)
+        if (scoringDict != null && scoringDict.size > 0) {
+            json.put("scoringDict", scoringDict.toJson())
+        }
+        json.put("scoringUseDict", scoringUseDict)
+        json.put("scoringNormalizeDigits", scoringNormalizeDigits)
 
         val clustersArr = JSONArray()
         for (cl in clusters) {
@@ -93,13 +136,6 @@ object SessionManager {
                 if (cl.scoreAnchorKey != null) clObj.put("scoreAnchorKey", cl.scoreAnchorKey)
             }
 
-            // Scoring dictionary
-            if (cl.scoringDict.size > 0) {
-                clObj.put("scoringDict", cl.scoringDict.toJson())
-            }
-            clObj.put("scoringUseDict", cl.scoringUseDict)
-            clObj.put("scoringNormalizeDigits", cl.scoringNormalizeDigits)
-
             if (cl.propFilters.isNotEmpty()) {
                 val pfArr = JSONArray()
                 for ((field, values) in cl.propFilters) {
@@ -121,12 +157,18 @@ object SessionManager {
 
     // ── Parse JSON to clusters ──
 
-    fun jsonToClusters(text: String): Pair<List<Cluster>, String?> {
+    fun jsonToClusters(text: String): SessionLoadResult {
         val json = JSONObject(text)
         val version = json.optInt("version", 1)
         if (version != 1) throw Exception("Unknown session version: $version")
 
         val activeId = if (json.isNull("activeClusterId")) null else json.optString("activeClusterId")
+
+        // Extract top-level scoring dictionary (global)
+        val topDictJson = json.optString("scoringDict", "")
+        val topUseDict = json.optBoolean("scoringUseDict", true)
+        val topNormalizeDigits = json.optBoolean("scoringNormalizeDigits", false)
+
         val clustersArr = json.getJSONArray("clusters")
         val clusters = mutableListOf<Cluster>()
 
@@ -200,27 +242,37 @@ object SessionManager {
                 cluster.scoreAnchorKey = clObj.optString("scoreAnchorKey", null)
             }
 
-            // Restore scoring dictionary
-            val dictJson = clObj.optString("scoringDict", "")
-            if (dictJson.isNotEmpty()) {
-                val imported = ScoringDictionary.fromJson(dictJson)
-                for (entry in imported.all) {
-                    cluster.scoringDict.addFromState(com.swiperf.app.data.scoring.ScoringState(
-                        emptyList(),
-                        sameSignatures = if (entry.verdict == com.swiperf.app.data.scoring.RegionVerdict.SAME) mutableSetOf(entry.signature) else mutableSetOf(),
-                        diffSignatures = if (entry.verdict == com.swiperf.app.data.scoring.RegionVerdict.DIFFERENT) mutableSetOf(entry.signature) else mutableSetOf()
-                    ))
-                }
-            }
-            cluster.scoringUseDict = clObj.optBoolean("scoringUseDict", true)
-            cluster.scoringNormalizeDigits = clObj.optBoolean("scoringNormalizeDigits", false)
-
             cluster.recomputeCounts()
             if (traceStates.isNotEmpty()) traceStates[0].ensureCache()
             clusters.add(cluster)
         }
 
-        return clusters to activeId
+        // Prefer top-level dict; fall back to first cluster's legacy dict
+        val finalDictJson = if (topDictJson.isNotEmpty()) topDictJson
+            else clusters.firstNotNullOfOrNull { cl ->
+                val clObj = clustersArr.getJSONObject(clusters.indexOf(cl))
+                val legacy = clObj.optString("scoringDict", "")
+                legacy.ifEmpty { null }
+            }
+        // For useDict/normalizeDigits, prefer top-level; fall back to first cluster's legacy values
+        val finalUseDict = if (json.has("scoringUseDict")) topUseDict
+            else {
+                val firstClObj = if (clustersArr.length() > 0) clustersArr.getJSONObject(0) else null
+                firstClObj?.optBoolean("scoringUseDict", true) ?: true
+            }
+        val finalNormalizeDigits = if (json.has("scoringNormalizeDigits")) topNormalizeDigits
+            else {
+                val firstClObj = if (clustersArr.length() > 0) clustersArr.getJSONObject(0) else null
+                firstClObj?.optBoolean("scoringNormalizeDigits", false) ?: false
+            }
+
+        return SessionLoadResult(
+            clusters = clusters,
+            activeClusterId = activeId,
+            scoringDictJson = finalDictJson,
+            scoringUseDict = finalUseDict,
+            scoringNormalizeDigits = finalNormalizeDigits
+        )
     }
 
     // ── Save session to SQLite ──
@@ -230,9 +282,12 @@ object SessionManager {
         sessionName: String,
         clusters: List<Cluster>,
         activeClusterId: String?,
+        scoringDict: ScoringDictionary? = null,
+        scoringUseDict: Boolean = true,
+        scoringNormalizeDigits: Boolean = false,
         sessionId: String = UUID.randomUUID().toString()
     ): String {
-        val jsonData = clustersToJson(clusters, activeClusterId)
+        val jsonData = clustersToJson(clusters, activeClusterId, scoringDict, scoringUseDict, scoringNormalizeDigits)
         val traceCount = clusters.sumOf { it.traces.size }
         val now = System.currentTimeMillis()
 
@@ -254,10 +309,13 @@ object SessionManager {
         context: Context,
         sessionId: String,
         clusters: List<Cluster>,
-        activeClusterId: String?
+        activeClusterId: String?,
+        scoringDict: ScoringDictionary? = null,
+        scoringUseDict: Boolean = true,
+        scoringNormalizeDigits: Boolean = false
     ) {
         val existing = dao(context).getSession(sessionId) ?: return
-        val jsonData = clustersToJson(clusters, activeClusterId)
+        val jsonData = clustersToJson(clusters, activeClusterId, scoringDict, scoringUseDict, scoringNormalizeDigits)
         val traceCount = clusters.sumOf { it.traces.size }
 
         dao(context).upsertSession(existing.copy(
@@ -270,7 +328,7 @@ object SessionManager {
 
     // ── Load session from SQLite ──
 
-    suspend fun loadSession(context: Context, sessionId: String): Pair<List<Cluster>, String?>? {
+    suspend fun loadSession(context: Context, sessionId: String): SessionLoadResult? {
         val entity = dao(context).getSession(sessionId) ?: return null
         return jsonToClusters(entity.jsonData)
     }
@@ -304,10 +362,13 @@ object SessionManager {
         context: Context,
         activeSessionId: String?,
         activeClusterId: String?,
-        clusters: List<Cluster>
+        clusters: List<Cluster>,
+        scoringDict: ScoringDictionary? = null,
+        scoringUseDict: Boolean = true,
+        scoringNormalizeDigits: Boolean = false
     ) {
         val stateJson = if (clusters.isNotEmpty()) {
-            clustersToJson(clusters, activeClusterId)
+            clustersToJson(clusters, activeClusterId, scoringDict, scoringUseDict, scoringNormalizeDigits)
         } else null
 
         dao(context).saveAppState(AppStateEntity(
@@ -320,18 +381,21 @@ object SessionManager {
 
     // ── Restore current app state ──
 
-    suspend fun restoreCurrentState(context: Context): Triple<String?, List<Cluster>, String?>? {
+    suspend fun restoreCurrentState(context: Context): SessionLoadResult? {
         val state = dao(context).getAppState() ?: return null
-        if (state.stateJson == null) return Triple(state.activeSessionId, emptyList(), null)
+        if (state.stateJson == null) return SessionLoadResult(emptyList(), null, sessionId = state.activeSessionId)
         return try {
-            val (clusters, activeId) = jsonToClusters(state.stateJson)
-            Triple(state.activeSessionId, clusters, activeId ?: state.activeClusterId)
+            val result = jsonToClusters(state.stateJson)
+            result.copy(
+                activeClusterId = result.activeClusterId ?: state.activeClusterId,
+                sessionId = state.activeSessionId
+            )
         } catch (_: Exception) { null }
     }
 
     // ── Import from external JSON text ──
 
-    fun parseExternalJson(text: String): Pair<List<Cluster>, String?> = jsonToClusters(text)
+    fun parseExternalJson(text: String): SessionLoadResult = jsonToClusters(text)
 
     // ── Session count ──
 
