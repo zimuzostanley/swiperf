@@ -91,9 +91,9 @@ fun ScoringScreen(
                         IconButton(onClick = { onUndo(); haptic.performHapticFeedback(HapticFeedbackType.LongPress) }) {
                             Icon(Icons.AutoMirrored.Filled.Undo, "Undo")
                         }
-                        IconButton(onClick = { onReset() }) {
-                            Icon(Icons.Default.Refresh, "Reset")
-                        }
+                    }
+                    IconButton(onClick = { onReset() }) {
+                        Icon(Icons.Default.Refresh, "Reset")
                     }
                     Text(scoreDisplay, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(end = 12.dp))
                 },
