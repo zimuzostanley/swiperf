@@ -16,6 +16,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.swiperf.app.data.scoring.DictEntry
 import com.swiperf.app.data.scoring.RegionVerdict
@@ -101,42 +102,39 @@ fun DictionarySheet(
                 ) {
                     items(filtered, key = { it.displayLabel }) { entry ->
                         val isSelected = entry in selected
+                        val symbol = if (entry.verdict == RegionVerdict.SAME) "\u2248" else "\u2260"
+                        val verdictColor = if (entry.verdict == RegionVerdict.SAME) PerfettoColors.POSITIVE_COLOR else PerfettoColors.NEGATIVE_COLOR
+
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable {
-                                    if (isSelected) selected.remove(entry) else selected.add(entry)
-                                }
-                                .padding(vertical = 6.dp, horizontal = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                                .clickable { if (isSelected) selected.remove(entry) else selected.add(entry) }
+                                .padding(vertical = 4.dp, horizontal = 4.dp),
+                            verticalAlignment = Alignment.Top
                         ) {
                             Checkbox(
                                 checked = isSelected,
                                 onCheckedChange = { if (it) selected.add(entry) else selected.remove(entry) },
                                 modifier = Modifier.size(20.dp)
                             )
-                            Spacer(Modifier.width(8.dp))
-                            Text(
-                                entry.displayLabel,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = if (entry.verdict == RegionVerdict.SAME) PerfettoColors.POSITIVE_COLOR
-                                else PerfettoColors.NEGATIVE_COLOR,
-                                modifier = Modifier.weight(1f)
-                            )
-                            if (entry.normalized) {
-                                Text(
-                                    "[n]",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-                                )
-                                Spacer(Modifier.width(4.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Column(Modifier.weight(1f)) {
+                                for ((field, anchor, target) in entry.signature) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(field.replace("_", " "), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(52.dp))
+                                        Text(anchor ?: "\u2014", style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                                        Text(symbol, style = MaterialTheme.typography.labelSmall, color = verdictColor, modifier = Modifier.padding(horizontal = 4.dp))
+                                        Text(target ?: "\u2014", style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                                    }
+                                }
                             }
-                            if (entry.hitCount > 0) {
-                                Text(
-                                    "\u00d7${entry.hitCount}",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
+                            Column(horizontalAlignment = Alignment.End) {
+                                if (entry.normalized) {
+                                    Text("[n]", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f))
+                                }
+                                if (entry.hitCount > 0) {
+                                    Text("\u00d7${entry.hitCount}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
                             }
                         }
                     }
