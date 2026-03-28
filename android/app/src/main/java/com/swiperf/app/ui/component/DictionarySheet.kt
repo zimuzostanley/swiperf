@@ -118,7 +118,15 @@ fun DictionarySheet(
                                 modifier = Modifier.size(20.dp)
                             )
                             Spacer(Modifier.width(6.dp))
-                            Column(Modifier.weight(1f)) {
+                            Column(
+                                modifier = Modifier.weight(1f).clickable {
+                                    // Show full text in snackbar
+                                    val full = entry.signature.joinToString("\n") { (f, a, t) ->
+                                        "${f.replace("_", " ")}: ${a ?: "\u2014"} $symbol ${t ?: "\u2014"}"
+                                    }
+                                    scope.launch { snackbar.showSnackbar(full, duration = SnackbarDuration.Short) }
+                                }
+                            ) {
                                 for ((field, anchor, target) in entry.signature) {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         Text(field.replace("_", " "), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(52.dp))

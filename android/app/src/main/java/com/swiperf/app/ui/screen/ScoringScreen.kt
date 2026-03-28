@@ -72,8 +72,7 @@ fun ScoringScreen(
     val differingResolved = remember(version) { scoringState.differingResolved }
     val differingTotal = remember(version) { scoringState.differingTotal }
     val historySize = remember(version) { scoringState.history.size }
-    val autoSameCount = scoringState.autoSameCount
-    val autoSamePct = scoringState.autoSamePct
+    val coveragePct = remember(version) { scoringState.coveragePct.toInt() }
 
     fun copy(text: String?) {
         val t = text ?: "null"
@@ -101,17 +100,19 @@ fun ScoringScreen(
             Surface(color = MaterialTheme.colorScheme.surfaceContainer, tonalElevation = 3.dp) {
                 Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 12.dp, vertical = 8.dp)) {
                     LinearProgressIndicator(
-                        progress = { if (differingTotal > 0) differingResolved.toFloat() / differingTotal else 1f },
+                        progress = { coveragePct / 100f },
                         modifier = Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)),
                         color = MaterialTheme.colorScheme.primary,
                         trackColor = MaterialTheme.colorScheme.surfaceContainerHighest
                     )
                     Spacer(Modifier.height(4.dp))
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-                        Text("$differingResolved / $differingTotal to review", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Spacer(Modifier.width(8.dp))
-                        Text("$autoSameCount auto-matched (${autoSamePct}%)", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
-                    }
+                    Text(
+                        "${coveragePct}% covered \u00b7 ${differingTotal - differingResolved} remaining",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.fillMaxWidth(),
+                        textAlign = TextAlign.Center
+                    )
                     Spacer(Modifier.height(8.dp))
                     if (isComplete) {
                         Button(onClick = onClose, modifier = Modifier.fillMaxWidth()) {

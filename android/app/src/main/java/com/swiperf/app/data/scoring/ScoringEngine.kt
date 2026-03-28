@@ -121,6 +121,17 @@ class ScoringState(
         val total = regions.sumOf { it.duration }
         if (total > 0) (regions.filter { it.isAutoSame }.sumOf { it.duration } / total * 100).toInt() else 0
     }
+
+    /** Coverage: percentage of trace duration that has been scored (auto + user, excluding skipped). */
+    val coveragePct: Double get() {
+        var scored = 0.0
+        val total = regions.sumOf { it.duration }
+        if (total == 0.0) return 100.0
+        for ((i, r) in regions.withIndex()) {
+            if (r.isAutoSame || verdicts.containsKey(i)) scored += r.duration
+        }
+        return scored / total * 100
+    }
 }
 
 object ScoringEngine {
