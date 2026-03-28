@@ -5,8 +5,6 @@ import android.content.ClipboardManager
 import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -218,20 +216,7 @@ fun SliceDetailSheet(
                     currentSlice.name ?: "unnamed",
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.SemiBold,
-                    modifier = if (canNavigate) {
-                        Modifier
-                            .weight(1f)
-                            .pointerInput(Unit) {
-                                detectTapGestures(
-                                    onDoubleTap = {
-                                        if (currentIdx < seq!!.size - 1) {
-                                            currentIdx++
-                                            onIndexChange?.invoke(currentIdx)
-                                        }
-                                    }
-                                )
-                            }
-                    } else Modifier.weight(1f)
+                    modifier = Modifier.weight(1f)
                 )
                 if (canNavigate) {
                     Text(
@@ -242,25 +227,20 @@ fun SliceDetailSheet(
                 }
             }
             if (canNavigate) {
-                // Navigation hint + back button
                 Row(
                     modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        "double-tap title \u2192 next",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-                    )
+                    TextButton(
+                        onClick = { currentIdx--; onIndexChange?.invoke(currentIdx) },
+                        enabled = currentIdx > 0
+                    ) { Text("\u2190 prev", style = MaterialTheme.typography.labelSmall) }
                     Spacer(Modifier.weight(1f))
-                    if (currentIdx > 0) {
-                        androidx.compose.material3.TextButton(
-                            onClick = { currentIdx--; onIndexChange?.invoke(currentIdx) },
-                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 0.dp)
-                        ) {
-                            Text("\u2190 prev", style = MaterialTheme.typography.labelSmall)
-                        }
-                    }
+                    TextButton(
+                        onClick = { currentIdx++; onIndexChange?.invoke(currentIdx) },
+                        enabled = currentIdx < seq!!.size - 1
+                    ) { Text("next \u2192", style = MaterialTheme.typography.labelSmall) }
                 }
             }
 
