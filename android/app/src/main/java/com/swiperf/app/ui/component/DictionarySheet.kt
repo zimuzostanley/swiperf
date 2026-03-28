@@ -3,6 +3,8 @@ package com.swiperf.app.ui.component
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -15,6 +17,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -105,46 +108,36 @@ fun DictionarySheet(
                 ) {
                     items(filtered, key = { it.displayLabel }) { entry ->
                         val isSelected = entry in selected
-                        val symbol = if (entry.verdict == RegionVerdict.SAME) "\u2248" else "\u2260"
+                        val verdictLabel = if (entry.verdict == RegionVerdict.SAME) "same" else "diff"
                         val verdictColor = if (entry.verdict == RegionVerdict.SAME) PerfettoColors.POSITIVE_COLOR else PerfettoColors.NEGATIVE_COLOR
+                        val symbol = if (entry.verdict == RegionVerdict.SAME) "\u2248" else "\u2260"
 
-                        Row(
+                        Column(
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .padding(vertical = 2.dp)
+                                .clip(RoundedCornerShape(6.dp))
+                                .border(0.5.dp, if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline.copy(alpha = 0.15f), RoundedCornerShape(6.dp))
+                                .background(MaterialTheme.colorScheme.surface)
                                 .clickable { if (isSelected) selected.remove(entry) else selected.add(entry) }
-                                .padding(vertical = 4.dp, horizontal = 4.dp),
-                            verticalAlignment = Alignment.Top
+                                .padding(10.dp)
                         ) {
-                            Checkbox(
-                                checked = isSelected,
-                                onCheckedChange = { if (it) selected.add(entry) else selected.remove(entry) },
-                                modifier = Modifier.size(20.dp)
-                            )
-                            Spacer(Modifier.width(6.dp))
-                            Column(
-                                modifier = Modifier.weight(1f).clickable {
-                                    // Show full text in snackbar
-                                    val full = entry.signature.joinToString("\n") { (f, a, t) ->
-                                        "${f.replace("_", " ")}: ${a ?: "\u2014"} $symbol ${t ?: "\u2014"}"
-                                    }
-                                    scope.launch { snackbar.showSnackbar(full, duration = SnackbarDuration.Short) }
-                                }
-                            ) {
-                                for ((field, anchor, target) in entry.signature) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text(field.replace("_", " "), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(52.dp))
-                                        Text(anchor ?: "\u2014", style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                                        Text(symbol, style = MaterialTheme.typography.labelSmall, color = verdictColor, modifier = Modifier.padding(horizontal = 4.dp))
-                                        Text(target ?: "\u2014", style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                                    }
-                                }
+                            // Header
+                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                Text(verdictLabel, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold, color = verdictColor)
+                                if (entry.normalized) { Spacer(Modifier.width(6.dp)); Text("[n]", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)) }
+                                if (entry.hitCount > 0) { Spacer(Modifier.width(6.dp)); Text("\u00d7${entry.hitCount}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                                Spacer(Modifier.weight(1f))
+                                Checkbox(checked = isSelected, onCheckedChange = { if (it) selected.add(entry) else selected.remove(entry) }, modifier = Modifier.size(20.dp))
                             }
-                            Column(horizontalAlignment = Alignment.End) {
-                                if (entry.normalized) {
-                                    Text("[n]", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f))
-                                }
-                                if (entry.hitCount > 0) {
-                                    Text("\u00d7${entry.hitCount}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Spacer(Modifier.height(6.dp))
+                            // Fields
+                            for ((field, anchor, target) in entry.signature) {
+                                Text(field.replace("_", " "), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Row(Modifier.fillMaxWidth().padding(start = 4.dp, top = 2.dp, bottom = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Text(anchor ?: "\u2014", style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).clickable { scope.launch { snackbar.showSnackbar(anchor ?: "null", duration = SnackbarDuration.Short) } })
+                                    Text(symbol, style = MaterialTheme.typography.labelSmall, color = verdictColor)
+                                    Text(target ?: "\u2014", style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).clickable { scope.launch { snackbar.showSnackbar(target ?: "null", duration = SnackbarDuration.Short) } })
                                 }
                             }
                         }
