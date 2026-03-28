@@ -65,12 +65,9 @@ fun ScoringScreen(
 
     BackHandler { onClose() }
 
-    // Manual scoring stats (excludes auto-matched)
-    val manualSamePct = remember(version) { scoringState.manualSamePct }
-    val manualDiffPct = remember(version) { scoringState.manualDiffPct }
-    val manualReviewedPct = remember(version) { scoringState.manualReviewedPct }
-    val autoMatchedPct = remember(version) { scoringState.autoSamePct }
-    val scoreDisplay = if (manualReviewedPct == 0) "\u2014" else "${manualSamePct}%"
+    val b = remember(version) { scoringState.breakdown }
+    val remaining = b.remainingPct
+    val scoreDisplay = if (b.samePct + b.diffPct == 0) "\u2014" else "${b.samePct}%"
     val region = remember(version) { scoringState.nextRegionIndex?.let { scoringState.regions[it] } }
     val isComplete = remember(version) { scoringState.isComplete }
     val historySize = remember(version) { scoringState.history.size }
@@ -103,18 +100,20 @@ fun ScoringScreen(
         bottomBar = {
             Surface(color = MaterialTheme.colorScheme.surfaceContainer, tonalElevation = 3.dp) {
                 Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 12.dp, vertical = 8.dp)) {
-                    // Progress of manual review
                     LinearProgressIndicator(
-                        progress = { manualReviewedPct / 100f },
+                        progress = { (100 - remaining) / 100f },
                         modifier = Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)),
                         color = MaterialTheme.colorScheme.primary,
                         trackColor = MaterialTheme.colorScheme.surfaceContainerHighest
                     )
                     Spacer(Modifier.height(4.dp))
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("${manualReviewedPct}% reviewed", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text("${autoMatchedPct}% auto", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
-                    }
+                    Text(
+                        if (remaining > 0) "${remaining}% left" else "done",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.fillMaxWidth(),
+                        textAlign = TextAlign.Center
+                    )
                     Spacer(Modifier.height(8.dp))
                     if (isComplete) {
                         Button(onClick = onClose, modifier = Modifier.fillMaxWidth()) {

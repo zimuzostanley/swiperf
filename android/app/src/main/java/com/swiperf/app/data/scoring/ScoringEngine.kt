@@ -61,6 +61,7 @@ data class ScoringAction(
 class ScoringState(
     val regions: List<ScoringRegion>,
     val verdicts: MutableMap<Int, RegionVerdict> = mutableMapOf(),
+    val dictApplied: MutableSet<Int> = mutableSetOf(), // indices resolved by dictionary (not user)
     val sameSignatures: MutableSet<Set<Triple<String, String?, String?>>> = mutableSetOf(),
     val diffSignatures: MutableSet<Set<Triple<String, String?, String?>>> = mutableSetOf(),
     val history: MutableList<ScoringAction> = mutableListOf()
@@ -145,20 +146,27 @@ class ScoringState(
         if (total == 0.0) 0 else (regions.filter { it.isAutoSame }.sumOf { it.duration } / total * 100).toInt()
     }
 
-    /** Manual scoring stats (auto-matched excluded). Percentages of DIFFERING duration only. */
+    /** Manual scoring stats (auto-matched AND dict-applied excluded). % of differing duration. */
     val manualSamePct: Int get() {
         val differingDur = regions.filter { !it.isAutoSame }.sumOf { it.duration }
         if (differingDur == 0.0) return 0
-        val sameDur = regions.indices.filter { !regions[it].isAutoSame && verdicts[it] == RegionVerdict.SAME }.sumOf { regions[it].duration }
+        val sameDur = regions.indices.filter { !regions[it].isAutoSame && it !in dictApplied && verdicts[it] == RegionVerdict.SAME }.sumOf { regions[it].duration }
         return (sameDur / differingDur * 100).toInt()
     }
     val manualDiffPct: Int get() {
         val differingDur = regions.filter { !it.isAutoSame }.sumOf { it.duration }
         if (differingDur == 0.0) return 0
-        val diffDur = regions.indices.filter { !regions[it].isAutoSame && verdicts[it] == RegionVerdict.DIFFERENT }.sumOf { regions[it].duration }
+        val diffDur = regions.indices.filter { !regions[it].isAutoSame && it !in dictApplied && verdicts[it] == RegionVerdict.DIFFERENT }.sumOf { regions[it].duration }
         return (diffDur / differingDur * 100).toInt()
     }
     val manualReviewedPct: Int get() = manualSamePct + manualDiffPct
+
+    /** Dict-applied: % of total trace resolved by dictionary. */
+    val dictAppliedPct: Int get() {
+        val total = regions.sumOf { it.duration }
+        if (total == 0.0) return 0
+        return (dictApplied.sumOf { regions[it].duration } / total * 100).toInt()
+    }
 }
 
 object ScoringEngine {

@@ -89,6 +89,7 @@ class ScoringDictionary {
             val known = bySig[sig] // O(1) lookup
             if (known != null) {
                 state.verdicts[i] = known.verdict
+                state.dictApplied.add(i)
                 known.hitCount++
             }
         }
