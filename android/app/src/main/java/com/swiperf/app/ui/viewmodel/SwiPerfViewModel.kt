@@ -6,7 +6,9 @@ import androidx.lifecycle.viewModelScope
 import com.swiperf.app.data.export.ExportHelper
 import com.swiperf.app.data.model.*
 import com.swiperf.app.data.parse.TraceParser
+import com.swiperf.app.data.scoring.DictEntry
 import com.swiperf.app.data.scoring.RegionVerdict
+import com.swiperf.app.data.scoring.ScoringDictionary
 import com.swiperf.app.data.scoring.ScoringEngine
 import com.swiperf.app.data.scoring.ScoringState
 import com.swiperf.app.data.session.SessionManager
@@ -372,22 +374,31 @@ class SwiPerfViewModel(app: Application) : AndroidViewModel(app) {
         target.ensureCache()
         cl.scoreAnchorKey = _pinnedKey.value
         _scoringTargetKey.value = targetKey
-        _scoringState = ScoringEngine.createState(
+        val state = ScoringEngine.createState(
             anchor.trace.slices, anchor.totalDur,
-            target.trace.slices, target.totalDur
+            target.trace.slices, target.totalDur,
+            normalize = cl.scoringNormalizeDigits
         )
+        if (cl.scoringUseDict) {
+            cl.scoringDict.applyTo(state)
+        }
+        _scoringState = state
         _scoringVersion.value++
     }
 
     fun scoringVerdict(verdict: RegionVerdict) {
         val state = _scoringState ?: return
         val idx = state.nextRegionIndex ?: return
-        ScoringEngine.recordVerdict(state, idx, verdict)
+        val action = ScoringEngine.recordVerdict(state, idx, verdict)
         // Save score to cluster
         val cl = activeCluster.value
         val targetKey = _scoringTargetKey.value
         if (cl != null && targetKey != null && !state.score.isNaN()) {
             cl.scores[targetKey] = state.score.toFloat()
+        }
+        // Bump hit counts for cascaded entries in the dictionary
+        if (cl != null && action.learnedSignature != null && action.cascadedIndices.isNotEmpty()) {
+            cl.scoringDict.bumpHitCount(action.learnedSignature)
         }
         _scoringVersion.value++
         notifyChange()
@@ -407,10 +418,58 @@ class SwiPerfViewModel(app: Application) : AndroidViewModel(app) {
         if (state != null && cl != null && targetKey != null && !state.score.isNaN()) {
             cl.scores[targetKey] = state.score.toFloat()
         }
+        // Save learned entries back to dictionary (tagged with normalize flag)
+        if (state != null && cl != null) {
+            cl.scoringDict.addFromState(state, normalized = cl.scoringNormalizeDigits)
+        }
         _scoringState = null
         _scoringTargetKey.value = null
         _scoringVersion.value++
         notifyChange()
+    }
+
+    // ── Dictionary operations ──
+
+    fun removeDictEntries(entries: List<DictEntry>) {
+        activeCluster.value?.let { cl ->
+            cl.scoringDict.removeAll(entries)
+            notifyChange()
+        }
+    }
+
+    fun clearDict() {
+        activeCluster.value?.let { cl ->
+            cl.scoringDict.clear()
+            notifyChange()
+        }
+    }
+
+    fun importDict(json: String) {
+        activeCluster.value?.let { cl ->
+            val imported = ScoringDictionary.fromJson(json)
+            for (entry in imported.all) {
+                cl.scoringDict.addFromState(ScoringState(
+                    emptyList(),
+                    sameSignatures = if (entry.verdict == RegionVerdict.SAME) mutableSetOf(entry.signature) else mutableSetOf(),
+                    diffSignatures = if (entry.verdict == RegionVerdict.DIFFERENT) mutableSetOf(entry.signature) else mutableSetOf()
+                ))
+            }
+            notifyChange()
+        }
+    }
+
+    fun toggleScoringUseDict() {
+        activeCluster.value?.let { cl ->
+            cl.scoringUseDict = !cl.scoringUseDict
+            notifyChange()
+        }
+    }
+
+    fun toggleScoringNormalizeDigits() {
+        activeCluster.value?.let { cl ->
+            cl.scoringNormalizeDigits = !cl.scoringNormalizeDigits
+            notifyChange()
+        }
     }
 
     // ── Remote sync ──

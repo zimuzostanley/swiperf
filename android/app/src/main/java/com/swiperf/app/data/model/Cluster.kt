@@ -1,5 +1,6 @@
 package com.swiperf.app.data.model
 
+import com.swiperf.app.data.scoring.ScoringDictionary
 import java.util.UUID
 
 data class VerdictCounts(
@@ -22,7 +23,10 @@ data class Cluster(
     val propFilters: MutableMap<String, MutableSet<String>> = mutableMapOf(),
     var globalSlider: Int = 100,
     val scores: MutableMap<String, Float> = mutableMapOf(), // traceKey -> score
-    var scoreAnchorKey: String? = null
+    var scoreAnchorKey: String? = null,
+    val scoringDict: ScoringDictionary = ScoringDictionary(),
+    var scoringUseDict: Boolean = true,
+    var scoringNormalizeDigits: Boolean = false
 ) {
     fun recomputeCounts() {
         var positive = 0; var negative = 0; var discarded = 0

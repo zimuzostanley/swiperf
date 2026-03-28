@@ -73,7 +73,12 @@ fun MainScreen(
     onRefreshSessions: () -> Unit,
     onSyncRemote: (() -> Unit)? = null,
     scores: Map<String, Float> = emptyMap(),
-    onStartScoring: ((String) -> Unit)? = null
+    onStartScoring: ((String) -> Unit)? = null,
+    onToggleUseDict: (() -> Unit)? = null,
+    onToggleNormalizeDigits: (() -> Unit)? = null,
+    onRemoveDictEntries: ((List<com.swiperf.app.data.scoring.DictEntry>) -> Unit)? = null,
+    onClearDict: (() -> Unit)? = null,
+    onImportDict: ((String) -> Unit)? = null
 ) {
     val cl = activeCluster
     val hasData = cl != null && cl.traces.isNotEmpty()
@@ -455,6 +460,14 @@ fun MainScreen(
                 }
             },
             onSyncRemote = onSyncRemote,
+            scoringDict = if (cl?.scoreAnchorKey != null) cl.scoringDict else null,
+            scoringUseDict = cl?.scoringUseDict ?: true,
+            scoringNormalizeDigits = cl?.scoringNormalizeDigits ?: false,
+            onToggleUseDict = onToggleUseDict,
+            onToggleNormalizeDigits = onToggleNormalizeDigits,
+            onRemoveDictEntries = onRemoveDictEntries,
+            onClearDict = onClearDict,
+            onImportDict = onImportDict,
             onDismiss = { showSettings = false })
     }
 }

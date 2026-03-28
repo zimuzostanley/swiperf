@@ -3,6 +3,7 @@ package com.swiperf.app.data.session
 import android.content.Context
 import com.swiperf.app.data.model.*
 import com.swiperf.app.data.parse.TraceParser
+import com.swiperf.app.data.scoring.ScoringDictionary
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
@@ -91,6 +92,13 @@ object SessionManager {
                 clObj.put("scores", scoresObj)
                 if (cl.scoreAnchorKey != null) clObj.put("scoreAnchorKey", cl.scoreAnchorKey)
             }
+
+            // Scoring dictionary
+            if (cl.scoringDict.size > 0) {
+                clObj.put("scoringDict", cl.scoringDict.toJson())
+            }
+            clObj.put("scoringUseDict", cl.scoringUseDict)
+            clObj.put("scoringNormalizeDigits", cl.scoringNormalizeDigits)
 
             if (cl.propFilters.isNotEmpty()) {
                 val pfArr = JSONArray()
@@ -191,6 +199,21 @@ object SessionManager {
                 }
                 cluster.scoreAnchorKey = clObj.optString("scoreAnchorKey", null)
             }
+
+            // Restore scoring dictionary
+            val dictJson = clObj.optString("scoringDict", "")
+            if (dictJson.isNotEmpty()) {
+                val imported = ScoringDictionary.fromJson(dictJson)
+                for (entry in imported.all) {
+                    cluster.scoringDict.addFromState(com.swiperf.app.data.scoring.ScoringState(
+                        emptyList(),
+                        sameSignatures = if (entry.verdict == com.swiperf.app.data.scoring.RegionVerdict.SAME) mutableSetOf(entry.signature) else mutableSetOf(),
+                        diffSignatures = if (entry.verdict == com.swiperf.app.data.scoring.RegionVerdict.DIFFERENT) mutableSetOf(entry.signature) else mutableSetOf()
+                    ))
+                }
+            }
+            cluster.scoringUseDict = clObj.optBoolean("scoringUseDict", true)
+            cluster.scoringNormalizeDigits = clObj.optBoolean("scoringNormalizeDigits", false)
 
             cluster.recomputeCounts()
             if (traceStates.isNotEmpty()) traceStates[0].ensureCache()

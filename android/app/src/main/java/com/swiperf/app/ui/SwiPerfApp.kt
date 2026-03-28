@@ -94,7 +94,12 @@ fun SwiPerfApp(vm: SwiPerfViewModel = viewModel()) {
                 onStartScoring = { targetKey ->
                     vm.startScoring(targetKey)
                     navController.navigate(Route.Scoring.route)
-                }
+                },
+                onToggleUseDict = vm::toggleScoringUseDict,
+                onToggleNormalizeDigits = vm::toggleScoringNormalizeDigits,
+                onRemoveDictEntries = vm::removeDictEntries,
+                onClearDict = vm::clearDict,
+                onImportDict = vm::importDict
             )
         }
 

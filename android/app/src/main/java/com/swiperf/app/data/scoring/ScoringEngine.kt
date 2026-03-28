@@ -106,7 +106,8 @@ object ScoringEngine {
      * Uses proportional time (0.0 to 1.0) based on each trace's totalDur.
      */
     fun buildRegions(anchorSlices: List<Slice>, anchorTotalDur: Long,
-                     targetSlices: List<Slice>, targetTotalDur: Long): List<ScoringRegion> {
+                     targetSlices: List<Slice>, targetTotalDur: Long,
+                     normalize: Boolean = false): List<ScoringRegion> {
         if (anchorSlices.isEmpty() || targetSlices.isEmpty()) return emptyList()
         if (anchorTotalDur == 0L || targetTotalDur == 0L) return emptyList()
 
@@ -118,13 +119,17 @@ object ScoringEngine {
 
         val anchorProps = anchorSlices.map { s ->
             val start = (s.ts - anchorBaseTs).toDouble() / anchorTotalDur
+            val normName = if (normalize) normalizeDigits(s.name) else s.name
+            val normBf = if (normalize) normalizeDigits(s.blockedFunction) else s.blockedFunction
             PropSlice(start, (start + s.dur.toDouble() / anchorTotalDur).coerceAtMost(1.0),
-                s.state, s.name, s.ioWait, s.blockedFunction)
+                s.state, normName, s.ioWait, normBf)
         }
         val targetProps = targetSlices.map { s ->
             val start = (s.ts - targetBaseTs).toDouble() / targetTotalDur
+            val normName = if (normalize) normalizeDigits(s.name) else s.name
+            val normBf = if (normalize) normalizeDigits(s.blockedFunction) else s.blockedFunction
             PropSlice(start, (start + s.dur.toDouble() / targetTotalDur).coerceAtMost(1.0),
-                s.state, s.name, s.ioWait, s.blockedFunction)
+                s.state, normName, s.ioWait, normBf)
         }
 
         // Collect all boundaries
@@ -174,8 +179,9 @@ object ScoringEngine {
 
     /** Create initial scoring state from two traces. */
     fun createState(anchorSlices: List<Slice>, anchorTotalDur: Long,
-                    targetSlices: List<Slice>, targetTotalDur: Long): ScoringState {
-        return ScoringState(buildRegions(anchorSlices, anchorTotalDur, targetSlices, targetTotalDur))
+                    targetSlices: List<Slice>, targetTotalDur: Long,
+                    normalize: Boolean = false): ScoringState {
+        return ScoringState(buildRegions(anchorSlices, anchorTotalDur, targetSlices, targetTotalDur, normalize))
     }
 
     /**

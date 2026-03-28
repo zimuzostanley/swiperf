@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -12,6 +13,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.swiperf.app.data.scoring.DictEntry
+import com.swiperf.app.data.scoring.ScoringDictionary
 import com.swiperf.app.data.session.SessionMeta
 import com.swiperf.app.ui.theme.ThemeMode
 import java.text.SimpleDateFormat
@@ -32,9 +35,18 @@ fun SettingsSheet(
     onDeleteAllData: () -> Unit,
     onExportSession: (String) -> Unit,
     onSyncRemote: (() -> Unit)? = null,
+    scoringDict: ScoringDictionary? = null,
+    scoringUseDict: Boolean = true,
+    scoringNormalizeDigits: Boolean = false,
+    onToggleUseDict: (() -> Unit)? = null,
+    onToggleNormalizeDigits: (() -> Unit)? = null,
+    onRemoveDictEntries: ((List<DictEntry>) -> Unit)? = null,
+    onClearDict: (() -> Unit)? = null,
+    onImportDict: ((String) -> Unit)? = null,
     onDismiss: () -> Unit
 ) {
     var confirmClear by remember { mutableStateOf(false) }
+    var showDictionary by remember { mutableStateOf(false) }
     val fmt = remember { SimpleDateFormat("MMM d, HH:mm", Locale.getDefault()) }
 
     ModalBottomSheet(
@@ -204,6 +216,66 @@ fun SettingsSheet(
                 Spacer(Modifier.height(16.dp))
             }
 
+            // Scoring Dictionary (only when anchor is set)
+            if (scoringDict != null) {
+                Text("Scoring", style = MaterialTheme.typography.titleMedium)
+                Spacer(Modifier.height(8.dp))
+
+                // Use dictionary switch
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Use dictionary", style = MaterialTheme.typography.bodyMedium)
+                        Text(
+                            "Auto-resolve regions from learned equivalences",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = scoringUseDict,
+                        onCheckedChange = { onToggleUseDict?.invoke() }
+                    )
+                }
+                Spacer(Modifier.height(4.dp))
+
+                // Normalize digits switch
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Normalize digits", style = MaterialTheme.typography.bodyMedium)
+                        Text(
+                            "Replace numbers with [num] before comparing",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = scoringNormalizeDigits,
+                        onCheckedChange = { onToggleNormalizeDigits?.invoke() }
+                    )
+                }
+                Spacer(Modifier.height(8.dp))
+
+                // Dictionary button
+                OutlinedButton(
+                    onClick = { showDictionary = true },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.AutoMirrored.Filled.MenuBook, null, Modifier.size(16.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Scoring Dictionary (${scoringDict.size})")
+                }
+
+                Spacer(Modifier.height(16.dp))
+                HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+                Spacer(Modifier.height(16.dp))
+            }
+
             // Data management
             Text("Data", style = MaterialTheme.typography.titleMedium)
             Spacer(Modifier.height(8.dp))
@@ -239,6 +311,16 @@ fun SettingsSheet(
                 ) { Text("Clear") }
             },
             dismissButton = { TextButton(onClick = { confirmClear = false }) { Text("Cancel") } }
+        )
+    }
+
+    if (showDictionary && scoringDict != null) {
+        DictionarySheet(
+            dictionary = scoringDict,
+            onRemove = { entries -> onRemoveDictEntries?.invoke(entries) },
+            onClear = { onClearDict?.invoke() },
+            onImport = { json -> onImportDict?.invoke(json) },
+            onDismiss = { showDictionary = false }
         )
     }
 }
