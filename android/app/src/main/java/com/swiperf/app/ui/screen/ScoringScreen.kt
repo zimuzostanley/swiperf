@@ -10,7 +10,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -73,24 +73,28 @@ fun ScoringScreen(
     val isComplete = remember(version) { scoringState.isComplete }
 
     // Swipe state — shared between content area and bottom bar
-    var swipeOffset by remember { mutableFloatStateOf(0f) }
+    // Swipe: right/up = same, left/down = different
+    var swipeX by remember { mutableFloatStateOf(0f) }
+    var swipeY by remember { mutableFloatStateOf(0f) }
     val swipeThreshold = 150f
-    val frac = (swipeOffset / swipeThreshold).coerceIn(-1f, 1f)
+    // Use whichever axis has more movement
+    val dominant = if (kotlin.math.abs(swipeX) >= kotlin.math.abs(swipeY)) swipeX else -swipeY // up is negative Y, map to positive
+    val frac = (dominant / swipeThreshold).coerceIn(-1f, 1f)
     val absFrac = kotlin.math.abs(frac)
     val swipeModifier = if (!isComplete) Modifier.pointerInput(version) {
-        detectHorizontalDragGestures(
+        detectDragGestures(
             onDragEnd = {
-                if (swipeOffset > swipeThreshold) {
+                if (dominant > swipeThreshold) {
                     haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                     onVerdict(RegionVerdict.SAME)
-                } else if (swipeOffset < -swipeThreshold) {
+                } else if (dominant < -swipeThreshold) {
                     haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                     onVerdict(RegionVerdict.DIFFERENT)
                 }
-                swipeOffset = 0f
+                swipeX = 0f; swipeY = 0f
             },
-            onDragCancel = { swipeOffset = 0f }
-        ) { _, dragAmount -> swipeOffset += dragAmount }
+            onDragCancel = { swipeX = 0f; swipeY = 0f }
+        ) { _, dragAmount -> swipeX += dragAmount.x; swipeY += dragAmount.y }
     } else Modifier
     val historySize = remember(version) { scoringState.history.size }
 
