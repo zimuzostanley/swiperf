@@ -84,10 +84,11 @@ fun ScoringScreen(
     val swipeModifier = if (!isComplete) Modifier.pointerInput(version) {
         detectDragGestures(
             onDragEnd = {
-                if (dominant > swipeThreshold) {
+                val d = if (kotlin.math.abs(swipeX) >= kotlin.math.abs(swipeY)) swipeX else -swipeY
+                if (d > swipeThreshold) {
                     haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                     onVerdict(RegionVerdict.SAME)
-                } else if (dominant < -swipeThreshold) {
+                } else if (d < -swipeThreshold) {
                     haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                     onVerdict(RegionVerdict.DIFFERENT)
                 }
