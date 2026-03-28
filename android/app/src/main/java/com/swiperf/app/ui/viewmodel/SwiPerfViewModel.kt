@@ -448,9 +448,9 @@ class SwiPerfViewModel(app: Application) : AndroidViewModel(app) {
         _scoringVersion.value++
     }
 
-    fun scoringVerdict(verdict: RegionVerdict) {
+    fun scoringVerdict(verdict: RegionVerdict, regionIndex: Int) {
         val state = _scoringState ?: return
-        val idx = state.nextRegionIndex ?: return
+        val idx = regionIndex
         val action = ScoringEngine.recordVerdict(state, idx, verdict)
         // Save score to cluster
         val cl = activeCluster.value

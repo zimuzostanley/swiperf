@@ -18,6 +18,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -53,7 +54,7 @@ fun ScoringScreen(
     anchorTotalDur: Long,
     targetSeq: List<MergedSlice>,
     targetTotalDur: Long,
-    onVerdict: (RegionVerdict) -> Unit,
+    onVerdict: (RegionVerdict, Int) -> Unit, // verdict + region index
     onUndo: () -> Unit,
     onReset: () -> Unit,
     onClose: () -> Unit
@@ -70,8 +71,26 @@ fun ScoringScreen(
     val b = remember(version) { scoringState.breakdown }
     val remaining = b.remainingPct
     val scoreDisplay = if (b.samePct + b.diffPct == 0) "\u2014" else "${b.samePct}%"
-    val region = remember(version) { scoringState.nextRegionIndex?.let { scoringState.regions[it] } }
     val isComplete = remember(version) { scoringState.isComplete }
+
+    // Sort options for regions
+    var sortMode by remember { mutableStateOf("time") } // time, size, state, name, io, blocked
+    var showSortDialog by remember { mutableStateOf(false) }
+
+    val currentRegionIdx = remember(version, sortMode) {
+        val unscored = scoringState.regions.indices
+            .filter { !scoringState.regions[it].isAutoSame && !scoringState.verdicts.containsKey(it) }
+        if (unscored.isEmpty()) null
+        else when (sortMode) {
+            "size" -> unscored.maxByOrNull { scoringState.regions[it].duration }
+            "state" -> unscored.sortedBy { if (scoringState.regions[it].anchorState != scoringState.regions[it].targetState) 0 else 1 }.firstOrNull()
+            "name" -> unscored.sortedBy { if (scoringState.regions[it].anchorName != scoringState.regions[it].targetName) 0 else 1 }.firstOrNull()
+            "io" -> unscored.sortedBy { if (scoringState.regions[it].anchorIoWait != scoringState.regions[it].targetIoWait) 0 else 1 }.firstOrNull()
+            "blocked" -> unscored.sortedBy { if (scoringState.regions[it].anchorBlockedFn != scoringState.regions[it].targetBlockedFn) 0 else 1 }.firstOrNull()
+            else -> unscored.minByOrNull { scoringState.regions[it].start } // time order
+        }
+    }
+    val region = currentRegionIdx?.let { scoringState.regions[it] }
 
     // Swipe state — shared between content area and bottom bar
     // Swipe: right = same, left = different, up = same, down = different
@@ -81,12 +100,13 @@ fun ScoringScreen(
     val absFrac = kotlin.math.abs(frac)
 
     fun onSwipeEnd() {
+        val idx = currentRegionIdx ?: return
         if (swipeOffset > swipeThreshold) {
             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-            onVerdict(RegionVerdict.SAME)
+            onVerdict(RegionVerdict.SAME, idx)
         } else if (swipeOffset < -swipeThreshold) {
             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-            onVerdict(RegionVerdict.DIFFERENT)
+            onVerdict(RegionVerdict.DIFFERENT, idx)
         }
         swipeOffset = 0f
     }
@@ -126,6 +146,9 @@ fun ScoringScreen(
                     }
                     IconButton(onClick = { onReset() }) {
                         Icon(Icons.Default.Refresh, "Reset")
+                    }
+                    IconButton(onClick = { showSortDialog = true }) {
+                        Icon(Icons.AutoMirrored.Filled.Sort, "Sort")
                     }
                     Text(scoreDisplay, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(end = 12.dp))
                 },
@@ -316,6 +339,36 @@ fun ScoringScreen(
                 }
             }
         }
+    }
+
+    if (showSortDialog) {
+        val options = listOf(
+            "time" to "Timeline order",
+            "size" to "Largest first",
+            "state" to "State differs",
+            "name" to "Name differs",
+            "io" to "IO wait differs",
+            "blocked" to "Blocked fn differs"
+        )
+        AlertDialog(
+            onDismissRequest = { showSortDialog = false },
+            title = { Text("Sort regions") },
+            text = {
+                Column {
+                    for ((key, label) in options) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().clickable { sortMode = key; showSortDialog = false }.padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(selected = sortMode == key, onClick = { sortMode = key; showSortDialog = false })
+                            Spacer(Modifier.width(8.dp))
+                            Text(label, style = MaterialTheme.typography.bodyMedium)
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showSortDialog = false }) { Text("Close") } }
+        )
     }
 }
 
