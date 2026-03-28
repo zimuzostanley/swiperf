@@ -117,11 +117,15 @@ fun SwiPerfApp(vm: SwiPerfViewModel = viewModel()) {
                 val cl = activeCluster
                 val anchorTrace = cl?.traces?.find { it.key == pinnedKey }
                 val targetTrace = cl?.traces?.find { it.key == scoringTargetKey }
+                anchorTrace?.ensureCache()
+                targetTrace?.ensureCache()
                 ScoringScreen(
                     scoringState = ss,
                     version = stateVersion,
-                    anchorName = anchorTrace?.trace?.packageName ?: "anchor",
-                    targetName = targetTrace?.trace?.packageName ?: "target",
+                    anchorSeq = anchorTrace?.currentSeq ?: emptyList(),
+                    anchorTotalDur = anchorTrace?.totalDur ?: 0L,
+                    targetSeq = targetTrace?.currentSeq ?: emptyList(),
+                    targetTotalDur = targetTrace?.totalDur ?: 0L,
                     onVerdict = vm::scoringVerdict,
                     onUndo = vm::scoringUndo,
                     onClose = {

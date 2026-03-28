@@ -8,8 +8,10 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.*
@@ -22,12 +24,15 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.swiperf.app.data.model.MergedSlice
 import com.swiperf.app.data.scoring.RegionVerdict
+import com.swiperf.app.data.scoring.ScoringRegion
 import com.swiperf.app.data.scoring.ScoringState
 import com.swiperf.app.ui.theme.LocalIsDarkTheme
 import com.swiperf.app.ui.theme.PerfettoColors
@@ -38,8 +43,10 @@ import kotlinx.coroutines.launch
 fun ScoringScreen(
     scoringState: ScoringState,
     version: Long,
-    anchorName: String,
-    targetName: String,
+    anchorSeq: List<MergedSlice>,
+    anchorTotalDur: Long,
+    targetSeq: List<MergedSlice>,
+    targetTotalDur: Long,
     onVerdict: (RegionVerdict) -> Unit,
     onUndo: () -> Unit,
     onClose: () -> Unit
@@ -50,13 +57,11 @@ fun ScoringScreen(
     val clipboardManager = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
-    var lastCascadeCount by remember { mutableStateOf(0) }
 
     BackHandler { onClose() }
 
-    // Re-read mutable state keyed on version
     val scoreDisplay = remember(version) {
-        if (scoringState.score.isNaN()) "—" else "${(scoringState.score * 100).toInt()}%"
+        if (scoringState.score.isNaN()) "\u2014" else "${(scoringState.score * 100).toInt()}%"
     }
     val region = remember(version) { scoringState.nextRegionIndex?.let { scoringState.regions[it] } }
     val isComplete = remember(version) { scoringState.isComplete }
@@ -64,42 +69,31 @@ fun ScoringScreen(
     val differingTotal = remember(version) { scoringState.differingTotal }
     val historySize = remember(version) { scoringState.history.size }
 
-    fun copyName(name: String?) {
-        val text = name ?: "null"
-        clipboardManager.setPrimaryClip(ClipData.newPlainText("SwiPerf", text))
-        scope.launch { snackbar.showSnackbar(text, duration = SnackbarDuration.Short) }
+    fun copy(text: String?) {
+        val t = text ?: "null"
+        clipboardManager.setPrimaryClip(ClipData.newPlainText("SwiPerf", t))
+        scope.launch { snackbar.showSnackbar(t, duration = SnackbarDuration.Short) }
     }
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("Score", fontWeight = FontWeight.SemiBold) },
-                navigationIcon = {
-                    IconButton(onClick = onClose) { Icon(Icons.Default.Close, "Close") }
-                },
+                navigationIcon = { IconButton(onClick = onClose) { Icon(Icons.Default.Close, "Close") } },
                 actions = {
                     if (historySize > 0) {
                         IconButton(onClick = { onUndo(); haptic.performHapticFeedback(HapticFeedbackType.LongPress) }) {
                             Icon(Icons.AutoMirrored.Filled.Undo, "Undo")
                         }
                     }
-                    Text(
-                        scoreDisplay,
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(end = 12.dp)
-                    )
+                    Text(scoreDisplay, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(end = 12.dp))
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)
             )
         },
         bottomBar = {
             Surface(color = MaterialTheme.colorScheme.surfaceContainer, tonalElevation = 3.dp) {
-                Column(
-                    modifier = Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 12.dp, vertical = 8.dp)
-                ) {
-                    // Progress
+                Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 12.dp, vertical = 8.dp)) {
                     LinearProgressIndicator(
                         progress = { if (differingTotal > 0) differingResolved.toFloat() / differingTotal else 1f },
                         modifier = Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)),
@@ -107,46 +101,23 @@ fun ScoringScreen(
                         trackColor = MaterialTheme.colorScheme.surfaceContainerHighest
                     )
                     Spacer(Modifier.height(4.dp))
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
-                        Text("$differingResolved / $differingTotal regions", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        if (lastCascadeCount > 0) {
-                            Text("  +$lastCascadeCount matched", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
-                        }
-                    }
+                    Text("$differingResolved / $differingTotal", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
                     Spacer(Modifier.height(8.dp))
-
                     if (isComplete) {
                         Button(onClick = onClose, modifier = Modifier.fillMaxWidth()) {
                             Text("Done \u00b7 $scoreDisplay", fontWeight = FontWeight.SemiBold)
                         }
                     } else {
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             Button(
-                                onClick = {
-                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    val before = differingResolved
-                                    onVerdict(RegionVerdict.DIFFERENT)
-                                    lastCascadeCount = 0 // will update on next recomposition
-                                },
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = PerfettoColors.NEGATIVE_COLOR,
-                                    contentColor = androidx.compose.ui.graphics.Color.White
-                                ),
+                                onClick = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); onVerdict(RegionVerdict.DIFFERENT) },
+                                colors = ButtonDefaults.buttonColors(containerColor = PerfettoColors.NEGATIVE_COLOR, contentColor = androidx.compose.ui.graphics.Color.White),
                                 shape = RoundedCornerShape(6.dp),
                                 modifier = Modifier.weight(1f)
                             ) { Text("different", fontWeight = FontWeight.SemiBold) }
-
                             Button(
-                                onClick = {
-                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    val before = differingResolved
-                                    onVerdict(RegionVerdict.SAME)
-                                    lastCascadeCount = 0
-                                },
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = PerfettoColors.POSITIVE_COLOR,
-                                    contentColor = androidx.compose.ui.graphics.Color.White
-                                ),
+                                onClick = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); onVerdict(RegionVerdict.SAME) },
+                                colors = ButtonDefaults.buttonColors(containerColor = PerfettoColors.POSITIVE_COLOR, contentColor = androidx.compose.ui.graphics.Color.White),
                                 shape = RoundedCornerShape(6.dp),
                                 modifier = Modifier.weight(1f)
                             ) { Text("same", fontWeight = FontWeight.SemiBold) }
@@ -162,10 +133,10 @@ fun ScoringScreen(
         }
     ) { padding ->
         Column(
-            modifier = Modifier.fillMaxSize().padding(padding).background(MaterialTheme.colorScheme.background)
+            modifier = Modifier.fillMaxSize().padding(padding).background(MaterialTheme.colorScheme.background).verticalScroll(rememberScrollState())
         ) {
             if (isComplete) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Box(modifier = Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(scoreDisplay, style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                         Spacer(Modifier.height(8.dp))
@@ -173,8 +144,20 @@ fun ScoringScreen(
                     }
                 }
             } else if (region != null) {
-                Spacer(Modifier.height(12.dp))
+                // ── Full tracks with highlighted region ──
+                Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+                    Text("anchor", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                    Spacer(Modifier.height(2.dp))
+                    FullTrackWithHighlight(seq = anchorSeq, totalDur = anchorTotalDur, regionStart = region.start, regionEnd = region.end, isDark = isDark)
+                    Spacer(Modifier.height(6.dp))
+                    Text("target", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.height(2.dp))
+                    FullTrackWithHighlight(seq = targetSeq, totalDur = targetTotalDur, regionStart = region.start, regionEnd = region.end, isDark = isDark)
+                }
 
+                Spacer(Modifier.height(8.dp))
+
+                // ── Zoomed region card ──
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -184,90 +167,52 @@ fun ScoringScreen(
                         .padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    // Timeline bars — anchor vs target
-                    Text("anchor", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
-                    RegionBar(
-                        stateColor = PerfettoColors.stateColor(region.anchorState, region.anchorIoWait, isDark),
-                        nameColor = if (region.anchorName != null) PerfettoColors.nameColor(region.anchorName) else PerfettoColors.nameRowFallback(isDark),
-                        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(3.dp))
-                    )
-                    Text("target", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    RegionBar(
-                        stateColor = PerfettoColors.stateColor(region.targetState, region.targetIoWait, isDark),
-                        nameColor = if (region.targetName != null) PerfettoColors.nameColor(region.targetName) else PerfettoColors.nameRowFallback(isDark),
-                        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(3.dp))
-                    )
-
                     // Duration
                     Text("${(region.duration * 100).toInt()}% of trace", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
+                    // Zoomed bars
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Column(Modifier.weight(1f)) {
+                            Text("anchor", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                            Spacer(Modifier.height(2.dp))
+                            RegionBar(
+                                stateColor = PerfettoColors.stateColor(region.anchorState, region.anchorIoWait, isDark),
+                                nameColor = if (region.anchorName != null) PerfettoColors.nameColor(region.anchorName) else PerfettoColors.nameRowFallback(isDark),
+                                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(3.dp))
+                            )
+                        }
+                        Column(Modifier.weight(1f)) {
+                            Text("target", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Spacer(Modifier.height(2.dp))
+                            RegionBar(
+                                stateColor = PerfettoColors.stateColor(region.targetState, region.targetIoWait, isDark),
+                                nameColor = if (region.targetName != null) PerfettoColors.nameColor(region.targetName) else PerfettoColors.nameRowFallback(isDark),
+                                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(3.dp))
+                            )
+                        }
+                    }
+
                     HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.1f))
 
-                    // Always show state + name for both sides (full context)
-                    // State row
-                    Row(Modifier.fillMaxWidth()) {
-                        Text("state", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(44.dp))
-                        Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
-                            Box(Modifier.size(8.dp).clip(CircleShape).background(PerfettoColors.stateColor(region.anchorState, region.anchorIoWait, isDark)))
+                    // ── Details by field section ──
+                    FieldSection("state", region, isDark, ::copy) { state, ioWait ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(Modifier.size(8.dp).clip(CircleShape).background(PerfettoColors.stateColor(state, ioWait, isDark)))
                             Spacer(Modifier.width(4.dp))
-                            Text(
-                                PerfettoColors.stateLabel(region.anchorState, region.anchorIoWait),
-                                style = MaterialTheme.typography.bodySmall,
-                                maxLines = 1,
-                                fontWeight = if (region.anchorState != region.targetState) FontWeight.SemiBold else FontWeight.Normal,
-                                modifier = Modifier.clickable { copyName(region.anchorState) }
-                            )
-                        }
-                        Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
-                            Box(Modifier.size(8.dp).clip(CircleShape).background(PerfettoColors.stateColor(region.targetState, region.targetIoWait, isDark)))
-                            Spacer(Modifier.width(4.dp))
-                            Text(
-                                PerfettoColors.stateLabel(region.targetState, region.targetIoWait),
-                                style = MaterialTheme.typography.bodySmall,
-                                maxLines = 1,
-                                fontWeight = if (region.anchorState != region.targetState) FontWeight.SemiBold else FontWeight.Normal,
-                                modifier = Modifier.clickable { copyName(region.targetState) }
-                            )
+                            Text(PerfettoColors.stateLabel(state, ioWait), style = MaterialTheme.typography.bodySmall, modifier = Modifier.clickable { copy(state) })
                         }
                     }
 
-                    // Name row
-                    Row(Modifier.fillMaxWidth()) {
-                        Text("name", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(44.dp))
-                        Text(
-                            region.anchorName ?: "—",
-                            style = MaterialTheme.typography.bodySmall,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            fontWeight = if (region.anchorName != region.targetName) FontWeight.SemiBold else FontWeight.Normal,
-                            modifier = Modifier.weight(1f).clickable { copyName(region.anchorName) }
-                        )
-                        Text(
-                            region.targetName ?: "—",
-                            style = MaterialTheme.typography.bodySmall,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            fontWeight = if (region.anchorName != region.targetName) FontWeight.SemiBold else FontWeight.Normal,
-                            modifier = Modifier.weight(1f).clickable { copyName(region.targetName) }
-                        )
+                    FieldSection("name", region, isDark, ::copy) { name, _ ->
+                        Text(name ?: "\u2014", style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.clickable { copy(name) })
                     }
 
-                    // IO wait row (only if either has it)
                     if (region.anchorIoWait != null || region.targetIoWait != null) {
-                        Row(Modifier.fillMaxWidth()) {
-                            Text("io", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(44.dp))
-                            Text("${region.anchorIoWait ?: "—"}", style = MaterialTheme.typography.bodySmall, fontWeight = if (region.anchorIoWait != region.targetIoWait) FontWeight.SemiBold else FontWeight.Normal, modifier = Modifier.weight(1f))
-                            Text("${region.targetIoWait ?: "—"}", style = MaterialTheme.typography.bodySmall, fontWeight = if (region.anchorIoWait != region.targetIoWait) FontWeight.SemiBold else FontWeight.Normal, modifier = Modifier.weight(1f))
-                        }
+                        FieldRow("io wait", "${region.anchorIoWait ?: "\u2014"}", "${region.targetIoWait ?: "\u2014"}", region.anchorIoWait != region.targetIoWait, ::copy)
                     }
 
-                    // Blocked function row (only if either has it)
                     if (region.anchorBlockedFn != null || region.targetBlockedFn != null) {
-                        Row(Modifier.fillMaxWidth()) {
-                            Text("blocked", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(44.dp))
-                            Text(region.anchorBlockedFn ?: "—", style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = if (region.anchorBlockedFn != region.targetBlockedFn) FontWeight.SemiBold else FontWeight.Normal, modifier = Modifier.weight(1f).clickable { copyName(region.anchorBlockedFn) })
-                            Text(region.targetBlockedFn ?: "—", style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = if (region.anchorBlockedFn != region.targetBlockedFn) FontWeight.SemiBold else FontWeight.Normal, modifier = Modifier.weight(1f).clickable { copyName(region.targetBlockedFn) })
-                        }
+                        FieldRow("blocked fn", region.anchorBlockedFn ?: "\u2014", region.targetBlockedFn ?: "\u2014", region.anchorBlockedFn != region.targetBlockedFn, ::copy)
                     }
                 }
             }
@@ -276,17 +221,80 @@ fun ScoringScreen(
 }
 
 @Composable
-private fun RegionBar(
-    stateColor: androidx.compose.ui.graphics.Color,
-    nameColor: androidx.compose.ui.graphics.Color,
-    modifier: Modifier = Modifier
+private fun FieldSection(
+    label: String,
+    region: ScoringRegion,
+    isDark: Boolean,
+    copy: (String?) -> Unit,
+    content: @Composable (anchorVal: String?, ioWait: Int?) -> Unit
 ) {
-    val density = androidx.compose.ui.platform.LocalDensity.current
-    val stateH = with(density) { 10.dp.toPx() }
-    val gapH = with(density) { 1.dp.toPx() }
-    val nameH = with(density) { 14.dp.toPx() }
+    val anchorVal = when (label) { "state" -> region.anchorState; "name" -> region.anchorName; else -> null }
+    val targetVal = when (label) { "state" -> region.targetState; "name" -> region.targetName; else -> null }
+    val differs = anchorVal != targetVal
 
-    Canvas(modifier = modifier.height(25.dp)) {
+    Column {
+        Text(label, style = MaterialTheme.typography.labelSmall, fontWeight = if (differs) FontWeight.SemiBold else FontWeight.Normal, color = if (differs) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.height(4.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Box(Modifier.weight(1f)) { content(anchorVal, region.anchorIoWait) }
+            Box(Modifier.weight(1f)) { content(targetVal, region.targetIoWait) }
+        }
+    }
+}
+
+@Composable
+private fun FieldRow(label: String, anchorVal: String, targetVal: String, differs: Boolean, copy: (String?) -> Unit) {
+    Column {
+        Text(label, style = MaterialTheme.typography.labelSmall, fontWeight = if (differs) FontWeight.SemiBold else FontWeight.Normal, color = if (differs) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.height(4.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(anchorVal, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).clickable { copy(anchorVal) })
+            Text(targetVal, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).clickable { copy(targetVal) })
+        }
+    }
+}
+
+/** Full trace timeline with the current region highlighted (rest dimmed). */
+@Composable
+private fun FullTrackWithHighlight(
+    seq: List<MergedSlice>,
+    totalDur: Long,
+    regionStart: Double,
+    regionEnd: Double,
+    isDark: Boolean
+) {
+    val density = LocalDensity.current
+    val minW = with(density) { 0.5.dp.toPx() }
+    val stateH = with(density) { 8.dp.toPx() }
+    val gapH = with(density) { 1.dp.toPx() }
+    val nameH = with(density) { 10.dp.toPx() }
+
+    Canvas(modifier = Modifier.fillMaxWidth().height(19.dp).clip(RoundedCornerShape(3.dp))) {
+        if (totalDur == 0L) return@Canvas
+        val scale = size.width / totalDur.toFloat()
+        drawRect(PerfettoColors.canvasBg(isDark))
+
+        for (d in seq) {
+            val x = d.tsRel * scale
+            val w = maxOf(d.dur * scale, minW)
+            val prop = d.tsRel.toDouble() / totalDur
+            val inRegion = prop >= regionStart - 0.001 && prop < regionEnd + 0.001
+            val alpha = if (inRegion) 1f else 0.2f
+
+            drawRect(PerfettoColors.stateColor(d.state, d.ioWait, isDark).copy(alpha = alpha), Offset(x, 0f), Size(w, stateH))
+            val nc = if (d.name != null) PerfettoColors.nameColor(d.name) else PerfettoColors.nameRowFallback(isDark)
+            drawRect(nc.copy(alpha = alpha), Offset(x, stateH + gapH), Size(w, nameH))
+        }
+    }
+}
+
+@Composable
+private fun RegionBar(stateColor: androidx.compose.ui.graphics.Color, nameColor: androidx.compose.ui.graphics.Color, modifier: Modifier = Modifier) {
+    val density = LocalDensity.current
+    Canvas(modifier = modifier.height(22.dp)) {
+        val stateH = with(density) { 8.dp.toPx() }
+        val gapH = with(density) { 1.dp.toPx() }
+        val nameH = with(density) { 12.dp.toPx() }
         drawRect(stateColor, Offset.Zero, Size(size.width, stateH))
         drawRect(nameColor, Offset(0f, stateH + gapH), Size(size.width, nameH))
     }
