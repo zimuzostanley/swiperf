@@ -277,8 +277,10 @@ private fun FullTrackWithHighlight(
         for (d in seq) {
             val x = d.tsRel * scale
             val w = maxOf(d.dur * scale, minW)
-            val prop = d.tsRel.toDouble() / totalDur
-            val inRegion = prop >= regionStart - 0.001 && prop < regionEnd + 0.001
+            // Check overlap: slice [sliceStart, sliceEnd) vs region [regionStart, regionEnd)
+            val sliceStart = d.tsRel.toDouble() / totalDur
+            val sliceEnd = (d.tsRel + d.dur).toDouble() / totalDur
+            val inRegion = sliceStart < regionEnd + 0.001 && sliceEnd > regionStart - 0.001
             val alpha = if (inRegion) 1f else 0.2f
 
             drawRect(PerfettoColors.stateColor(d.state, d.ioWait, isDark).copy(alpha = alpha), Offset(x, 0f), Size(w, stateH))
