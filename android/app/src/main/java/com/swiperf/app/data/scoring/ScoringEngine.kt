@@ -18,16 +18,23 @@ data class ScoringRegion(
     val targetName: String?,
     val targetIoWait: Int?,
     val targetBlockedFn: String?,
+    val normalize: Boolean = false
 ) {
     val duration: Double get() = end - start
 
-    /** Which fields differ between anchor and target. */
+    /** Which fields differ between anchor and target.
+     *  Comparison uses normalized values when normalize=true,
+     *  but FieldDiff stores ORIGINAL values for display/coloring. */
     val diffs: List<FieldDiff> by lazy {
+        val an = if (normalize) normalizeDigits(anchorName) else anchorName
+        val tn = if (normalize) normalizeDigits(targetName) else targetName
+        val ab = if (normalize) normalizeDigits(anchorBlockedFn) else anchorBlockedFn
+        val tb = if (normalize) normalizeDigits(targetBlockedFn) else targetBlockedFn
         buildList {
             if (anchorState != targetState) add(FieldDiff("state", anchorState, targetState))
-            if (anchorName != targetName) add(FieldDiff("name", anchorName, targetName))
+            if (an != tn) add(FieldDiff("name", anchorName, targetName))
             if (anchorIoWait != targetIoWait) add(FieldDiff("io_wait", anchorIoWait?.toString(), targetIoWait?.toString()))
-            if (anchorBlockedFn != targetBlockedFn) add(FieldDiff("blocked_fn", anchorBlockedFn, targetBlockedFn))
+            if (ab != tb) add(FieldDiff("blocked_fn", anchorBlockedFn, targetBlockedFn))
         }
     }
 
@@ -37,8 +44,14 @@ data class ScoringRegion(
      * Signature of the diff: the exact set of (field, anchorVal, targetVal) tuples.
      * Two regions with the same diffSignature are structurally identical in what differs.
      */
+    /** Signature uses normalized values (when normalize=true) for matching.
+     *  Two regions with "foo 42" vs "foo 7" get the same signature when normalized. */
     val diffSignature: Set<Triple<String, String?, String?>> by lazy {
-        diffs.map { Triple(it.field, it.anchorVal, it.targetVal) }.toSet()
+        diffs.map { d ->
+            val a = if (normalize && (d.field == "name" || d.field == "blocked_fn")) normalizeDigits(d.anchorVal) else d.anchorVal
+            val t = if (normalize && (d.field == "name" || d.field == "blocked_fn")) normalizeDigits(d.targetVal) else d.targetVal
+            Triple(d.field, a, t)
+        }.toSet()
     }
 }
 
@@ -187,19 +200,16 @@ object ScoringEngine {
         data class PropSlice(val start: Double, val end: Double, val state: String?,
                              val name: String?, val ioWait: Int?, val blockedFn: String?)
 
+        // Always use ORIGINAL names for display/coloring
         val anchorProps = anchorSlices.map { s ->
             val start = (s.ts - anchorBaseTs).toDouble() / anchorTotalDur
-            val normName = if (normalize) normalizeDigits(s.name) else s.name
-            val normBf = if (normalize) normalizeDigits(s.blockedFunction) else s.blockedFunction
             PropSlice(start, (start + s.dur.toDouble() / anchorTotalDur).coerceAtMost(1.0),
-                s.state, normName, s.ioWait, normBf)
+                s.state, s.name, s.ioWait, s.blockedFunction)
         }
         val targetProps = targetSlices.map { s ->
             val start = (s.ts - targetBaseTs).toDouble() / targetTotalDur
-            val normName = if (normalize) normalizeDigits(s.name) else s.name
-            val normBf = if (normalize) normalizeDigits(s.blockedFunction) else s.blockedFunction
             PropSlice(start, (start + s.dur.toDouble() / targetTotalDur).coerceAtMost(1.0),
-                s.state, normName, s.ioWait, normBf)
+                s.state, s.name, s.ioWait, s.blockedFunction)
         }
 
         // Collect all boundaries
@@ -223,6 +233,7 @@ object ScoringEngine {
                 start, end,
                 anchor?.state, anchor?.name, anchor?.ioWait, anchor?.blockedFn,
                 target?.state, target?.name, target?.ioWait, target?.blockedFn,
+                normalize = normalize
             ))
         }
 
