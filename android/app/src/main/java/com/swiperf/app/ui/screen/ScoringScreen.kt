@@ -1,5 +1,6 @@
 package com.swiperf.app.ui.screen
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -49,6 +50,8 @@ fun ScoringScreen(
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     var lastCascadeCount by remember { mutableStateOf(0) }
+
+    BackHandler { onClose() }
 
     val scoreDisplay = if (scoringState.score.isNaN()) "—" else "${(scoringState.score * 100).toInt()}%"
     val region = scoringState.nextRegionIndex?.let { scoringState.regions[it] }
