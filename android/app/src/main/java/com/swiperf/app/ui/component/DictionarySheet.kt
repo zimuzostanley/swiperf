@@ -34,7 +34,6 @@ fun DictionarySheet(
     onRemove: (List<DictEntry>) -> Unit,
     onClear: () -> Unit,
     onImport: (json: String, merge: Boolean) -> Unit,
-    onSaveFile: ((content: String, filename: String) -> Unit)? = null,
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
@@ -199,17 +198,13 @@ fun DictionarySheet(
                 ) {
                     OutlinedButton(onClick = {
                         val json = dictionary.toJson()
-                        clipboardManager.setPrimaryClip(ClipData.newPlainText("SwiPerf Dict", json))
-                        scope.launch { snackbar.showSnackbar("Copied ${dictionary.size} entries", duration = SnackbarDuration.Short) }
-                    }, enabled = dictionary.size > 0) {
-                        Text("copy", style = MaterialTheme.typography.labelSmall)
-                    }
-                    if (onSaveFile != null) {
-                        OutlinedButton(onClick = {
-                            onSaveFile(dictionary.toJson(), "swiperf-dict.json")
-                        }, enabled = dictionary.size > 0) {
-                            Text("save", style = MaterialTheme.typography.labelSmall)
+                        val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                            type = "application/json"
+                            putExtra(android.content.Intent.EXTRA_TEXT, json)
                         }
+                        context.startActivity(android.content.Intent.createChooser(intent, "Export dictionary"))
+                    }, enabled = dictionary.size > 0) {
+                        Text("download", style = MaterialTheme.typography.labelSmall)
                     }
                     OutlinedButton(onClick = { showImport = true }) {
                         Text("import", style = MaterialTheme.typography.labelSmall)
