@@ -8,6 +8,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.*
@@ -243,27 +244,48 @@ fun ScoringScreen(
                         }
                     }
 
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.1f))
+                }
 
-                    // ── Details by field section ──
-                    FieldSection("state", region, isDark, ::copy) { state, ioWait ->
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(Modifier.size(8.dp).clip(CircleShape).background(PerfettoColors.stateColor(state, ioWait, isDark)))
+                // ── Field details in separate containers ──
+                Spacer(Modifier.height(6.dp))
+
+                FieldCard("state", region.anchorState != region.targetState) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                            Box(Modifier.size(8.dp).clip(CircleShape).background(PerfettoColors.stateColor(region.anchorState, region.anchorIoWait, isDark)))
                             Spacer(Modifier.width(4.dp))
-                            Text(PerfettoColors.stateLabel(state, ioWait), style = MaterialTheme.typography.bodySmall, modifier = Modifier.clickable { copy(state) })
+                            Text(PerfettoColors.stateLabel(region.anchorState, region.anchorIoWait), style = MaterialTheme.typography.bodySmall, modifier = Modifier.clickable { copy(region.anchorState) })
+                        }
+                        Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                            Box(Modifier.size(8.dp).clip(CircleShape).background(PerfettoColors.stateColor(region.targetState, region.targetIoWait, isDark)))
+                            Spacer(Modifier.width(4.dp))
+                            Text(PerfettoColors.stateLabel(region.targetState, region.targetIoWait), style = MaterialTheme.typography.bodySmall, modifier = Modifier.clickable { copy(region.targetState) })
                         }
                     }
+                }
 
-                    FieldSection("name", region, isDark, ::copy) { name, _ ->
-                        Text(name ?: "\u2014", style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.clickable { copy(name) })
+                FieldCard("name", region.anchorName != region.targetName) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(region.anchorName ?: "\u2014", style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).clickable { copy(region.anchorName) })
+                        Text(region.targetName ?: "\u2014", style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).clickable { copy(region.targetName) })
                     }
+                }
 
-                    if (region.anchorIoWait != null || region.targetIoWait != null) {
-                        FieldRow("io wait", "${region.anchorIoWait ?: "\u2014"}", "${region.targetIoWait ?: "\u2014"}", region.anchorIoWait != region.targetIoWait, ::copy)
+                if (region.anchorIoWait != null || region.targetIoWait != null) {
+                    FieldCard("io wait", region.anchorIoWait != region.targetIoWait) {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("${region.anchorIoWait ?: "\u2014"}", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                            Text("${region.targetIoWait ?: "\u2014"}", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                        }
                     }
+                }
 
-                    if (region.anchorBlockedFn != null || region.targetBlockedFn != null) {
-                        FieldRow("blocked fn", region.anchorBlockedFn ?: "\u2014", region.targetBlockedFn ?: "\u2014", region.anchorBlockedFn != region.targetBlockedFn, ::copy)
+                if (region.anchorBlockedFn != null || region.targetBlockedFn != null) {
+                    FieldCard("blocked fn", region.anchorBlockedFn != region.targetBlockedFn) {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(region.anchorBlockedFn ?: "\u2014", style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).clickable { copy(region.anchorBlockedFn) })
+                            Text(region.targetBlockedFn ?: "\u2014", style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).clickable { copy(region.targetBlockedFn) })
+                        }
                     }
                 }
             }
@@ -271,37 +293,31 @@ fun ScoringScreen(
     }
 }
 
+/** Individual field container with label and border highlight when differs. */
 @Composable
-private fun FieldSection(
-    label: String,
-    region: ScoringRegion,
-    isDark: Boolean,
-    copy: (String?) -> Unit,
-    content: @Composable (anchorVal: String?, ioWait: Int?) -> Unit
-) {
-    val anchorVal = when (label) { "state" -> region.anchorState; "name" -> region.anchorName; else -> null }
-    val targetVal = when (label) { "state" -> region.targetState; "name" -> region.targetName; else -> null }
-    val differs = anchorVal != targetVal
-
-    Column {
-        Text(label, style = MaterialTheme.typography.labelSmall, fontWeight = if (differs) FontWeight.SemiBold else FontWeight.Normal, color = if (differs) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant)
+private fun FieldCard(label: String, differs: Boolean, content: @Composable () -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 2.dp)
+            .clip(RoundedCornerShape(6.dp))
+            .border(
+                0.5.dp,
+                if (differs) MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)
+                else MaterialTheme.colorScheme.outline.copy(alpha = 0.15f),
+                RoundedCornerShape(6.dp)
+            )
+            .background(MaterialTheme.colorScheme.surface)
+            .padding(10.dp)
+    ) {
+        Text(
+            label,
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = if (differs) FontWeight.SemiBold else FontWeight.Normal,
+            color = if (differs) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+        )
         Spacer(Modifier.height(4.dp))
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Box(Modifier.weight(1f)) { content(anchorVal, region.anchorIoWait) }
-            Box(Modifier.weight(1f)) { content(targetVal, region.targetIoWait) }
-        }
-    }
-}
-
-@Composable
-private fun FieldRow(label: String, anchorVal: String, targetVal: String, differs: Boolean, copy: (String?) -> Unit) {
-    Column {
-        Text(label, style = MaterialTheme.typography.labelSmall, fontWeight = if (differs) FontWeight.SemiBold else FontWeight.Normal, color = if (differs) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant)
-        Spacer(Modifier.height(4.dp))
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(anchorVal, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).clickable { copy(anchorVal) })
-            Text(targetVal, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).clickable { copy(targetVal) })
-        }
+        content()
     }
 }
 
