@@ -10,7 +10,8 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -73,30 +74,37 @@ fun ScoringScreen(
     val isComplete = remember(version) { scoringState.isComplete }
 
     // Swipe state — shared between content area and bottom bar
-    // Swipe: right/up = same, left/down = different
-    var swipeX by remember { mutableFloatStateOf(0f) }
-    var swipeY by remember { mutableFloatStateOf(0f) }
+    // Swipe: right = same, left = different, up = same, down = different
+    var swipeOffset by remember { mutableFloatStateOf(0f) }
     val swipeThreshold = 150f
-    // Use whichever axis has more movement
-    val dominant = if (kotlin.math.abs(swipeX) >= kotlin.math.abs(swipeY)) swipeX else -swipeY // up is negative Y, map to positive
-    val frac = (dominant / swipeThreshold).coerceIn(-1f, 1f)
+    val frac = (swipeOffset / swipeThreshold).coerceIn(-1f, 1f)
     val absFrac = kotlin.math.abs(frac)
-    val swipeModifier = if (!isComplete) Modifier.pointerInput(version) {
-        detectDragGestures(
-            onDragEnd = {
-                val d = if (kotlin.math.abs(swipeX) >= kotlin.math.abs(swipeY)) swipeX else -swipeY
-                if (d > swipeThreshold) {
-                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                    onVerdict(RegionVerdict.SAME)
-                } else if (d < -swipeThreshold) {
-                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                    onVerdict(RegionVerdict.DIFFERENT)
-                }
-                swipeX = 0f; swipeY = 0f
-            },
-            onDragCancel = { swipeX = 0f; swipeY = 0f }
-        ) { _, dragAmount -> swipeX += dragAmount.x; swipeY += dragAmount.y }
-    } else Modifier
+
+    fun onSwipeEnd() {
+        if (swipeOffset > swipeThreshold) {
+            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+            onVerdict(RegionVerdict.SAME)
+        } else if (swipeOffset < -swipeThreshold) {
+            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+            onVerdict(RegionVerdict.DIFFERENT)
+        }
+        swipeOffset = 0f
+    }
+
+    val swipeModifier = if (!isComplete) Modifier
+        .pointerInput(version) {
+            detectHorizontalDragGestures(
+                onDragEnd = { onSwipeEnd() },
+                onDragCancel = { swipeOffset = 0f }
+            ) { _, dragAmount -> swipeOffset += dragAmount }
+        }
+        .pointerInput(version) {
+            detectVerticalDragGestures(
+                onDragEnd = { onSwipeEnd() },
+                onDragCancel = { swipeOffset = 0f }
+            ) { _, dragAmount -> swipeOffset -= dragAmount } // up (negative) → positive offset → same
+        }
+    else Modifier
     val historySize = remember(version) { scoringState.history.size }
 
     fun copy(text: String?) {
