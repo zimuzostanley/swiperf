@@ -16,6 +16,8 @@ data class ExportRow(
 
 object ExportHelper {
 
+    private val TSV_SANITIZE = Regex("[\t\n\r]")
+
     private val EXCLUDED_EXTRA = setOf(
         "slices", "quantized_sequence", "quantized_sequence_json", "quantized_sequence_base64"
     )
@@ -61,7 +63,7 @@ object ExportHelper {
 
     private fun tsvEscape(v: Any?): String {
         if (v == null) return ""
-        return v.toString().replace(Regex("[\t\n\r]"), " ")
+        return v.toString().replace(TSV_SANITIZE, " ")
     }
 
     private fun colLetter(idx: Int): String {
@@ -126,24 +128,26 @@ object ExportHelper {
         return header + "\n" + lines.joinToString("\n")
     }
 
+    private fun jsonEscape(s: String): String = s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t")
+
     fun rowsToJson(rows: List<ExportRow>): String {
         val sb = StringBuilder("[\n")
         rows.forEachIndexed { idx, row ->
             sb.append("  {\n")
-            sb.append("    \"trace_uuid\": \"${row.traceUuid}\",\n")
-            sb.append("    \"package_name\": \"${row.packageName}\",\n")
+            sb.append("    \"trace_uuid\": \"${jsonEscape(row.traceUuid)}\",\n")
+            sb.append("    \"package_name\": \"${jsonEscape(row.packageName)}\",\n")
             sb.append("    \"startup_dur\": ${row.startupDur},\n")
-            sb.append("    \"tab_name\": \"${row.tabName}\",\n")
-            sb.append("    \"verdict\": \"${row.verdict}\",\n")
-            sb.append("    \"link\": \"${row.link}\"")
+            sb.append("    \"tab_name\": \"${jsonEscape(row.tabName)}\",\n")
+            sb.append("    \"verdict\": \"${jsonEscape(row.verdict)}\",\n")
+            sb.append("    \"link\": \"${jsonEscape(row.link)}\"")
             if (row.extra.isNotEmpty()) {
                 for ((k, v) in row.extra.toSortedMap()) {
-                    sb.append(",\n    \"$k\": ")
+                    sb.append(",\n    \"${jsonEscape(k)}\": ")
                     when (v) {
-                        is String -> sb.append("\"$v\"")
+                        is String -> sb.append("\"${jsonEscape(v)}\"")
                         is Number -> sb.append(v)
                         null -> sb.append("null")
-                        else -> sb.append("\"$v\"")
+                        else -> sb.append("\"${jsonEscape(v.toString())}\"")
                     }
                 }
             }

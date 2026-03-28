@@ -145,8 +145,10 @@ class ScoringDictionary {
     }
 }
 
+private val DIGITS_RE = Regex("\\d+")
+
 /** Normalize a string by replacing digit sequences with [num] */
 fun normalizeDigits(s: String?): String? {
     if (s == null) return null
-    return s.replace(Regex("\\d+"), "[num]")
+    return s.replace(DIGITS_RE, "[num]")
 }

@@ -26,6 +26,8 @@ object TraceParser {
     private val BF_ALIASES = listOf("blocked_function", "blocked_fn", "blocked", "wchan")
 
     private val UUID_RE = Regex("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", RegexOption.IGNORE_CASE)
+    private val FILE_EXT_RE = Regex("\\.[\\w]+(\\.[\\w]+)*$")
+    private val WHITESPACE_RE = Regex("\\s+")
 
     // ── Field resolution ──
 
@@ -81,7 +83,7 @@ object TraceParser {
         val match = UUID_RE.find(value)
         if (match != null) return match.value
         val base = value.split("/").last()
-        return base.replace(Regex("\\.[\\w]+(\\.[\\w]+)*$"), "")
+        return base.replace(FILE_EXT_RE, "")
     }
 
     // ── Package name resolution (handles JSON-encoded column) ──
@@ -306,7 +308,7 @@ object TraceParser {
         if (rows.size < 2) throw Exception("Need header + data rows")
 
         val headers = rows[0]
-        val norm = { s: String -> s.lowercase().trim().replace(Regex("\\s+"), "_") }
+        val norm = { s: String -> s.lowercase().trim().replace(WHITESPACE_RE, "_") }
         val findCol = { aliases: List<String> ->
             var idx = -1
             for (a in aliases) {

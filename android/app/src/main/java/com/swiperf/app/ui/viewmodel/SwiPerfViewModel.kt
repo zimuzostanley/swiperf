@@ -352,6 +352,7 @@ class SwiPerfViewModel(app: Application) : AndroidViewModel(app) {
     // ── Pin ──
 
     fun togglePin(key: String) {
+        if (_scoringState != null) closeScoring()
         val newKey = if (_pinnedKey.value == key) null else key
         if (newKey != _pinnedKey.value) {
             // Anchor changed — clear scores
