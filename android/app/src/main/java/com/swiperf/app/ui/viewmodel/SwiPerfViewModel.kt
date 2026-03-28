@@ -444,15 +444,16 @@ class SwiPerfViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun importDict(json: String) {
+    fun importDict(json: String, merge: Boolean = true) {
         activeCluster.value?.let { cl ->
+            if (!merge) cl.scoringDict.clear()
             val imported = ScoringDictionary.fromJson(json)
             for (entry in imported.all) {
                 cl.scoringDict.addFromState(ScoringState(
                     emptyList(),
                     sameSignatures = if (entry.verdict == RegionVerdict.SAME) mutableSetOf(entry.signature) else mutableSetOf(),
                     diffSignatures = if (entry.verdict == RegionVerdict.DIFFERENT) mutableSetOf(entry.signature) else mutableSetOf()
-                ))
+                ), normalized = entry.normalized)
             }
             notifyChange()
         }

@@ -29,7 +29,8 @@ fun DictionarySheet(
     dictionary: ScoringDictionary,
     onRemove: (List<DictEntry>) -> Unit,
     onClear: () -> Unit,
-    onImport: (String) -> Unit,
+    onImport: (json: String, merge: Boolean) -> Unit,
+    onSaveFile: ((content: String, filename: String) -> Unit)? = null,
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
@@ -187,7 +188,14 @@ fun DictionarySheet(
                         clipboardManager.setPrimaryClip(ClipData.newPlainText("SwiPerf Dict", json))
                         scope.launch { snackbar.showSnackbar("Copied ${dictionary.size} entries", duration = SnackbarDuration.Short) }
                     }, enabled = dictionary.size > 0) {
-                        Text("export", style = MaterialTheme.typography.labelSmall)
+                        Text("copy", style = MaterialTheme.typography.labelSmall)
+                    }
+                    if (onSaveFile != null) {
+                        OutlinedButton(onClick = {
+                            onSaveFile(dictionary.toJson(), "swiperf-dict.json")
+                        }, enabled = dictionary.size > 0) {
+                            Text("save", style = MaterialTheme.typography.labelSmall)
+                        }
                     }
                     OutlinedButton(onClick = { showImport = true }) {
                         Text("import", style = MaterialTheme.typography.labelSmall)
@@ -216,17 +224,33 @@ fun DictionarySheet(
             onDismissRequest = { showImport = false },
             title = { Text("Import Dictionary") },
             text = {
-                OutlinedTextField(
-                    value = importText,
-                    onValueChange = { importText = it },
-                    modifier = Modifier.fillMaxWidth().height(150.dp),
-                    placeholder = { Text("Paste dictionary JSON\u2026") },
-                    singleLine = false,
-                    shape = RoundedCornerShape(4.dp)
-                )
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = importText,
+                        onValueChange = { importText = it },
+                        modifier = Modifier.fillMaxWidth().height(150.dp),
+                        placeholder = { Text("Paste dictionary JSON\u2026") },
+                        singleLine = false,
+                        shape = RoundedCornerShape(4.dp)
+                    )
+                    if (dictionary.size > 0) {
+                        Text(
+                            "Current dictionary has ${dictionary.size} entries",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
             },
             confirmButton = {
-                Button(onClick = { onImport(importText); showImport = false }) { Text("Import") }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (dictionary.size > 0) {
+                        OutlinedButton(onClick = { onImport(importText, false); showImport = false }) { Text("Replace") }
+                    }
+                    Button(onClick = { onImport(importText, true); showImport = false }) {
+                        Text(if (dictionary.size > 0) "Merge" else "Import")
+                    }
+                }
             },
             dismissButton = { TextButton(onClick = { showImport = false }) { Text("Cancel") } }
         )

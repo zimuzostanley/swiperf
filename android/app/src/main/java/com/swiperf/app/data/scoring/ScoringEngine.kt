@@ -60,17 +60,25 @@ data class ScoringAction(
 class ScoringState(
     val regions: List<ScoringRegion>,
     val verdicts: MutableMap<Int, RegionVerdict> = mutableMapOf(),
-    /** Diff signatures the user has judged as "same enough". */
     val sameSignatures: MutableSet<Set<Triple<String, String?, String?>>> = mutableSetOf(),
-    /** Diff signatures the user has judged as "different". */
     val diffSignatures: MutableSet<Set<Triple<String, String?, String?>>> = mutableSetOf(),
     val history: MutableList<ScoringAction> = mutableListOf()
 ) {
-    /** Index of the next region to show the user, or null if done. */
+    // Priority queue: differing region indices sorted by duration descending
+    private val queue = java.util.TreeSet<Int>(compareByDescending<Int> { regions.getOrNull(it)?.duration ?: 0.0 }.thenBy { it })
+
+    init {
+        for (i in regions.indices) {
+            if (!regions[i].isAutoSame) queue.add(i)
+        }
+    }
+
+    internal fun removeFromQueue(idx: Int) { queue.remove(idx) }
+    internal fun addToQueue(idx: Int) { if (!regions[idx].isAutoSame) queue.add(idx) }
+
+    /** Index of the next region to show the user, or null if done. O(1). */
     val nextRegionIndex: Int?
-        get() = regions.indices
-            .filter { it !in verdicts && !regions[it].isAutoSame }
-            .maxByOrNull { regions[it].duration }
+        get() = queue.firstOrNull { it !in verdicts }
 
     val isComplete: Boolean get() = nextRegionIndex == null
 
@@ -140,14 +148,19 @@ object ScoringEngine {
         val boundaryList = boundaries.toList()
         val regions = mutableListOf<ScoringRegion>()
 
+        // Pointer-based lookup: O(N+M) instead of O((N+M)^2)
+        var ai = 0
+        var ti = 0
         for (i in 0 until boundaryList.size - 1) {
             val start = boundaryList[i]
             val end = boundaryList[i + 1]
             if (end - start < 1e-12) continue
 
             val mid = (start + end) / 2
-            val anchor = anchorProps.find { mid >= it.start && mid < it.end }
-            val target = targetProps.find { mid >= it.start && mid < it.end }
+            while (ai < anchorProps.size - 1 && anchorProps[ai].end <= mid) ai++
+            while (ti < targetProps.size - 1 && targetProps[ti].end <= mid) ti++
+            val anchor = anchorProps.getOrNull(ai)?.takeIf { mid >= it.start && mid < it.end }
+            val target = targetProps.getOrNull(ti)?.takeIf { mid >= it.start && mid < it.end }
 
             regions.add(ScoringRegion(
                 start, end,
@@ -184,9 +197,19 @@ object ScoringEngine {
         return ScoringState(buildRegions(anchorSlices, anchorTotalDur, targetSlices, targetTotalDur, normalize))
     }
 
+    // Build signature→indices map for O(1) cascade lookup
+    private fun sigIndex(state: ScoringState): Map<Set<Triple<String, String?, String?>>, List<Int>> {
+        val map = HashMap<Set<Triple<String, String?, String?>>, MutableList<Int>>()
+        for (i in state.regions.indices) {
+            if (state.regions[i].isAutoSame) continue
+            map.getOrPut(state.regions[i].diffSignature) { mutableListOf() }.add(i)
+        }
+        return map
+    }
+
     /**
      * Record a user verdict. Learns the exact diff signature and cascades to
-     * other regions with the identical signature.
+     * other regions with the identical signature. O(cascade_count), not O(N).
      */
     fun recordVerdict(state: ScoringState, regionIndex: Int, verdict: RegionVerdict): ScoringAction {
         state.verdicts[regionIndex] = verdict
@@ -201,13 +224,13 @@ object ScoringEngine {
             if (verdict == RegionVerdict.SAME) state.sameSignatures.add(sig)
             else state.diffSignatures.add(sig)
 
-            // Cascade: auto-resolve other unscored regions with the exact same diff signature
-            for (i in state.regions.indices) {
-                if (i == regionIndex || state.verdicts.containsKey(i) || state.regions[i].isAutoSame) continue
-                if (state.regions[i].diffSignature == sig) {
-                    state.verdicts[i] = verdict
-                    cascaded.add(i)
-                }
+            // Cascade via sig index — O(matching_count) not O(total_regions)
+            val index = sigIndex(state)
+            val matching = index[sig] ?: emptyList()
+            for (i in matching) {
+                if (i == regionIndex || state.verdicts.containsKey(i)) continue
+                state.verdicts[i] = verdict
+                cascaded.add(i)
             }
         }
 

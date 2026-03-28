@@ -99,7 +99,7 @@ fun SwiPerfApp(vm: SwiPerfViewModel = viewModel()) {
                 onToggleNormalizeDigits = vm::toggleScoringNormalizeDigits,
                 onRemoveDictEntries = vm::removeDictEntries,
                 onClearDict = vm::clearDict,
-                onImportDict = vm::importDict
+                onImportDict = { json, merge -> vm.importDict(json, merge) }
             )
         }
 

@@ -42,7 +42,7 @@ fun SettingsSheet(
     onToggleNormalizeDigits: (() -> Unit)? = null,
     onRemoveDictEntries: ((List<DictEntry>) -> Unit)? = null,
     onClearDict: (() -> Unit)? = null,
-    onImportDict: ((String) -> Unit)? = null,
+    onImportDict: ((json: String, merge: Boolean) -> Unit)? = null,
     onDismiss: () -> Unit
 ) {
     var confirmClear by remember { mutableStateOf(false) }
@@ -319,7 +319,7 @@ fun SettingsSheet(
             dictionary = scoringDict,
             onRemove = { entries -> onRemoveDictEntries?.invoke(entries) },
             onClear = { onClearDict?.invoke() },
-            onImport = { json -> onImportDict?.invoke(json) },
+            onImport = { json, merge -> onImportDict?.invoke(json, merge) },
             onDismiss = { showDictionary = false }
         )
     }

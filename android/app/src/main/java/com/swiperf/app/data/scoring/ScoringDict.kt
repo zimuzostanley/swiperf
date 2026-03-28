@@ -19,11 +19,20 @@ data class DictEntry(
     val searchText: String by lazy { displayLabel.lowercase() }
 }
 
-class ScoringDictionary {
-    private val entries = mutableListOf<DictEntry>()
+/**
+ * Lookup key: signature + normalized flag.
+ * Two entries with the same signature but different normalized flags are distinct.
+ */
+private data class DictKey(val signature: Set<Triple<String, String?, String?>>, val normalized: Boolean)
 
-    val all: List<DictEntry> get() = entries.toList()
-    val size: Int get() = entries.size
+class ScoringDictionary {
+    private val map = LinkedHashMap<DictKey, DictEntry>()
+    // Secondary index: signature-only → entry (for fast lookup in applyTo/bumpHitCount
+    // where we don't know the normalized flag)
+    private val bySig = HashMap<Set<Triple<String, String?, String?>>, DictEntry>()
+
+    val all: List<DictEntry> get() = map.values.toList()
+    val size: Int get() = map.size
 
     fun addFromState(state: ScoringState, normalized: Boolean = false) {
         for (sig in state.sameSignatures) addOrUpdate(RegionVerdict.SAME, sig, normalized)
@@ -31,35 +40,53 @@ class ScoringDictionary {
     }
 
     private fun addOrUpdate(verdict: RegionVerdict, signature: Set<Triple<String, String?, String?>>, normalized: Boolean) {
-        val existing = entries.find { it.signature == signature && it.normalized == normalized }
+        val key = DictKey(signature, normalized)
+        val existing = map[key]
         if (existing != null) {
             if (existing.verdict != verdict) {
-                entries.remove(existing)
-                entries.add(DictEntry(verdict, signature, normalized, existing.hitCount))
+                val updated = DictEntry(verdict, signature, normalized, existing.hitCount)
+                map[key] = updated
+                bySig[signature] = updated
             }
         } else {
-            entries.add(DictEntry(verdict, signature, normalized))
+            val entry = DictEntry(verdict, signature, normalized)
+            map[key] = entry
+            // bySig stores the most recent entry for this signature
+            bySig[signature] = entry
         }
     }
 
     fun bumpHitCount(signature: Set<Triple<String, String?, String?>>) {
-        val entry = entries.find { it.signature == signature }
-        if (entry != null) entry.hitCount++
+        bySig[signature]?.hitCount?.let { bySig[signature]!!.hitCount++ }
     }
 
-    fun remove(entry: DictEntry) { entries.remove(entry) }
-    fun removeAll(toRemove: List<DictEntry>) { entries.removeAll(toRemove.toSet()) }
-    fun clear() { entries.clear() }
+    fun remove(entry: DictEntry) {
+        map.remove(DictKey(entry.signature, entry.normalized))
+        // Rebuild bySig for this signature if another entry with same sig exists
+        val remaining = map.values.find { it.signature == entry.signature }
+        if (remaining != null) bySig[entry.signature] = remaining
+        else bySig.remove(entry.signature)
+    }
 
+    fun removeAll(toRemove: List<DictEntry>) {
+        for (e in toRemove) map.remove(DictKey(e.signature, e.normalized))
+        // Rebuild bySig
+        bySig.clear()
+        for (e in map.values) bySig[e.signature] = e
+    }
+
+    fun clear() { map.clear(); bySig.clear() }
+
+    /** Pre-populate a ScoringState with known equivalences and auto-resolve matching regions. */
     fun applyTo(state: ScoringState) {
-        for (entry in entries) {
+        for (entry in map.values) {
             if (entry.verdict == RegionVerdict.SAME) state.sameSignatures.add(entry.signature)
             else if (entry.verdict == RegionVerdict.DIFFERENT) state.diffSignatures.add(entry.signature)
         }
         for (i in state.regions.indices) {
             if (state.verdicts.containsKey(i) || state.regions[i].isAutoSame) continue
             val sig = state.regions[i].diffSignature
-            val known = entries.find { it.signature == sig }
+            val known = bySig[sig] // O(1) lookup
             if (known != null) {
                 state.verdicts[i] = known.verdict
                 known.hitCount++
@@ -69,7 +96,7 @@ class ScoringDictionary {
 
     fun toJson(): String {
         val arr = JSONArray()
-        for (e in entries) {
+        for (e in map.values) {
             val obj = JSONObject()
             obj.put("verdict", if (e.verdict == RegionVerdict.SAME) "same" else "different")
             obj.put("hitCount", e.hitCount)
@@ -108,7 +135,9 @@ class ScoringDictionary {
                             if (s.isNull("target")) null else s.getString("target")
                         ))
                     }
-                    dict.entries.add(DictEntry(verdict, sig, normalized, hitCount))
+                    val entry = DictEntry(verdict, sig, normalized, hitCount)
+                    dict.map[DictKey(sig, normalized)] = entry
+                    dict.bySig[sig] = entry
                 }
             } catch (_: Exception) {}
             return dict

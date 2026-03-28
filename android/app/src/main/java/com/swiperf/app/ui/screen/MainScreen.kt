@@ -78,7 +78,7 @@ fun MainScreen(
     onToggleNormalizeDigits: (() -> Unit)? = null,
     onRemoveDictEntries: ((List<com.swiperf.app.data.scoring.DictEntry>) -> Unit)? = null,
     onClearDict: (() -> Unit)? = null,
-    onImportDict: ((String) -> Unit)? = null
+    onImportDict: ((json: String, merge: Boolean) -> Unit)? = null
 ) {
     val cl = activeCluster
     val hasData = cl != null && cl.traces.isNotEmpty()
