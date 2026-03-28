@@ -113,6 +113,12 @@ class SwiPerfViewModel(app: Application) : AndroidViewModel(app) {
                         _clusters.value = restored.clusters
                         _activeClusterId.value = restored.activeClusterId ?: restored.clusters.firstOrNull()?.id
                         _currentSessionId.value = restored.sessionId
+                        // Apply saved global slider zoom to all traces
+                        for (cl in restored.clusters) {
+                            if (cl.globalSlider < 100) {
+                                cl.updateGlobalSlider(cl.globalSlider)
+                            }
+                        }
                         _stateVersion.value++
                     }
                     restored.applyDictTo(scoringDict, _scoringUseDict, _scoringNormalizeDigits)
@@ -315,6 +321,10 @@ class SwiPerfViewModel(app: Application) : AndroidViewModel(app) {
                     _activeClusterId.value = result.activeClusterId ?: result.clusters.firstOrNull()?.id
                     _currentSessionId.value = sessionId
                     result.applyDictTo(scoringDict, _scoringUseDict, _scoringNormalizeDigits)
+                    // Apply saved global slider zoom
+                    for (cl in result.clusters) {
+                        if (cl.globalSlider < 100) cl.updateGlobalSlider(cl.globalSlider)
+                    }
                     if (_autoPinFirst.value && result.clusters.isNotEmpty()) {
                         _pinnedKey.value = result.clusters[0].traces.firstOrNull()?.key
                     }
