@@ -327,7 +327,7 @@ fun MainScreen(
                             },
                             isPinned = false,
                             onTogglePin = { onTogglePin(ts.key) },
-                            onStartScoring = if (pinnedKey != null && ts.key != pinnedKey) {
+                            onStartScoring = if (pinnedTrace != null && ts.key != pinnedKey) {
                                 { onStartScoring?.invoke(ts.key) }
                             } else null
                         )
