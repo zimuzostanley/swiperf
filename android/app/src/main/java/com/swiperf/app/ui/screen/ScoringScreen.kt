@@ -190,7 +190,7 @@ fun ScoringScreen(
         }
     ) { padding ->
         Column(
-            modifier = Modifier.fillMaxSize().padding(padding).background(MaterialTheme.colorScheme.background).then(swipeModifier).verticalScroll(rememberScrollState())
+            modifier = Modifier.fillMaxSize().padding(padding).background(MaterialTheme.colorScheme.background).then(swipeModifier)
         ) {
             if (isComplete) {
                 Box(modifier = Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
