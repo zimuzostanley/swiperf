@@ -68,6 +68,8 @@ fun ScoringScreen(
     val differingResolved = remember(version) { scoringState.differingResolved }
     val differingTotal = remember(version) { scoringState.differingTotal }
     val historySize = remember(version) { scoringState.history.size }
+    val autoSameCount = scoringState.autoSameCount
+    val autoSamePct = scoringState.autoSamePct
 
     fun copy(text: String?) {
         val t = text ?: "null"
@@ -101,7 +103,11 @@ fun ScoringScreen(
                         trackColor = MaterialTheme.colorScheme.surfaceContainerHighest
                     )
                     Spacer(Modifier.height(4.dp))
-                    Text("$differingResolved / $differingTotal", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                        Text("$differingResolved / $differingTotal to review", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Spacer(Modifier.width(8.dp))
+                        Text("$autoSameCount auto-matched (${autoSamePct}%)", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                    }
                     Spacer(Modifier.height(8.dp))
                     if (isComplete) {
                         Button(onClick = onClose, modifier = Modifier.fillMaxWidth()) {

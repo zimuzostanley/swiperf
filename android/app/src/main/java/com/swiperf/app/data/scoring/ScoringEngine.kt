@@ -114,6 +114,13 @@ class ScoringState(
     /** Differing regions resolved (for progress bar). */
     val differingResolved: Int get() = verdicts.size
     val differingTotal: Int get() = regions.count { !it.isAutoSame }
+
+    /** Auto-matched stats */
+    val autoSameCount: Int by lazy { regions.count { it.isAutoSame } }
+    val autoSamePct: Int by lazy {
+        val total = regions.sumOf { it.duration }
+        if (total > 0) (regions.filter { it.isAutoSame }.sumOf { it.duration } / total * 100).toInt() else 0
+    }
 }
 
 object ScoringEngine {
