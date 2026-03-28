@@ -116,6 +116,11 @@ class SwiPerfViewModel(app: Application) : AndroidViewModel(app) {
                         _stateVersion.value++
                     }
                     restored.applyDictTo(scoringDict, _scoringUseDict, _scoringNormalizeDigits)
+                    // Auto-pin first trace
+                    if (_autoPinFirst.value && _pinnedKey.value == null) {
+                        val first = restored.clusters.firstOrNull()?.traces?.firstOrNull()
+                        if (first != null) _pinnedKey.value = first.key
+                    }
                 }
             } catch (_: Exception) {}
             _loading.value = false
@@ -310,7 +315,11 @@ class SwiPerfViewModel(app: Application) : AndroidViewModel(app) {
                     _activeClusterId.value = result.activeClusterId ?: result.clusters.firstOrNull()?.id
                     _currentSessionId.value = sessionId
                     result.applyDictTo(scoringDict, _scoringUseDict, _scoringNormalizeDigits)
+                    if (_autoPinFirst.value && result.clusters.isNotEmpty()) {
+                        _pinnedKey.value = result.clusters[0].traces.firstOrNull()?.key
+                    }
                     _importMsg.value = "Session loaded (${result.clusters.size} clusters)" to true
+                    _stateVersion.value++
                     scheduleAutoSave()
                 }
             } catch (e: Exception) {

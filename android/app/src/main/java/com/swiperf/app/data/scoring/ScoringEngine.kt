@@ -65,8 +65,8 @@ class ScoringState(
     val diffSignatures: MutableSet<Set<Triple<String, String?, String?>>> = mutableSetOf(),
     val history: MutableList<ScoringAction> = mutableListOf()
 ) {
-    // Priority queue: differing region indices sorted by duration descending
-    private val queue = java.util.TreeSet<Int>(compareByDescending<Int> { regions.getOrNull(it)?.duration ?: 0.0 }.thenBy { it })
+    // Queue: differing region indices sorted by time position (left to right)
+    private val queue = java.util.TreeSet<Int>(compareBy<Int> { regions.getOrNull(it)?.start ?: 0.0 }.thenBy { it })
 
     // Signature → region indices map (built once, used for O(1) cascade)
     val sigIndex: Map<Set<Triple<String, String?, String?>>, List<Int>>
