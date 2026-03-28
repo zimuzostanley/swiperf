@@ -30,6 +30,7 @@ import com.swiperf.app.data.model.MergedSlice
 import com.swiperf.app.data.model.Verdict
 import com.swiperf.app.ui.theme.PerfettoColors
 import com.swiperf.app.ui.util.Format
+import androidx.compose.material.icons.filled.GpsFixed
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -37,6 +38,7 @@ fun TraceCard(
     packageName: String,
     startupDur: Long,
     cosineSimilarity: String? = null,
+    score: Float? = null,
     index: Int,
     verdict: Verdict?,
     seq: List<MergedSlice>,
@@ -46,6 +48,7 @@ fun TraceCard(
     onSliceTap: (index: Int, slice: MergedSlice, seq: List<MergedSlice>, totalDur: Long, onHighlightChange: (Int?) -> Unit) -> Unit,
     isPinned: Boolean = false,
     onTogglePin: (() -> Unit)? = null,
+    onStartScoring: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val haptic = LocalHapticFeedback.current
@@ -169,6 +172,27 @@ fun TraceCard(
                         modifier = Modifier
                             .background(MaterialTheme.colorScheme.surfaceContainerHigh, RoundedCornerShape(3.dp))
                             .padding(horizontal = 5.dp, vertical = 1.dp)
+                    )
+                }
+                if (score != null) {
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        "${(score * 100).toInt()}%",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier
+                            .background(MaterialTheme.colorScheme.primaryContainer, RoundedCornerShape(3.dp))
+                            .padding(horizontal = 5.dp, vertical = 1.dp)
+                    )
+                }
+                if (onStartScoring != null) {
+                    Spacer(Modifier.width(4.dp))
+                    Icon(
+                        Icons.Default.GpsFixed,
+                        contentDescription = "Score",
+                        modifier = Modifier.size(16.dp).clickable { onStartScoring() },
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
                     )
                 }
                 if (startupDur > 0) {

@@ -6,7 +6,7 @@ enum class OverviewFilter { ALL, POSITIVE, NEGATIVE, PENDING, DISCARDED }
 
 data class SortState(var col: String = "dur", var dir: Int = -1)
 
-enum class SortField { INDEX, STARTUP_DUR }
+enum class SortField { INDEX, STARTUP_DUR, COSINE_SIMILARITY, MANUAL_SCORE }
 
 data class SummaryRow(
     val label: String,

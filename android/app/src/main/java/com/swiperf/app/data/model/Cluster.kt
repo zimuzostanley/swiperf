@@ -20,7 +20,9 @@ data class Cluster(
     var sortField: SortField = SortField.INDEX,
     var sortDir: Int = 1,
     val propFilters: MutableMap<String, MutableSet<String>> = mutableMapOf(),
-    var globalSlider: Int = 100
+    var globalSlider: Int = 100,
+    val scores: MutableMap<String, Float> = mutableMapOf(), // traceKey -> score
+    var scoreAnchorKey: String? = null
 ) {
     fun recomputeCounts() {
         var positive = 0; var negative = 0; var discarded = 0
@@ -58,8 +60,22 @@ data class Cluster(
             }
         }
         // Apply sorting
-        if (sortField == SortField.STARTUP_DUR) {
-            result = result.sortedBy { it.trace.startupDur * sortDir }
+        when (sortField) {
+            SortField.STARTUP_DUR -> result = result.sortedBy { it.trace.startupDur * sortDir }
+            SortField.COSINE_SIMILARITY -> {
+                result = result.sortedWith(compareBy<TraceState> {
+                    val v = (it.trace.extra?.get("cosine_similarity") ?: it.trace.extra?.get("Cosine Similarity"))
+                    val n = when (v) { is Number -> v.toDouble(); is String -> v.toDoubleOrNull() ?: Double.MAX_VALUE; else -> Double.MAX_VALUE }
+                    n * sortDir
+                })
+            }
+            SortField.MANUAL_SCORE -> {
+                result = result.sortedWith(compareBy<TraceState> {
+                    val s = scores[it.key]
+                    if (s != null) s.toDouble() * sortDir else Double.MAX_VALUE * sortDir
+                })
+            }
+            SortField.INDEX -> {} // default order
         }
         return result
     }

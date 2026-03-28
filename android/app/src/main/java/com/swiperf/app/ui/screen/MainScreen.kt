@@ -11,6 +11,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
@@ -54,7 +55,7 @@ fun MainScreen(
     onSetVerdict: (String, Verdict) -> Unit,
     onSliderChange: (TraceState, Int) -> Unit,
     onGlobalSliderChange: (Int) -> Unit,
-    onToggleSort: () -> Unit,
+    onSetSortField: (SortField) -> Unit,
     pinnedKey: String?,
     onTogglePin: (String) -> Unit,
     onSaveSession: (String) -> Unit,
@@ -70,7 +71,9 @@ fun MainScreen(
     onCopyToNewTab: () -> Unit,
     onClearImportMsg: () -> Unit,
     onRefreshSessions: () -> Unit,
-    onSyncRemote: (() -> Unit)? = null
+    onSyncRemote: (() -> Unit)? = null,
+    scores: Map<String, Float> = emptyMap(),
+    onStartScoring: ((String) -> Unit)? = null
 ) {
     val cl = activeCluster
     val hasData = cl != null && cl.traces.isNotEmpty()
@@ -80,6 +83,7 @@ fun MainScreen(
     var showSettings by remember { mutableStateOf(false) }
     var showExport by remember { mutableStateOf(false) }
     var showPaste by remember { mutableStateOf(false) }
+    var showSortDialog by remember { mutableStateOf(false) }
     var renameClusterId by remember { mutableStateOf<String?>(null) }
     var longPressClusterId by remember { mutableStateOf<String?>(null) }
     var showBreakdown by remember { mutableStateOf<Pair<TraceState, Int>?>(null) }
@@ -149,16 +153,22 @@ fun MainScreen(
                         modifier = Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 8.dp, vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // Sort
-                        TextButton(onClick = onToggleSort) {
+                        // Sort — tap toggles direction, opens dialog
+                        val sortLabel = when (sortField) {
+                            SortField.STARTUP_DUR -> "startup"
+                            SortField.COSINE_SIMILARITY -> "cosine"
+                            SortField.MANUAL_SCORE -> "score"
+                            SortField.INDEX -> "sort"
+                        }
+                        TextButton(onClick = { showSortDialog = true }) {
                             Icon(
-                                if (sortField == SortField.STARTUP_DUR)
+                                if (sortField != SortField.INDEX)
                                     (if (sortDir == 1) Icons.Default.ArrowUpward else Icons.Default.ArrowDownward)
                                 else Icons.AutoMirrored.Filled.Sort,
                                 null, Modifier.size(18.dp)
                             )
                             Spacer(Modifier.width(4.dp))
-                            Text(if (sortField == SortField.STARTUP_DUR) "Startup" else "Sort", style = MaterialTheme.typography.labelLarge)
+                            Text(sortLabel, style = MaterialTheme.typography.labelLarge)
                         }
 
                         Spacer(Modifier.weight(1f))
@@ -263,6 +273,7 @@ fun MainScreen(
                         packageName = pinnedTrace.trace.packageName,
                         startupDur = pinnedTrace.trace.startupDur,
                         cosineSimilarity = cosineTag(pinnedTrace.trace.extra),
+                        score = remember(stateVersion) { scores[pinnedTrace.key] },
                         index = indexMap[pinnedTrace.key] ?: 0,
                         verdict = pVerdict,
                         seq = pSeq,
@@ -294,6 +305,7 @@ fun MainScreen(
                             packageName = ts.trace.packageName,
                             startupDur = ts.trace.startupDur,
                             cosineSimilarity = cosineTag(ts.trace.extra),
+                            score = remember(stateVersion) { scores[ts.key] },
                             index = indexMap[ts.key] ?: 0,
                             verdict = v,
                             seq = s,
@@ -304,7 +316,10 @@ fun MainScreen(
                                 showSliceDetail = SliceDetailState(slice, td, s, idx, onHl)
                             },
                             isPinned = false,
-                            onTogglePin = { onTogglePin(ts.key) }
+                            onTogglePin = { onTogglePin(ts.key) },
+                            onStartScoring = if (pinnedKey != null && ts.key != pinnedKey) {
+                                { onStartScoring?.invoke(ts.key) }
+                            } else null
                         )
                     }
                     if (unpinnedTraces.isEmpty() && pinnedTrace == null) {
@@ -317,6 +332,38 @@ fun MainScreen(
                 }
             }
         }
+    }
+
+    // ── Sort dialog ──
+    if (showSortDialog) {
+        val options = listOf(
+            SortField.INDEX to "Default order",
+            SortField.STARTUP_DUR to "Startup duration",
+            SortField.COSINE_SIMILARITY to "Cosine similarity",
+            SortField.MANUAL_SCORE to "Manual score",
+        )
+        AlertDialog(
+            onDismissRequest = { showSortDialog = false },
+            title = { Text("Sort by") },
+            text = {
+                Column {
+                    for ((field, label) in options) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onSetSortField(field); showSortDialog = false }
+                                .padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(selected = sortField == field, onClick = { onSetSortField(field); showSortDialog = false })
+                            Spacer(Modifier.width(8.dp))
+                            Text(label, style = MaterialTheme.typography.bodyMedium)
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showSortDialog = false }) { Text("Close") } }
+        )
     }
 
     // ── Long-press cluster: remove ──

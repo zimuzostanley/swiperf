@@ -17,6 +17,7 @@ import com.swiperf.app.ui.viewmodel.SwiPerfViewModel
 
 sealed class Route(val route: String) {
     data object Main : Route("main")
+    data object Scoring : Route("scoring")
 }
 
 @Composable
@@ -35,6 +36,8 @@ fun SwiPerfApp(vm: SwiPerfViewModel = viewModel()) {
     val importMsg by vm.importMsg.collectAsState()
     val pinnedKey by vm.pinnedKey.collectAsState()
     val stateVersion by vm.stateVersion.collectAsState()
+    val scoringState by vm.scoringState.collectAsState()
+    val scoringTargetKey by vm.scoringTargetKey.collectAsState()
 
     fun importFile(uri: Uri) {
         val text = context.contentResolver.openInputStream(uri)?.bufferedReader()?.readText() ?: return
@@ -70,7 +73,7 @@ fun SwiPerfApp(vm: SwiPerfViewModel = viewModel()) {
                 onSetVerdict = { key, v -> vm.setVerdict(key, v) },
                 onSliderChange = { ts, v -> vm.updateSlider(ts, v) },
                 onGlobalSliderChange = vm::updateGlobalSlider,
-                onToggleSort = vm::toggleSort,
+                onSetSortField = vm::setSortField,
                 pinnedKey = pinnedKey,
                 onTogglePin = vm::togglePin,
                 onSaveSession = { name -> vm.saveSession(name) },
@@ -86,9 +89,33 @@ fun SwiPerfApp(vm: SwiPerfViewModel = viewModel()) {
                 onCopyToNewTab = vm::copyFilteredToNewTab,
                 onClearImportMsg = vm::clearImportMsg,
                 onRefreshSessions = vm::refreshSessions,
-                onSyncRemote = if (vm.remoteEnabled) vm::syncFromRemote else null
+                onSyncRemote = if (vm.remoteEnabled) vm::syncFromRemote else null,
+                scores = activeCluster?.scores ?: emptyMap(),
+                onStartScoring = { targetKey ->
+                    vm.startScoring(targetKey)
+                    navController.navigate(Route.Scoring.route)
+                }
             )
         }
 
+        composable(Route.Scoring.route) {
+            val ss = scoringState
+            if (ss != null) {
+                val cl = activeCluster
+                val anchorTrace = cl?.traces?.find { it.key == pinnedKey }
+                val targetTrace = cl?.traces?.find { it.key == scoringTargetKey }
+                ScoringScreen(
+                    scoringState = ss,
+                    anchorName = anchorTrace?.trace?.packageName ?: "anchor",
+                    targetName = targetTrace?.trace?.packageName ?: "target",
+                    onVerdict = vm::scoringVerdict,
+                    onUndo = vm::scoringUndo,
+                    onClose = {
+                        vm.closeScoring()
+                        navController.popBackStack()
+                    }
+                )
+            }
+        }
     }
 }

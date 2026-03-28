@@ -6,6 +6,9 @@ import androidx.lifecycle.viewModelScope
 import com.swiperf.app.data.export.ExportHelper
 import com.swiperf.app.data.model.*
 import com.swiperf.app.data.parse.TraceParser
+import com.swiperf.app.data.scoring.RegionVerdict
+import com.swiperf.app.data.scoring.ScoringEngine
+import com.swiperf.app.data.scoring.ScoringState
 import com.swiperf.app.data.session.SessionManager
 import com.swiperf.app.data.session.SessionMeta
 import com.swiperf.app.ui.theme.ThemeMode
@@ -54,6 +57,15 @@ class SwiPerfViewModel(app: Application) : AndroidViewModel(app) {
     // ── Pin ──
     private val _pinnedKey = MutableStateFlow<String?>(null)
     val pinnedKey: StateFlow<String?> = _pinnedKey.asStateFlow()
+
+    // ── Scoring ──
+    private var _scoringState: ScoringState? = null
+    private val _scoringVersion = MutableStateFlow(0L)
+    val scoringState: StateFlow<ScoringState?> = _scoringVersion.map { _scoringState }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+    private val _scoringTargetKey = MutableStateFlow<String?>(null)
+    val scoringTargetKey: StateFlow<String?> = _scoringTargetKey.asStateFlow()
 
     // ── Theme ──
     private val _themeMode = MutableStateFlow(ThemePrefs.load(app))
@@ -169,22 +181,14 @@ class SwiPerfViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun toggleSort() {
+    fun setSortField(field: SortField) {
         activeCluster.value?.let { cl ->
-            if (cl.sortField == SortField.STARTUP_DUR) {
+            if (cl.sortField == field) {
                 cl.sortDir = if (cl.sortDir == 1) -1 else 1
             } else {
-                cl.sortField = SortField.STARTUP_DUR
+                cl.sortField = field
                 cl.sortDir = 1
             }
-            notifyChange()
-        }
-    }
-
-    fun resetSort() {
-        activeCluster.value?.let { cl ->
-            cl.sortField = SortField.INDEX
-            cl.sortDir = 1
             notifyChange()
         }
     }
@@ -346,11 +350,67 @@ class SwiPerfViewModel(app: Application) : AndroidViewModel(app) {
     // ── Pin ──
 
     fun togglePin(key: String) {
-        _pinnedKey.value = if (_pinnedKey.value == key) null else key
+        val newKey = if (_pinnedKey.value == key) null else key
+        if (newKey != _pinnedKey.value) {
+            // Anchor changed — clear scores
+            activeCluster.value?.let { it.scores.clear(); it.scoreAnchorKey = null }
+        }
+        _pinnedKey.value = newKey
     }
 
     fun clearPin() {
         _pinnedKey.value = null
+    }
+
+    // ── Scoring operations ──
+
+    fun startScoring(targetKey: String) {
+        val cl = activeCluster.value ?: return
+        val anchor = cl.traces.find { it.key == _pinnedKey.value } ?: return
+        val target = cl.traces.find { it.key == targetKey } ?: return
+        anchor.ensureCache()
+        target.ensureCache()
+        cl.scoreAnchorKey = _pinnedKey.value
+        _scoringTargetKey.value = targetKey
+        _scoringState = ScoringEngine.createState(
+            anchor.trace.slices, anchor.totalDur,
+            target.trace.slices, target.totalDur
+        )
+        _scoringVersion.value++
+    }
+
+    fun scoringVerdict(verdict: RegionVerdict) {
+        val state = _scoringState ?: return
+        val idx = state.nextRegionIndex ?: return
+        ScoringEngine.recordVerdict(state, idx, verdict)
+        // Save score to cluster
+        val cl = activeCluster.value
+        val targetKey = _scoringTargetKey.value
+        if (cl != null && targetKey != null && !state.score.isNaN()) {
+            cl.scores[targetKey] = state.score.toFloat()
+        }
+        _scoringVersion.value++
+        notifyChange()
+    }
+
+    fun scoringUndo() {
+        val state = _scoringState ?: return
+        ScoringEngine.undo(state)
+        _scoringVersion.value++
+    }
+
+    fun closeScoring() {
+        // Save final score if available
+        val state = _scoringState
+        val cl = activeCluster.value
+        val targetKey = _scoringTargetKey.value
+        if (state != null && cl != null && targetKey != null && !state.score.isNaN()) {
+            cl.scores[targetKey] = state.score.toFloat()
+        }
+        _scoringState = null
+        _scoringTargetKey.value = null
+        _scoringVersion.value++
+        notifyChange()
     }
 
     // ── Remote sync ──
