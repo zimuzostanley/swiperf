@@ -85,8 +85,14 @@ fun ScoringScreen(
             "size" -> unscored.maxByOrNull { scoringState.regions[it].duration }
             "state" -> unscored.sortedBy { if (scoringState.regions[it].anchorState == scoringState.regions[it].targetState) 0 else 1 }.firstOrNull()
             "name" -> unscored.sortedBy { if (scoringState.regions[it].anchorName == scoringState.regions[it].targetName) 0 else 1 }.firstOrNull()
-            "io" -> unscored.sortedBy { if (scoringState.regions[it].anchorIoWait == scoringState.regions[it].targetIoWait) 0 else 1 }.firstOrNull()
-            "blocked" -> unscored.sortedBy { if (scoringState.regions[it].anchorBlockedFn == scoringState.regions[it].targetBlockedFn) 0 else 1 }.firstOrNull()
+            "io" -> unscored.sortedWith(compareBy<Int>(
+                { if (scoringState.regions[it].anchorIoWait == scoringState.regions[it].targetIoWait) 0 else 1 },
+                { if (scoringState.regions[it].anchorIoWait == 1 || scoringState.regions[it].targetIoWait == 1) 0 else 1 }
+            )).firstOrNull()
+            "blocked" -> unscored.sortedWith(compareBy<Int>(
+                { if (scoringState.regions[it].anchorBlockedFn == scoringState.regions[it].targetBlockedFn) 0 else 1 },
+                { if (scoringState.regions[it].anchorBlockedFn != null && scoringState.regions[it].targetBlockedFn != null) 0 else 1 }
+            )).firstOrNull()
             else -> unscored.minByOrNull { scoringState.regions[it].start } // time order
         }
     }
