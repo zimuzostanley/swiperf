@@ -474,9 +474,19 @@ class SwiPerfViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun scoringReset() {
-        val targetKey = _scoringTargetKey.value ?: return
-        // Re-start with same target
-        startScoring(targetKey)
+        val cl = activeCluster.value ?: return
+        val anchor = cl.traces.find { it.key == _pinnedKey.value } ?: return
+        val target = cl.traces.find { it.key == _scoringTargetKey.value } ?: return
+        anchor.ensureCache()
+        target.ensureCache()
+        // Fresh state — no dictionary applied
+        _scoringState = ScoringEngine.createStateFromMerged(
+            anchor.currentSeq, anchor.totalDur,
+            target.currentSeq, target.totalDur,
+            normalize = _scoringNormalizeDigits.value
+        )
+        _scoringVersion.value++
+        notifyChange()
     }
 
     fun closeScoring() {
