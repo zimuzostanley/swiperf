@@ -220,7 +220,7 @@ fun ScoringScreen(
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     // Duration
-                    Text("${(region.duration * 100).toInt()}% of trace", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("${"%.2f".format(region.duration * 100)}% of trace", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
                     // Zoomed bars
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {

@@ -130,13 +130,25 @@ fun DictionarySheet(
                                 Spacer(Modifier.weight(1f))
                                 Checkbox(checked = isSelected, onCheckedChange = { if (it) selected.add(entry) else selected.remove(entry) }, modifier = Modifier.size(20.dp))
                             }
+                            // Column headers
                             Spacer(Modifier.height(6.dp))
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Spacer(Modifier.width(48.dp))
+                                Text("anchor", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.weight(1f))
+                                Spacer(Modifier.width(12.dp))
+                                Text("target", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+                            }
+                            Spacer(Modifier.height(4.dp))
                             // Fields
                             for ((field, anchor, target) in entry.signature) {
-                                Text(field.replace("_", " "), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Row(Modifier.fillMaxWidth().padding(start = 4.dp, top = 2.dp, bottom = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Row(
+                                    Modifier.fillMaxWidth().padding(vertical = 3.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(field.replace("_", " "), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(48.dp))
                                     Text(anchor ?: "\u2014", style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).clickable { scope.launch { snackbar.showSnackbar(anchor ?: "null", duration = SnackbarDuration.Short) } })
-                                    Text(symbol, style = MaterialTheme.typography.labelSmall, color = verdictColor)
+                                    Text(symbol, style = MaterialTheme.typography.bodySmall, color = verdictColor)
                                     Text(target ?: "\u2014", style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).clickable { scope.launch { snackbar.showSnackbar(target ?: "null", duration = SnackbarDuration.Short) } })
                                 }
                             }
