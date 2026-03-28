@@ -106,14 +106,7 @@ fun ScoringScreen(
                         color = MaterialTheme.colorScheme.primary,
                         trackColor = MaterialTheme.colorScheme.surfaceContainerHighest
                     )
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        if (remaining > 0) "${remaining}% left" else "done",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.fillMaxWidth(),
-                        textAlign = TextAlign.Center
-                    )
+                    Spacer(Modifier.height(6.dp))
                     Spacer(Modifier.height(8.dp))
                     if (isComplete) {
                         Button(onClick = onClose, modifier = Modifier.fillMaxWidth()) {
