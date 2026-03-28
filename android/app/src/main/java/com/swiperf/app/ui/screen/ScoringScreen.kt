@@ -83,10 +83,10 @@ fun ScoringScreen(
         if (unscored.isEmpty()) null
         else when (sortMode) {
             "size" -> unscored.maxByOrNull { scoringState.regions[it].duration }
-            "state" -> unscored.sortedBy { if (scoringState.regions[it].anchorState != scoringState.regions[it].targetState) 0 else 1 }.firstOrNull()
-            "name" -> unscored.sortedBy { if (scoringState.regions[it].anchorName != scoringState.regions[it].targetName) 0 else 1 }.firstOrNull()
-            "io" -> unscored.sortedBy { if (scoringState.regions[it].anchorIoWait != scoringState.regions[it].targetIoWait) 0 else 1 }.firstOrNull()
-            "blocked" -> unscored.sortedBy { if (scoringState.regions[it].anchorBlockedFn != scoringState.regions[it].targetBlockedFn) 0 else 1 }.firstOrNull()
+            "state" -> unscored.sortedBy { if (scoringState.regions[it].anchorState == scoringState.regions[it].targetState) 0 else 1 }.firstOrNull()
+            "name" -> unscored.sortedBy { if (scoringState.regions[it].anchorName == scoringState.regions[it].targetName) 0 else 1 }.firstOrNull()
+            "io" -> unscored.sortedBy { if (scoringState.regions[it].anchorIoWait == scoringState.regions[it].targetIoWait) 0 else 1 }.firstOrNull()
+            "blocked" -> unscored.sortedBy { if (scoringState.regions[it].anchorBlockedFn == scoringState.regions[it].targetBlockedFn) 0 else 1 }.firstOrNull()
             else -> unscored.minByOrNull { scoringState.regions[it].start } // time order
         }
     }
@@ -345,10 +345,10 @@ fun ScoringScreen(
         val options = listOf(
             "time" to "Timeline order",
             "size" to "Largest first",
-            "state" to "State differs",
-            "name" to "Name differs",
-            "io" to "IO wait differs",
-            "blocked" to "Blocked fn differs"
+            "state" to "Same state first",
+            "name" to "Same name first",
+            "io" to "Same IO wait first",
+            "blocked" to "Same blocked fn first"
         )
         AlertDialog(
             onDismissRequest = { showSortDialog = false },
