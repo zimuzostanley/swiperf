@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -50,7 +51,27 @@ fun GlobalScoringScreen(
     val totalEntries = globalState.entries.size
     val progress = if (totalEntries > 0) resolvedCount.toFloat() / totalEntries else 0f
 
-    val currentEntryIdx = remember(version) { globalState.nextEntryIndex }
+    var sortMode by remember { mutableStateOf("count") } // count, size, state, name, io, blocked
+    var showSortDialog by remember { mutableStateOf(false) }
+
+    val currentEntryIdx = remember(version, sortMode) {
+        val unscored = globalState.entries.indices.filter { globalState.entries[it].verdict == null }
+        if (unscored.isEmpty()) null
+        else when (sortMode) {
+            "size" -> unscored.maxByOrNull { globalState.entries[it].totalDurationPct }
+            "state" -> unscored.sortedBy { if (globalState.entries[it].anchorState == globalState.entries[it].targetState) 0 else 1 }.firstOrNull()
+            "name" -> unscored.sortedBy { if (globalState.entries[it].anchorName == globalState.entries[it].targetName) 0 else 1 }.firstOrNull()
+            "io" -> unscored.sortedWith(compareBy<Int>(
+                { if (globalState.entries[it].anchorIoWait == globalState.entries[it].targetIoWait) 0 else 1 },
+                { if (globalState.entries[it].anchorIoWait == 1 || globalState.entries[it].targetIoWait == 1) 0 else 1 }
+            )).firstOrNull()
+            "blocked" -> unscored.sortedWith(compareBy<Int>(
+                { if (globalState.entries[it].anchorBlockedFn == globalState.entries[it].targetBlockedFn) 0 else 1 },
+                { if (globalState.entries[it].anchorBlockedFn != null && globalState.entries[it].targetBlockedFn != null) 0 else 1 }
+            )).firstOrNull()
+            else -> unscored.maxByOrNull { globalState.entries[it].traceCount } // most traces first (default)
+        }
+    }
     val entry = currentEntryIdx?.let { globalState.entries[it] }
 
     // Swipe state
@@ -99,6 +120,9 @@ fun GlobalScoringScreen(
                     }
                     IconButton(onClick = { onReset() }) {
                         Icon(Icons.Default.Refresh, "Reset")
+                    }
+                    IconButton(onClick = { showSortDialog = true }) {
+                        Icon(Icons.AutoMirrored.Filled.Sort, "Sort")
                     }
                     Text(scoreDisplay, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(end = 12.dp))
                 },
@@ -292,6 +316,36 @@ fun GlobalScoringScreen(
                 }
             }
         }
+    }
+
+    if (showSortDialog) {
+        val options = listOf(
+            "count" to "Most traces first",
+            "size" to "Largest avg duration",
+            "state" to "Same state first",
+            "name" to "Same name first",
+            "io" to "Same IO wait first",
+            "blocked" to "Same blocked fn first"
+        )
+        AlertDialog(
+            onDismissRequest = { showSortDialog = false },
+            title = { Text("Sort regions") },
+            text = {
+                Column {
+                    for ((key, label) in options) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().clickable { sortMode = key; showSortDialog = false }.padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(selected = sortMode == key, onClick = { sortMode = key; showSortDialog = false })
+                            Spacer(Modifier.width(8.dp))
+                            Text(label, style = MaterialTheme.typography.bodyMedium)
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showSortDialog = false }) { Text("Close") } }
+        )
     }
 }
 
