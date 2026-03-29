@@ -186,6 +186,10 @@ fun TraceCard(
                             .padding(horizontal = 5.dp, vertical = 1.dp)
                     )
                 }
+                if (startupDur > 0) {
+                    Spacer(Modifier.width(6.dp))
+                    Text(Format.fmtDur(startupDur), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                }
                 if (onStartScoring != null) {
                     Spacer(Modifier.width(4.dp))
                     Icon(
@@ -194,10 +198,6 @@ fun TraceCard(
                         modifier = Modifier.size(16.dp).clickable { onStartScoring() },
                         tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
                     )
-                }
-                if (startupDur > 0) {
-                    Spacer(Modifier.width(6.dp))
-                    Text(Format.fmtDur(startupDur), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                 }
             }
 

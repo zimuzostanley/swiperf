@@ -173,7 +173,7 @@ class SwiPerfViewModel(app: Application) : AndroidViewModel(app) {
         _clusters.value = _clusters.value + cl
         _activeClusterId.value = cl.id
 
-        if (_autoPinFirst.value && _pinnedKey.value == null && states.isNotEmpty()) {
+        if (_autoPinFirst.value && states.isNotEmpty()) {
             _pinnedKey.value = states[0].key
         }
 

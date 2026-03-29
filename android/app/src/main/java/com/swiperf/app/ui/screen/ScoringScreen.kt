@@ -199,21 +199,27 @@ fun ScoringScreen(
 
                             // Labels
                             Row(
-                                Modifier.fillMaxSize().padding(horizontal = 16.dp),
+                                Modifier.fillMaxSize().padding(horizontal = 20.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
-                                    "\u2190 different",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    fontWeight = if (frac < -0.5f) FontWeight.SemiBold else FontWeight.Normal,
-                                    color = PerfettoColors.NEGATIVE_COLOR.copy(alpha = if (frac < -0.1f) 0.5f + absFrac * 0.5f else 0.3f)
+                                    "\u2190 Different",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = if (frac < -0.5f) FontWeight.Bold else FontWeight.Medium,
+                                    color = if (frac < -0.1f)
+                                        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f + absFrac * 0.5f)
+                                    else
+                                        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
                                 )
                                 Text(
-                                    "same \u2192",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    fontWeight = if (frac > 0.5f) FontWeight.SemiBold else FontWeight.Normal,
-                                    color = PerfettoColors.POSITIVE_COLOR.copy(alpha = if (frac > 0.1f) 0.5f + frac * 0.5f else 0.3f)
+                                    "Same \u2192",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = if (frac > 0.5f) FontWeight.Bold else FontWeight.Medium,
+                                    color = if (frac > 0.1f)
+                                        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f + frac * 0.5f)
+                                    else
+                                        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
                                 )
                             }
                         }
