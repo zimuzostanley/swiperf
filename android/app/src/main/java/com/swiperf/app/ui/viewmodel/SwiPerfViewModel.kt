@@ -60,7 +60,7 @@ class SwiPerfViewModel(app: Application) : AndroidViewModel(app) {
     val loadProgress: StateFlow<String?> = _loadProgress.asStateFlow()
 
     // ── Pin (derived from active cluster) ──
-    val pinnedKey: StateFlow<String?> = activeCluster.map { it?.pinnedKey }
+    val pinnedKey: StateFlow<String?> = combine(activeCluster, _stateVersion) { cl, _ -> cl?.pinnedKey }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
     // ── Dictionary (global across all tabs) ──
