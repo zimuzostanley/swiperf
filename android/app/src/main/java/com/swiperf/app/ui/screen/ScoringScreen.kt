@@ -386,7 +386,7 @@ fun ScoringScreen(
 
 /** Individual field container with label and border highlight when differs. */
 @Composable
-private fun FieldCard(label: String, differs: Boolean, content: @Composable () -> Unit) {
+internal fun FieldCard(label: String, differs: Boolean, content: @Composable () -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxWidth()

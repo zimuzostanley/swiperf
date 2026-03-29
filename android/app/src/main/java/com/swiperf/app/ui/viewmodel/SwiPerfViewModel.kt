@@ -8,6 +8,8 @@ import com.swiperf.app.data.export.ExportHelper
 import com.swiperf.app.data.model.*
 import com.swiperf.app.data.parse.TraceParser
 import com.swiperf.app.data.scoring.DictEntry
+import com.swiperf.app.data.scoring.GlobalScoring
+import com.swiperf.app.data.scoring.GlobalScoringState
 import com.swiperf.app.data.scoring.RegionVerdict
 import com.swiperf.app.data.scoring.ScoringDictionary
 import com.swiperf.app.data.scoring.ScoringEngine
@@ -57,9 +59,9 @@ class SwiPerfViewModel(app: Application) : AndroidViewModel(app) {
     private val _loadProgress = MutableStateFlow<String?>(null)
     val loadProgress: StateFlow<String?> = _loadProgress.asStateFlow()
 
-    // ── Pin ──
-    private val _pinnedKey = MutableStateFlow<String?>(null)
-    val pinnedKey: StateFlow<String?> = _pinnedKey.asStateFlow()
+    // ── Pin (derived from active cluster) ──
+    val pinnedKey: StateFlow<String?> = activeCluster.map { it?.pinnedKey }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
     // ── Dictionary (global across all tabs) ──
     val scoringDict = ScoringDictionary()
@@ -76,6 +78,12 @@ class SwiPerfViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _scoringTargetKey = MutableStateFlow<String?>(null)
     val scoringTargetKey: StateFlow<String?> = _scoringTargetKey.asStateFlow()
+
+    // ── Global Scoring ──
+    private var _globalScoringState: GlobalScoringState? = null
+    private val _globalScoringVersion = MutableStateFlow(0L)
+    val globalScoringState: StateFlow<GlobalScoringState?> = _globalScoringVersion.map { _globalScoringState }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
     // ── Auto-pin first trace ──
     private val _autoPinFirst = MutableStateFlow(
@@ -122,10 +130,13 @@ class SwiPerfViewModel(app: Application) : AndroidViewModel(app) {
                         _stateVersion.value++
                     }
                     restored.applyDictTo(scoringDict, _scoringUseDict, _scoringNormalizeDigits)
-                    // Auto-pin first trace
-                    if (_autoPinFirst.value && _pinnedKey.value == null) {
-                        val first = restored.clusters.firstOrNull()?.traces?.firstOrNull()
-                        if (first != null) _pinnedKey.value = first.key
+                    // Auto-pin first trace per cluster
+                    if (_autoPinFirst.value) {
+                        for (cl in restored.clusters) {
+                            if (cl.pinnedKey == null && cl.traces.isNotEmpty()) {
+                                cl.pinnedKey = cl.traces[0].key
+                            }
+                        }
                     }
                 }
             } catch (_: Exception) {}
@@ -174,7 +185,7 @@ class SwiPerfViewModel(app: Application) : AndroidViewModel(app) {
         _activeClusterId.value = cl.id
 
         if (_autoPinFirst.value && states.isNotEmpty()) {
-            _pinnedKey.value = states[0].key
+            cl.pinnedKey = states[0].key
         }
 
         notifyChange()
@@ -325,8 +336,12 @@ class SwiPerfViewModel(app: Application) : AndroidViewModel(app) {
                     for (cl in result.clusters) {
                         if (cl.globalSlider < 100) cl.updateGlobalSlider(cl.globalSlider)
                     }
-                    if (_autoPinFirst.value && result.clusters.isNotEmpty()) {
-                        _pinnedKey.value = result.clusters[0].traces.firstOrNull()?.key
+                    if (_autoPinFirst.value) {
+                        for (cl in result.clusters) {
+                            if (cl.pinnedKey == null && cl.traces.isNotEmpty()) {
+                                cl.pinnedKey = cl.traces[0].key
+                            }
+                        }
                     }
                     _importMsg.value = "Session loaded (${result.clusters.size} clusters)" to true
                     _stateVersion.value++
@@ -354,7 +369,6 @@ class SwiPerfViewModel(app: Application) : AndroidViewModel(app) {
             _clusters.value = emptyList()
             _activeClusterId.value = null
             _currentSessionId.value = null
-            _pinnedKey.value = null
             scoringDict.clear()
             _scoringUseDict.value = true
             _scoringNormalizeDigits.value = false
@@ -413,27 +427,30 @@ class SwiPerfViewModel(app: Application) : AndroidViewModel(app) {
 
     fun togglePin(key: String) {
         if (_scoringState != null) closeScoring()
-        val newKey = if (_pinnedKey.value == key) null else key
-        if (newKey != _pinnedKey.value) {
-            // Anchor changed — clear scores
-            activeCluster.value?.let { it.scores.clear(); it.scoreAnchorKey = null }
+        val cl = activeCluster.value ?: return
+        val newKey = if (cl.pinnedKey == key) null else key
+        if (newKey != cl.pinnedKey) {
+            cl.scores.clear(); cl.scoreAnchorKey = null
         }
-        _pinnedKey.value = newKey
+        cl.pinnedKey = newKey
+        notifyChange()
     }
 
     fun clearPin() {
-        _pinnedKey.value = null
+        val cl = activeCluster.value ?: return
+        cl.pinnedKey = null
+        notifyChange()
     }
 
     // ── Scoring operations ──
 
     fun startScoring(targetKey: String) {
         val cl = activeCluster.value ?: return
-        val anchor = cl.traces.find { it.key == _pinnedKey.value } ?: return
+        val anchor = cl.traces.find { it.key == cl.pinnedKey } ?: return
         val target = cl.traces.find { it.key == targetKey } ?: return
         anchor.ensureCache()
         target.ensureCache()
-        cl.scoreAnchorKey = _pinnedKey.value
+        cl.scoreAnchorKey = cl.pinnedKey
         _scoringTargetKey.value = targetKey
         // Use compressed slices (current zoom level) for scoring
         val state = ScoringEngine.createStateFromMerged(
@@ -475,7 +492,7 @@ class SwiPerfViewModel(app: Application) : AndroidViewModel(app) {
 
     fun scoringReset() {
         val cl = activeCluster.value ?: return
-        val anchor = cl.traces.find { it.key == _pinnedKey.value } ?: return
+        val anchor = cl.traces.find { it.key == cl.pinnedKey } ?: return
         val target = cl.traces.find { it.key == _scoringTargetKey.value } ?: return
         anchor.ensureCache()
         target.ensureCache()
@@ -503,6 +520,64 @@ class SwiPerfViewModel(app: Application) : AndroidViewModel(app) {
         _scoringState = null
         _scoringTargetKey.value = null
         _scoringVersion.value++
+        notifyChange()
+    }
+
+    // ── Global Scoring operations ──
+
+    fun startGlobalScoring() {
+        val cl = activeCluster.value ?: return
+        val anchor = cl.traces.find { it.key == cl.pinnedKey } ?: return
+        val targets = cl.traces.filter { it.key != cl.pinnedKey }
+        if (targets.isEmpty()) return
+        _globalScoringState = GlobalScoring.createState(
+            anchor, targets,
+            normalize = _scoringNormalizeDigits.value,
+            dict = if (_scoringUseDict.value) scoringDict else null
+        )
+        _globalScoringVersion.value++
+    }
+
+    fun globalScoringVerdict(verdict: RegionVerdict, entryIndex: Int) {
+        val state = _globalScoringState ?: return
+        GlobalScoring.recordVerdict(state, entryIndex, verdict)
+        // Update scores for all traces
+        val cl = activeCluster.value ?: return
+        for ((traceKey, traceState) in state.perTrace) {
+            cl.scores[traceKey] = traceState.breakdown.samePct / 100f
+        }
+        _globalScoringVersion.value++
+        notifyChange()
+    }
+
+    fun globalScoringUndo() {
+        val state = _globalScoringState ?: return
+        GlobalScoring.undo(state)
+        _globalScoringVersion.value++
+        notifyChange()
+    }
+
+    fun closeGlobalScoring() {
+        val state = _globalScoringState ?: return
+        val cl = activeCluster.value ?: return
+        for ((traceKey, traceState) in state.perTrace) {
+            cl.scores[traceKey] = traceState.breakdown.samePct / 100f
+        }
+        // Save to dictionary
+        for ((_, traceState) in state.perTrace) {
+            scoringDict.addFromState(traceState, normalized = _scoringNormalizeDigits.value)
+        }
+        _globalScoringState = null
+        _globalScoringVersion.value++
+        notifyChange()
+    }
+
+    fun resetGlobalScoring() {
+        val cl = activeCluster.value ?: return
+        val anchor = cl.traces.find { it.key == cl.pinnedKey } ?: return
+        val targets = cl.traces.filter { it.key != cl.pinnedKey }
+        _globalScoringState = GlobalScoring.createState(anchor, targets, normalize = _scoringNormalizeDigits.value)
+        _globalScoringVersion.value++
         notifyChange()
     }
 

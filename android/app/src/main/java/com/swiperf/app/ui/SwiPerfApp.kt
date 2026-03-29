@@ -18,6 +18,7 @@ import com.swiperf.app.ui.viewmodel.SwiPerfViewModel
 sealed class Route(val route: String) {
     data object Main : Route("main")
     data object Scoring : Route("scoring")
+    data object GlobalScoring : Route("global_scoring")
 }
 
 @Composable
@@ -38,6 +39,7 @@ fun SwiPerfApp(vm: SwiPerfViewModel = viewModel()) {
     val stateVersion by vm.stateVersion.collectAsState()
     val scoringState by vm.scoringState.collectAsState()
     val scoringTargetKey by vm.scoringTargetKey.collectAsState()
+    val globalScoringState by vm.globalScoringState.collectAsState()
     val autoPinFirst by vm.autoPinFirst.collectAsState()
     val scoringUseDict by vm.scoringUseDict.collectAsState()
     val scoringNormalizeDigits by vm.scoringNormalizeDigits.collectAsState()
@@ -107,7 +109,11 @@ fun SwiPerfApp(vm: SwiPerfViewModel = viewModel()) {
                 onClearDict = vm::clearDict,
                 onImportDict = { json, merge -> vm.importDict(json, merge) },
                 autoPinFirst = autoPinFirst,
-                onToggleAutoPinFirst = vm::toggleAutoPinFirst
+                onToggleAutoPinFirst = vm::toggleAutoPinFirst,
+                onStartGlobalScoring = {
+                    vm.startGlobalScoring()
+                    navController.navigate(Route.GlobalScoring.route)
+                }
             )
         }
 
@@ -131,6 +137,23 @@ fun SwiPerfApp(vm: SwiPerfViewModel = viewModel()) {
                     onReset = vm::scoringReset,
                     onClose = {
                         vm.closeScoring()
+                        navController.popBackStack()
+                    }
+                )
+            }
+        }
+
+        composable(Route.GlobalScoring.route) {
+            val gs = globalScoringState
+            if (gs != null) {
+                GlobalScoringScreen(
+                    globalState = gs,
+                    version = stateVersion,
+                    onVerdict = { verdict, idx -> vm.globalScoringVerdict(verdict, idx) },
+                    onUndo = vm::globalScoringUndo,
+                    onReset = vm::resetGlobalScoring,
+                    onClose = {
+                        vm.closeGlobalScoring()
                         navController.popBackStack()
                     }
                 )

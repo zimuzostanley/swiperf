@@ -128,6 +128,9 @@ object SessionManager {
             clObj.put("sortDir", cl.sortDir)
             clObj.put("globalSlider", cl.globalSlider)
 
+            // Pinned key
+            if (cl.pinnedKey != null) clObj.put("pinnedKey", cl.pinnedKey)
+
             // Scores
             if (cl.scores.isNotEmpty()) {
                 val scoresObj = JSONObject()
@@ -218,7 +221,8 @@ object SessionManager {
                 } catch (_: Exception) { OverviewFilter.ALL },
                 sortField = sortField,
                 sortDir = clObj.optInt("sortDir", 1),
-                globalSlider = clObj.optInt("globalSlider", 100)
+                globalSlider = clObj.optInt("globalSlider", 100),
+                pinnedKey = if (clObj.has("pinnedKey") && !clObj.isNull("pinnedKey")) clObj.getString("pinnedKey") else null
             )
 
             val pfArr = clObj.optJSONArray("propFilters")

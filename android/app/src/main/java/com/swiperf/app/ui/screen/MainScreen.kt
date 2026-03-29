@@ -83,7 +83,8 @@ fun MainScreen(
     onClearDict: (() -> Unit)? = null,
     onImportDict: ((json: String, merge: Boolean) -> Unit)? = null,
     autoPinFirst: Boolean = true,
-    onToggleAutoPinFirst: (() -> Unit)? = null
+    onToggleAutoPinFirst: (() -> Unit)? = null,
+    onStartGlobalScoring: (() -> Unit)? = null
 ) {
     val cl = activeCluster
     val hasData = cl != null && cl.traces.isNotEmpty()
@@ -145,6 +146,11 @@ fun MainScreen(
                         Icon(Icons.Default.Add, "Import")
                     }
                     if (hasData && cl != null) {
+                        if (pinnedKey != null && cl.traces.size > 1 && onStartGlobalScoring != null) {
+                            IconButton(onClick = { onStartGlobalScoring() }) {
+                                Icon(Icons.Default.CompareArrows, "Compare All")
+                            }
+                        }
                         IconButton(onClick = { showExport = true }) {
                             Icon(Icons.Default.Share, "Export")
                         }
