@@ -11,6 +11,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -120,7 +121,29 @@ fun ScoringScreen(
         swipeOffset = 0f
     }
 
+    // Flash state for tap feedback on bottom bar
+    var tapFlash by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(tapFlash) {
+        if (tapFlash != null) {
+            kotlinx.coroutines.delay(200)
+            tapFlash = null
+        }
+    }
+
     val swipeModifier = if (!isComplete) Modifier
+        .pointerInput(version) {
+            detectTapGestures { offset ->
+                val idx = currentRegionIdx ?: return@detectTapGestures
+                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                if (offset.x < size.width / 2) {
+                    tapFlash = "different"
+                    onVerdict(RegionVerdict.DIFFERENT, idx)
+                } else {
+                    tapFlash = "same"
+                    onVerdict(RegionVerdict.SAME, idx)
+                }
+            }
+        }
         .pointerInput(version) {
             detectHorizontalDragGestures(
                 onDragEnd = { onSwipeEnd() },
@@ -131,7 +154,7 @@ fun ScoringScreen(
             detectVerticalDragGestures(
                 onDragEnd = { onSwipeEnd() },
                 onDragCancel = { swipeOffset = 0f }
-            ) { _, dragAmount -> swipeOffset -= dragAmount } // up (negative) → positive offset → same
+            ) { _, dragAmount -> swipeOffset -= dragAmount }
         }
     else Modifier
     val historySize = remember(version) { scoringState.history.size }
@@ -188,7 +211,11 @@ fun ScoringScreen(
                                 .fillMaxWidth()
                                 .height(52.dp)
                                 .clip(RoundedCornerShape(6.dp))
-                                .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+                                .background(when (tapFlash) {
+                                    "same" -> PerfettoColors.POSITIVE_COLOR.copy(alpha = 0.3f)
+                                    "different" -> PerfettoColors.NEGATIVE_COLOR.copy(alpha = 0.3f)
+                                    else -> MaterialTheme.colorScheme.surfaceContainerHighest
+                                })
                                 .then(swipeModifier)
                         ) {
                             // Growing fill bar from edge
