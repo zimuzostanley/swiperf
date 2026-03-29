@@ -57,6 +57,9 @@ fun ScoringScreen(
     onVerdict: (RegionVerdict, Int) -> Unit, // verdict + region index
     onUndo: () -> Unit,
     onReset: () -> Unit,
+    trimText: (String?) -> String = { it ?: "\u2014" },
+    trimLabel: String = "all",
+    onCycleTrim: () -> Unit = {},
     onClose: () -> Unit
 ) {
     val haptic = LocalHapticFeedback.current
@@ -155,6 +158,9 @@ fun ScoringScreen(
                     }
                     IconButton(onClick = { showSortDialog = true }) {
                         Icon(Icons.AutoMirrored.Filled.Sort, "Sort")
+                    }
+                    TextButton(onClick = onCycleTrim, contentPadding = PaddingValues(horizontal = 4.dp)) {
+                        Text(trimLabel, style = MaterialTheme.typography.labelSmall)
                     }
                     Text(scoreDisplay, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(end = 12.dp))
                 },
@@ -320,14 +326,14 @@ fun ScoringScreen(
                                 Box(Modifier.size(8.dp).clip(CircleShape).background(PerfettoColors.nameColor(region.anchorName)))
                                 Spacer(Modifier.width(4.dp))
                             }
-                            Text(region.anchorName ?: "\u2014", style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.clickable { copy(region.anchorName) })
+                            Text(trimText(region.anchorName), style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.clickable { copy(region.anchorName) })
                         }
                         Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
                             if (region.targetName != null) {
                                 Box(Modifier.size(8.dp).clip(CircleShape).background(PerfettoColors.nameColor(region.targetName)))
                                 Spacer(Modifier.width(4.dp))
                             }
-                            Text(region.targetName ?: "\u2014", style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.clickable { copy(region.targetName) })
+                            Text(trimText(region.targetName), style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.clickable { copy(region.targetName) })
                         }
                     }
                 }
@@ -344,8 +350,8 @@ fun ScoringScreen(
                 if (region.anchorBlockedFn != null || region.targetBlockedFn != null) {
                     FieldCard("blocked fn", region.anchorBlockedFn != region.targetBlockedFn) {
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text(region.anchorBlockedFn ?: "\u2014", style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).clickable { copy(region.anchorBlockedFn) })
-                            Text(region.targetBlockedFn ?: "\u2014", style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).clickable { copy(region.targetBlockedFn) })
+                            Text(trimText(region.anchorBlockedFn), style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).clickable { copy(region.anchorBlockedFn) })
+                            Text(trimText(region.targetBlockedFn), style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).clickable { copy(region.targetBlockedFn) })
                         }
                     }
                 }

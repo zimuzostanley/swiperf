@@ -37,6 +37,9 @@ fun GlobalScoringScreen(
     onVerdict: (RegionVerdict, Int) -> Unit, // verdict + entry index
     onUndo: () -> Unit,
     onReset: () -> Unit,
+    trimText: (String?) -> String = { it ?: "\u2014" },
+    trimLabel: String = "all",
+    onCycleTrim: () -> Unit = {},
     onClose: () -> Unit
 ) {
     val haptic = LocalHapticFeedback.current
@@ -123,6 +126,9 @@ fun GlobalScoringScreen(
                     }
                     IconButton(onClick = { showSortDialog = true }) {
                         Icon(Icons.AutoMirrored.Filled.Sort, "Sort")
+                    }
+                    TextButton(onClick = onCycleTrim, contentPadding = PaddingValues(horizontal = 4.dp)) {
+                        Text(trimLabel, style = MaterialTheme.typography.labelSmall)
                     }
                     Text(scoreDisplay, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(end = 12.dp))
                 },
@@ -282,14 +288,14 @@ fun GlobalScoringScreen(
                                 Box(Modifier.size(8.dp).clip(CircleShape).background(PerfettoColors.nameColor(entry.anchorName)))
                                 Spacer(Modifier.width(4.dp))
                             }
-                            Text(entry.anchorName ?: "\u2014", style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            Text(trimText(entry.anchorName), style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
                         }
                         Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
                             if (entry.targetName != null) {
                                 Box(Modifier.size(8.dp).clip(CircleShape).background(PerfettoColors.nameColor(entry.targetName)))
                                 Spacer(Modifier.width(4.dp))
                             }
-                            Text(entry.targetName ?: "\u2014", style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            Text(trimText(entry.targetName), style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
                         }
                     }
                 }
@@ -306,8 +312,8 @@ fun GlobalScoringScreen(
                 if (entry.anchorBlockedFn != null || entry.targetBlockedFn != null) {
                     FieldCard("blocked fn", entry.anchorBlockedFn != entry.targetBlockedFn) {
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text(entry.anchorBlockedFn ?: "\u2014", style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                            Text(entry.targetBlockedFn ?: "\u2014", style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                            Text(trimText(entry.anchorBlockedFn), style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                            Text(trimText(entry.targetBlockedFn), style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                         }
                     }
                 }
@@ -318,7 +324,7 @@ fun GlobalScoringScreen(
     if (showSortDialog) {
         val options = listOf(
             "count" to "Most traces first",
-            "size" to "Largest avg duration",
+            "size" to "Largest total duration",
             "state" to "Same state first",
             "name" to "Same name first",
             "io" to "Same IO wait first",

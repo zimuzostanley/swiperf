@@ -7,7 +7,7 @@ data class GlobalScoringEntry(
     val anchorState: String?, val anchorName: String?, val anchorIoWait: Int?, val anchorBlockedFn: String?,
     val targetState: String?, val targetName: String?, val targetIoWait: Int?, val targetBlockedFn: String?,
     val traceCount: Int,
-    val totalDurationPct: Double, // average % across all traces
+    val totalDurationPct: Double, // sum of duration % across all traces
     var verdict: RegionVerdict? = null
 )
 
@@ -65,7 +65,7 @@ object GlobalScoring {
         // Build entries sorted by trace count desc, then total duration desc
         val entries = sigMap.map { (sig, regions) ->
             val first = regions[0].second
-            val avgDur = regions.map { it.second.duration * 100 }.average()
+            val avgDur = regions.sumOf { it.second.duration * 100 }
             GlobalScoringEntry(
                 signature = sig,
                 anchorState = first.anchorState, anchorName = first.anchorName,

@@ -41,6 +41,7 @@ fun SwiPerfApp(vm: SwiPerfViewModel = viewModel()) {
     val scoringTargetKey by vm.scoringTargetKey.collectAsState()
     val globalScoringState by vm.globalScoringState.collectAsState()
     val autoPinFirst by vm.autoPinFirst.collectAsState()
+    val trimLength by vm.trimLength.collectAsState()
     val scoringUseDict by vm.scoringUseDict.collectAsState()
     val scoringNormalizeDigits by vm.scoringNormalizeDigits.collectAsState()
 
@@ -135,6 +136,9 @@ fun SwiPerfApp(vm: SwiPerfViewModel = viewModel()) {
                     onVerdict = { verdict, idx -> vm.scoringVerdict(verdict, idx) },
                     onUndo = vm::scoringUndo,
                     onReset = vm::scoringReset,
+                    trimText = vm::trimText,
+                    trimLabel = if (trimLength == 0) "all" else "$trimLength",
+                    onCycleTrim = vm::cycleTrimLength,
                     onClose = {
                         vm.closeScoring()
                         navController.popBackStack()
@@ -152,6 +156,9 @@ fun SwiPerfApp(vm: SwiPerfViewModel = viewModel()) {
                     onVerdict = { verdict, idx -> vm.globalScoringVerdict(verdict, idx) },
                     onUndo = vm::globalScoringUndo,
                     onReset = vm::resetGlobalScoring,
+                    trimText = vm::trimText,
+                    trimLabel = if (trimLength == 0) "all" else "$trimLength",
+                    onCycleTrim = vm::cycleTrimLength,
                     onClose = {
                         vm.closeGlobalScoring()
                         navController.popBackStack()

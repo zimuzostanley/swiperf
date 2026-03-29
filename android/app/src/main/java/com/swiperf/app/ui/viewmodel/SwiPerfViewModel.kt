@@ -85,6 +85,27 @@ class SwiPerfViewModel(app: Application) : AndroidViewModel(app) {
     val globalScoringState: StateFlow<GlobalScoringState?> = _globalScoringVersion.map { _globalScoringState }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
+    // ── Display trim length for scoring ──
+    private val TRIM_STEPS = listOf(5, 10, 15, 20, 30, 50, 0) // 0 = all
+    private val _trimLength = MutableStateFlow(
+        ctx.getSharedPreferences("swiperf", Context.MODE_PRIVATE).getInt("trim_length", 0)
+    )
+    val trimLength: StateFlow<Int> = _trimLength.asStateFlow()
+
+    fun cycleTrimLength() {
+        val currentIdx = TRIM_STEPS.indexOf(_trimLength.value)
+        val nextIdx = (currentIdx + 1) % TRIM_STEPS.size
+        _trimLength.value = TRIM_STEPS[nextIdx]
+        ctx.getSharedPreferences("swiperf", Context.MODE_PRIVATE).edit().putInt("trim_length", _trimLength.value).apply()
+    }
+
+    fun trimText(s: String?): String {
+        if (s == null) return "\u2014"
+        val len = _trimLength.value
+        if (len == 0 || s.length <= len) return s
+        return s.take(len) + "\u2026"
+    }
+
     // ── Auto-pin first trace ──
     private val _autoPinFirst = MutableStateFlow(
         ctx.getSharedPreferences("swiperf", Context.MODE_PRIVATE).getBoolean("auto_pin_first", true)
