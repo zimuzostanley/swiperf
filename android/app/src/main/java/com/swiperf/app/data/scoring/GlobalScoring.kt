@@ -7,6 +7,7 @@ data class GlobalScoringEntry(
     val anchorState: String?, val anchorName: String?, val anchorIoWait: Int?, val anchorBlockedFn: String?,
     val targetState: String?, val targetName: String?, val targetIoWait: Int?, val targetBlockedFn: String?,
     val traceCount: Int,
+    val regionCount: Int, // total region instances across all traces
     val totalDurationPct: Double, // sum of duration % across all traces
     var verdict: RegionVerdict? = null
 )
@@ -73,6 +74,7 @@ object GlobalScoring {
                 targetState = first.targetState, targetName = first.targetName,
                 targetIoWait = first.targetIoWait, targetBlockedFn = first.targetBlockedFn,
                 traceCount = regions.map { it.first }.distinct().size,
+                regionCount = regions.size,
                 totalDurationPct = avgDur
             )
         }.sortedWith(compareByDescending<GlobalScoringEntry> { it.traceCount }.thenByDescending { it.totalDurationPct })

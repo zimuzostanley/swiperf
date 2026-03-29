@@ -63,6 +63,7 @@ fun GlobalScoringScreen(
         if (unscored.isEmpty()) null
         else when (sortMode) {
             "size" -> unscored.maxByOrNull { globalState.entries[it].totalDurationPct }
+            "regions" -> unscored.maxByOrNull { globalState.entries[it].regionCount }
             "state" -> unscored.sortedBy { if (globalState.entries[it].anchorState == globalState.entries[it].targetState) 0 else 1 }.firstOrNull()
             "name" -> unscored.sortedBy { if (globalState.entries[it].anchorName == globalState.entries[it].targetName) 0 else 1 }.firstOrNull()
             "io" -> unscored.sortedWith(compareBy<Int>(
@@ -241,7 +242,7 @@ fun GlobalScoringScreen(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
                 ) {
                     Text(
-                        "affects ${entry.traceCount} trace${if (entry.traceCount != 1) "s" else ""}",
+                        "${entry.traceCount} traces \u00b7 ${entry.regionCount} regions \u00b7 ${"%.1f".format(entry.totalDurationPct)}%",
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -343,6 +344,7 @@ fun GlobalScoringScreen(
         val options = listOf(
             "count" to "Most traces first",
             "size" to "Largest total duration",
+            "regions" to "Most regions",
             "state" to "Same state first",
             "name" to "Same name first",
             "io" to "Same IO wait first",
