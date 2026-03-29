@@ -217,7 +217,7 @@ fun GlobalScoringScreen(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
                 ) {
                     Text(
-                        "affects ${entry.traceCount} trace${if (entry.traceCount != 1) "s" else ""} \u00b7 ${"%.2f".format(entry.totalDurationPct)}% avg",
+                        "affects ${entry.traceCount} trace${if (entry.traceCount != 1) "s" else ""}",
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -235,9 +235,6 @@ fun GlobalScoringScreen(
                         .padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    // Duration
-                    Text("${"%.2f".format(entry.totalDurationPct)}% avg of trace", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-
                     // Zoomed bars
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Column(Modifier.weight(1f)) {
