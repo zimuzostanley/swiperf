@@ -58,6 +58,7 @@ fun ScoringScreen(
     onVerdict: (RegionVerdict, Int) -> Unit, // verdict + region index
     onUndo: () -> Unit,
     onReset: () -> Unit,
+    tapToScore: Boolean = false,
     trimText: (String?) -> String = { it ?: "\u2014" },
     trimLabel: String = "all",
     onCycleTrim: () -> Unit = {},
@@ -131,19 +132,14 @@ fun ScoringScreen(
     }
 
     val swipeModifier = if (!isComplete) Modifier
-        .pointerInput(version) {
+        .then(if (tapToScore) Modifier.pointerInput(version) {
             detectTapGestures { offset ->
                 val idx = currentRegionIdx ?: return@detectTapGestures
                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                if (offset.x < size.width / 2) {
-                    tapFlash = "different"
-                    onVerdict(RegionVerdict.DIFFERENT, idx)
-                } else {
-                    tapFlash = "same"
-                    onVerdict(RegionVerdict.SAME, idx)
-                }
+                if (offset.x < size.width / 2) { tapFlash = "different"; onVerdict(RegionVerdict.DIFFERENT, idx) }
+                else { tapFlash = "same"; onVerdict(RegionVerdict.SAME, idx) }
             }
-        }
+        } else Modifier)
         .pointerInput(version) {
             detectHorizontalDragGestures(
                 onDragEnd = { onSwipeEnd() },

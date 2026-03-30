@@ -85,6 +85,18 @@ class SwiPerfViewModel(app: Application) : AndroidViewModel(app) {
     val globalScoringState: StateFlow<GlobalScoringState?> = _globalScoringVersion.map { _globalScoringState }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
+    // ── Tap-to-score (advanced) ──
+    private val _tapToScore = MutableStateFlow(
+        ctx.getSharedPreferences("swiperf", Context.MODE_PRIVATE).getBoolean("tap_to_score", false)
+    )
+    val tapToScore: StateFlow<Boolean> = _tapToScore.asStateFlow()
+
+    fun toggleTapToScore() {
+        val newVal = !_tapToScore.value
+        _tapToScore.value = newVal
+        ctx.getSharedPreferences("swiperf", Context.MODE_PRIVATE).edit().putBoolean("tap_to_score", newVal).apply()
+    }
+
     // ── Display trim length for scoring ──
     private val TRIM_STEPS = listOf(5, 10, 15, 20, 30, 50, 0) // 0 = all
     private val _trimLength = MutableStateFlow(

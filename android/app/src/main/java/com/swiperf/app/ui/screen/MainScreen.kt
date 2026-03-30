@@ -84,6 +84,8 @@ fun MainScreen(
     onImportDict: ((json: String, merge: Boolean) -> Unit)? = null,
     autoPinFirst: Boolean = true,
     onToggleAutoPinFirst: (() -> Unit)? = null,
+    tapToScore: Boolean = false,
+    onToggleTapToScore: (() -> Unit)? = null,
     onStartGlobalScoring: (() -> Unit)? = null
 ) {
     val cl = activeCluster
@@ -481,6 +483,8 @@ fun MainScreen(
             onImportDict = onImportDict,
             autoPinFirst = autoPinFirst,
             onToggleAutoPinFirst = onToggleAutoPinFirst,
+            tapToScore = tapToScore,
+            onToggleTapToScore = onToggleTapToScore,
             onDismiss = { showSettings = false })
     }
 }

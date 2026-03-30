@@ -47,6 +47,8 @@ fun SettingsSheet(
     onImportDict: ((json: String, merge: Boolean) -> Unit)? = null,
     autoPinFirst: Boolean = true,
     onToggleAutoPinFirst: (() -> Unit)? = null,
+    tapToScore: Boolean = false,
+    onToggleTapToScore: (() -> Unit)? = null,
     onDismiss: () -> Unit
 ) {
     var confirmClear by remember { mutableStateOf(false) }
@@ -282,6 +284,26 @@ fun SettingsSheet(
                     Switch(
                         checked = autoPinFirst,
                         onCheckedChange = { onToggleAutoPinFirst?.invoke() }
+                    )
+                }
+                Spacer(Modifier.height(4.dp))
+
+                // Tap to score
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Tap to score", style = MaterialTheme.typography.bodyMedium)
+                        Text(
+                            "Tap left = different, right = same",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = tapToScore,
+                        onCheckedChange = { onToggleTapToScore?.invoke() }
                     )
                 }
                 Spacer(Modifier.height(8.dp))
